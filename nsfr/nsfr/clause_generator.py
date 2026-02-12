@@ -1,4 +1,4 @@
-from .utils_beam import get_nsfr_cgen_model
+from .utils.beam import get_nsfr_cgen_model
 from .tensor_encoder import TensorEncoder
 from .infer import ClauseBodyInferModule
 from .refinement import RefinementGenerator
@@ -206,6 +206,8 @@ class ClauseGenerator(object):
 
     def eval_clauses(self, clauses):
         C = len(clauses)
+        if C == 0:
+            return torch.tensor([]).to(self.device)
         predname = self.get_predname(clauses)
 
         print("Eval clauses: ", len(clauses))
@@ -231,6 +233,9 @@ class ClauseGenerator(object):
             elif self.args.m == 'loot':
                 action_probs, actions = self.get_action_probs_h(predname)
                 scores = self.scoring(action_probs, body_scores, actions)
+            elif self.args.m == 'seaquest':
+                action_probs, actions = self.get_action_probs_seaquest(predname)
+                scores = self.scoring(action_probs, body_scores, actions)
         else:
             scores = torch.zeros((C,)).to(self.device)
         return scores
@@ -244,6 +249,12 @@ class ClauseGenerator(object):
         actions_ = actions.unsqueeze(0).expand((body_scores.size(0), -1))
         # scores = action_probs_ * body_scores
         scores = actions_ * body_scores
+        
+        # Debug prints
+        print(f"Scoring debug: Actions sum: {actions.sum().item()}, Body scores sum: {body_scores.sum(dim=1)}")
+        if actions.sum().item() == 0:
+            print("WARNING: Target action never taken in buffer!")
+        
         scores = torch.sum(scores, dim=1)
 
         return scores
@@ -285,4 +296,59 @@ class ClauseGenerator(object):
             action_probs = action_probs[:, 1]
             actions = [1 if i == 1 else 0 for i in actions]
 
+        return action_probs, torch.tensor(actions, device=self.device)
+
+    def get_action_probs_seaquest(self, predname):
+        # Seaquest actions: 0:noop, 1:fire, 2:up, 3:right, 4:left, 5:down
+        action_probs = self.buffer.action_probs
+        # If action_probs is [batch, num_actions], we take the column corresponding to the action
+        # But here we need the ground truth action taken?
+        # get_action_probs_go uses self.buffer.action_probs.squeeze(1)
+        # Let's assume action_probs is [batch, num_actions] or similar.
+        # actions list is derived from argmax.
+        
+        # Check shape of action_probs
+        if len(action_probs.shape) == 3:
+             action_probs = action_probs.squeeze(1)
+             
+        action_list = action_probs.tolist()
+        # If action_probs are probabilities, argmax gives the action index
+        actions = [i.index(max(i)) for i in action_list]
+        
+        target_action = -1
+        if 'noop' in predname:
+            target_action = 0
+        elif 'fire' in predname:
+            target_action = 1
+        elif 'up' in predname:
+            target_action = 2
+        elif 'right' in predname:
+            target_action = 3
+        elif 'left' in predname:
+            target_action = 4
+        elif 'down' in predname:
+            target_action = 5
+            
+        # Default predicates mapping
+        if 'up_air' in predname: target_action = 2
+        elif 'fire_left' in predname: target_action = 1
+        elif 'fire_right' in predname: target_action = 1
+        elif 'left_aim' in predname: target_action = 4
+        elif 'right_aim' in predname: target_action = 3
+        elif 'down_aim' in predname: target_action = 5
+        elif 'up_aim' in predname: target_action = 2
+        elif 'up_evade' in predname: target_action = 2
+        elif 'down_evade' in predname: target_action = 5
+        elif 'left_to_diver' in predname: target_action = 4
+        elif 'right_to_diver' in predname: target_action = 3
+        elif 'up_to_diver' in predname: target_action = 2
+        elif 'down_to_diver' in predname: target_action = 5
+            
+        if target_action != -1:
+            # action_probs = action_probs[:, target_action] # Not used in scoring() actually, only actions_ is used
+            actions = [1 if i == target_action else 0 for i in actions]
+        else:
+            # Default or error?
+            actions = [0 for _ in actions]
+            
         return action_probs, torch.tensor(actions, device=self.device)

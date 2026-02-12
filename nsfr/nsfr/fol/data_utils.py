@@ -107,6 +107,7 @@ class DataUtils(object):
     def parse_const(self, line):
         """Parse string to function symbols.
         """
+        print(line)
         dtype_name, const_names_str = line.split(':')
         dtype = DataType(dtype_name)
         const_names = const_names_str.split(',')
@@ -117,16 +118,31 @@ class DataUtils(object):
         return ExpTree(lang).transform(tree)
 
     def get_clauses(self, lang):
-        return self.load_clauses(self.base_path + 'clauses.txt', lang)
+        return self.load_clauses(self.base_path + 'init_clauses.txt', lang)
 
     def get_bk(self, lang):
         return self.load_atoms(self.base_path + 'bk.txt', lang)
 
-    def load_language(self):
+    def load_language(self, use_limited_consts=False):
         """Load language, background knowledge, and clauses from files.
+        
+        Args:
+            use_limited_consts: If True, use consts_limited.txt instead of consts.txt
+                               to reduce memory usage during beam search.
         """
         preds = self.load_preds(self.base_path + 'preds.txt') + \
                 self.load_neural_preds(self.base_path + 'neural_preds.txt')
-        consts = self.load_consts(self.base_path + 'consts.txt')
+        
+        # Use limited constants file if requested (for memory optimization)
+        consts_file = 'consts_limited.txt' if use_limited_consts else 'consts.txt'
+        consts_path = self.base_path + consts_file
+        
+        # Fall back to consts.txt if limited file doesn't exist
+        if use_limited_consts and not os.path.isfile(consts_path):
+            print(f"Warning: {consts_file} not found, falling back to consts.txt")
+            consts_path = self.base_path + 'consts.txt'
+            
+        consts = self.load_consts(consts_path)
         lang = Language(preds, [], consts)
         return lang
+

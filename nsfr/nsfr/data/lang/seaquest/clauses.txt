@@ -1,0 +1,14 @@
+noop(X0):-in_image(X0,O1).
+up_air(X0):-in_image(X0,O1).
+fire_left(X0):-in_image(X0,O1).
+fire_right(X0):-in_image(X0,O1).
+left_aim(X0):-in_image(X0,O1).
+right_aim(X0):-in_image(X0,O1).
+down_aim(X0):-in_image(X0,O1).
+up_aim(X0):-in_image(X0,O1).
+up_evade(X0):-in_image(X0,O1).
+down_evade(X0):-in_image(X0,O1).
+left_to_diver(X0):-in_image(X0,O1).
+right_to_diver(X0):-in_image(X0,O1).
+up_to_diver(X0):-in_image(X0,O1).
+down_to_diver(X0):-in_image(X0,O1).

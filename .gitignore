@@ -3,3 +3,5 @@
 nudge/nudge.egg-info
 /nsfr/nsfr.egg-info
 *__pycache*
+/data/gaze_data_tmp/
+/results/bs_data/

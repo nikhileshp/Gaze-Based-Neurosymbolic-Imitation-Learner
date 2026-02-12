@@ -9,18 +9,25 @@ false = Atom(p_, [Const('__F__', dtype=DataType('spec'))])
 true = Atom(p_, [Const('__T__', dtype=DataType('spec'))])
 
 
-def get_lang(lark_path, lang_base_path, dataset):
+def get_lang(lark_path, lang_base_path, dataset, use_limited_consts=False):
     """Load the language of first-order logic from files.
 
     Read the language, clauses, background knowledge from files.
     Atoms are generated from the language.
+    
+    Args:
+        lark_path: Path to the lark grammar file
+        lang_base_path: Base path for language files
+        dataset: Dataset name
+        use_limited_consts: If True, use consts_limited.txt for memory optimization
     """
     du = DataUtils(lark_path=lark_path, lang_base_path=lang_base_path, dataset=dataset)
-    lang = du.load_language()
+    lang = du.load_language(use_limited_consts=use_limited_consts)
     clauses = du.get_clauses(lang)
     bk = du.get_bk(lang)
     atoms = generate_atoms(lang)
     return lang, clauses, bk, atoms
+
 
 
 def build_infer_module(clauses, atoms, lang, device, m=3, infer_step=3, train=False):
