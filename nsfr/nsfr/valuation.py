@@ -78,12 +78,12 @@ class ValuationModule(nn.Module, ABC):
                 const (const): The term to be grounded.
                 zs (tensor): The object-centric state representation.
         """
-        # Check if the constant name is in the reserved style, e.g., "obj1"
-        result = re.match("obj([1-9][0-9]*)", const.name)
+        # Check if the constant name is in the reserved style, e.g., "obj0", "obj1", etc.
+        result = re.match(r"obj(\d+)", const.name)  # Changed to match obj0, obj1, obj2, ...
         if result is not None:
             # The constant is an object constant
             obj_id = result[1]
-            obj_index = int(obj_id) - 1
+            obj_index = int(obj_id)  # No need to subtract 1 since we now support obj0
             return zs[:, obj_index]
 
         elif const.dtype.name == 'object':

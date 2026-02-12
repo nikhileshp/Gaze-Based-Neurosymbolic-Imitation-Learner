@@ -149,6 +149,24 @@ def get_mode_declarations_getout(lang):
     return modeb_list
 
 
+def get_mode_declarations_seaquest(lang):
+    p_image = ModeTerm('+', DataType('image'))
+    m_object = ModeTerm('-', DataType('object'))
+    p_object = ModeTerm('+', DataType('object'))
+    s_type = ModeTerm('#', DataType('type'))
+
+    modeb_list = [
+        ModeDeclaration('body', 1, lang.get_pred_by_name('in_image'), [p_image, m_object]),
+        ModeDeclaration('body', 2, lang.get_pred_by_name('type'), [p_object, s_type]),
+        ModeDeclaration('body', 1, lang.get_pred_by_name('closeby'), [p_object, p_object], ordered=False),
+        ModeDeclaration('body', 1, lang.get_pred_by_name('on_top'), [p_object, p_object]),
+        ModeDeclaration('body', 1, lang.get_pred_by_name('at_bottom'), [p_object, p_object]),
+        ModeDeclaration('body', 1, lang.get_pred_by_name('on_left'), [p_object, p_object]),
+        ModeDeclaration('body', 1, lang.get_pred_by_name('on_right'), [p_object, p_object]),
+    ]
+    return modeb_list
+
+
 def get_mode_declarations(args, lang):
     if args.m == 'getout':
         return get_mode_declarations_getout(lang)
@@ -156,5 +174,7 @@ def get_mode_declarations(args, lang):
         return get_mode_declarations_threefish(lang)
     elif args.m == 'loot':
         return get_mode_declarations_loot(lang)
+    elif args.m == 'seaquest':
+        return get_mode_declarations_seaquest(lang)
     else:
         assert False, "Invalid data type."
