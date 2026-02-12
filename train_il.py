@@ -256,7 +256,11 @@ def main():
     args = parser.parse_args()
 
     make_deterministic(args.seed)
-    device = torch.device(args.device)
+    device_name = "cuda" if torch.cuda.is_available() else "cpu"
+    if args.device != "cpu":
+        device_name = args.device
+    device = torch.device(device_name)
+    print(f"Using device: {device}")
 
     # Initialize Environment (for evaluation and model init)
     # mode='logic' is required to get logic states
