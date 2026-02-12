@@ -37,14 +37,34 @@ class TrajectoryVisualizer:
     def __init__(self, data_path: str, agent_path: str, start_frame: int = 0):
         self.data_path = data_path
         self.agent_path = agent_path
-        self.current_frame_idx = start_frame
-        
-        # Load agent
-        self.agent = self._load_agent()
         
         # Load images and data
         self.images = self._load_images()
         self.trajectory_data = self._load_trajectory_data()
+        
+        # Determine starting index based on start_frame (treated as ID)
+        self.current_frame_idx = 0
+        if start_frame > 0:
+            found = False
+            for i, img_path in enumerate(self.images):
+                # Check if frame ID matches
+                # Filename: ..._12274.png
+                try:
+                    fid = int(os.path.basename(img_path).split('_')[-1].split('.')[0])
+                    if fid == start_frame:
+                        self.current_frame_idx = i
+                        found = True
+                        print(f"Found start frame {start_frame} at index {i}")
+                        break
+                except:
+                   pass
+            
+            if not found:
+                print(f"Could not find frame ID {start_frame}, using index {start_frame} as fallback.")
+                self.current_frame_idx = start_frame
+        
+        # Load agent
+        self.agent = self._load_agent()
         
         # Initialize Ocatari objects
         self.objects = self._init_ocatari_objects()
@@ -200,7 +220,14 @@ class TrajectoryVisualizer:
         
         # 3. Get Logic State & Neural State 
         # We filter out NoObject for the env wrapper
-        active_objects = [obj for obj in self.objects if not isinstance(obj, NoObject)]
+        # Keep original indices for visualization
+        active_objects_with_ids = []
+        active_objects = []
+        for i, obj in enumerate(self.objects):
+             if not isinstance(obj, NoObject) and getattr(obj, "category", "") != "OrientedNoObject":
+                if getattr(obj, "category", "") != "NoObject":
+                    active_objects.append(obj)
+                    active_objects_with_ids.append((i, obj))
         
         # Patching objects to ensure they have expected attributes if missing
         # env.py expects: category, x, y, (or center), orientation (optional), w (for OxygenBar)
@@ -236,9 +263,9 @@ class TrajectoryVisualizer:
                  # Try digging into RDN specific structure if V_0 isn't direct
                  pass
 
-        return image_rgb, valuation
+        return image_rgb, valuation, active_objects_with_ids
 
-    def render(self, image, valuation, frame_name):
+    def render(self, image, valuation, frame_name, active_objects_with_ids=None):
         self.window.fill(CELL_BACKGROUND_DEFAULT)
         
         # Render Game Image
@@ -247,6 +274,58 @@ class TrajectoryVisualizer:
         img_surface = pygame.transform.scale(img_surface, (SCREEN_WIDTH, SCREEN_HEIGHT))
         self.window.blit(img_surface, (0, 0))
         
+        # Render Bounding Boxes & IDs
+        active_list_text = []
+        if active_objects_with_ids:
+            scale_x = SCREEN_WIDTH / 160
+            scale_y = SCREEN_HEIGHT / 210
+            for i, obj in active_objects_with_ids:
+                try:
+                    x, y, w, h = obj.x, obj.y, obj.w, obj.h
+                    # Scale
+                    rect = pygame.Rect(int(x * scale_x), int(y * scale_y), int(w * scale_x), int(h * scale_y))
+                    
+                    # Color based on category
+                    color = (0, 255, 0) # Green default
+                    cat = obj.category.lower()
+                    if "enemy" in cat or "shark" in cat or "submarine" in cat:
+                        color = (255, 0, 0) # Red
+                    elif "player" in cat:
+                        color = (0, 0, 255) # Blue
+                    elif "diver" in cat:
+                        color = (0, 255, 255) # Cyan
+                        
+                    pygame.draw.rect(self.window, color, rect, 2)
+                    
+                    # Draw ID at top-right
+                    id_text = self.font.render(str(i), True, color)
+                    self.window.blit(id_text, (rect.right, rect.top))
+                    
+                    active_list_text.append((i, obj.category, color))
+                except AttributeError:
+                    pass
+
+        # Render Active Objects Sidebar (Below Predicates or separate column?)
+        # Let's put it below Predicates for now, or start a new column if space is tight.
+        # PREDICATE_PROBS_COL_WIDTH = 300.
+        start_x = SCREEN_WIDTH + 10
+        # Predicates start at 50. Top 15 preds * 30px = 450px.
+        # Screen height 210*4 = 840. We have space.
+        objects_start_y = 50 + 15 * 30 + 20
+        
+        obj_title = self.font.render("Active Objects:", True, "yellow")
+        self.window.blit(obj_title, (start_x, objects_start_y))
+        
+        for idx, (i, cat, color) in enumerate(active_list_text):
+            # Limit list size if too many
+            if idx > 20:
+                more = self.font.render("...", True, "white")
+                self.window.blit(more, (start_x, objects_start_y + 30 + (idx+1)*20))
+                break
+            
+            text = self.font.render(f"{i}: {cat}", True, color)
+            self.window.blit(text, (start_x, objects_start_y + 30 + idx*20))
+
         # Render Gaze
         if frame_name in self.trajectory_data:
             gaze_points = self.trajectory_data[frame_name].get("gaze", [])
@@ -307,7 +386,8 @@ class TrajectoryVisualizer:
                 PREDICATE_PROBS_COL_WIDTH - 20, 
                 25
             ])
-            
+            #Change the text size
+            self.font = pygame.font.SysFont("Arial", 12)
             text = self.font.render(f"{val:.2f} {str(atom)}", True, "white")
             self.window.blit(text, (start_x + 5, start_y + i * 30 + 2))
 
@@ -332,10 +412,79 @@ class TrajectoryVisualizer:
             current_image_path = self.images[self.current_frame_idx]
             frame_name = os.path.basename(current_image_path)
             
-            image_rgb, valuation = self.process_frame(current_image_path)
+            image_rgb, valuation, objects = self.process_frame(current_image_path)
             
             if image_rgb is not None:
-                self.render(image_rgb, valuation, frame_name)
+                # DEBUG: Print info for frame 12274
+                if "12274.png" in frame_name:
+                    print(f"\n----- DEBUG INFO FOR FRAME (Visualization) -----")
+                    print(f"Image Path: {current_image_path}")
+                    print("\nOcatari Objects (Visualizer):")
+                    # objects is a list of tuples (index, obj) because we modified it earlier?
+                    
+                    # RE-EXTRACT Logic State for inspection
+                    # objects arg here is the list of Ocatari objects.
+                    # We need to call extract_logic_state on the list of objects (stripping the indices if they are there)
+                    
+                    # Wait, self.extract_logic_state(objects) expects what?
+                    # In process_frame: logic_state = self.extract_logic_state(objects)
+                    # And 'objects' there is 'self.objects' (list of GameObjects).
+                    # But process_frame returns 'active_objects_with_ids' as the 3rd arg?
+                    # Let's check process_frame return values.
+                    # It returns image_rgb, valuation, active_objects_with_ids
+                    
+                    # We need the RAW objects to get the tensor.
+                    # They are in self.objects?
+                    # Yes, self.objects is updated in place.
+                    
+                    raw_logic_state = self.extract_logic_state(self.objects)
+                    print("\nPlayer Tensor (Logic State Obj 0):")
+                    if len(raw_logic_state) > 0:
+                        print(raw_logic_state[0])
+                    
+                    print("\nAll Objects Tensors (Logic State):")
+                    # Print first 5
+                    for i in range(min(5, len(raw_logic_state))):
+                         print(f"Obj {i}: {raw_logic_state[i]}")
+
+                    for item in objects:
+                        if isinstance(item, tuple) and len(item) == 2:
+                            idx, obj = item
+                            coords = "N/A"
+                            if hasattr(obj, 'xywh'):
+                                coords = obj.xywh
+                            elif hasattr(obj, 'x'):
+                                coords = (obj.x, obj.y, obj.w, obj.h)
+                            
+                            orient = "N/A"
+                            if hasattr(obj, 'orientation'):
+                                orient = f"{obj.orientation.value}" if hasattr(obj.orientation, 'value') else f"{obj.orientation}"
+                            
+                            print(f"{idx}: {obj.__class__.__name__} | Pos: {coords} | Orient: {orient}")
+                        else:
+                            print(f"Unknown item format: {item}")
+
+                    print("\nNeural Predicates (Valuation > 0.01):")
+                    # valuation is a Tensor (1, num_preds) or (num_preds)
+                    # agent.model.prednames
+                    prednames = self.agent.model.prednames
+                    if valuation.dim() > 1:
+                        val_vector = valuation[0]
+                    else:
+                        val_vector = valuation
+                    
+                    for i, pred in enumerate(prednames):
+                        if i < len(val_vector):
+                            val = val_vector[i].item()
+                            if val > 0.01:
+                                print(f"{pred}: {val:.4f}")
+                    
+                    print("--------------------------------\n")
+                    import sys
+                    sys.stdout.flush()
+                    sys.exit(0)
+
+                self.render(image_rgb, valuation, frame_name, objects)
             
             if not self.paused:
                 self.current_frame_idx += 1

@@ -6,12 +6,11 @@ from pathlib import Path
 import pandas as pd
 from PIL import Image
 from ocatari.core import OCAtari
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import Dataset, DataLoader
 from nudge.agents.imitation_agent import ImitationAgent
 from nudge.env import NudgeBaseEnv
 from nudge.utils import make_deterministic
 from tqdm import tqdm
-from collections import Counter
 
 # Configuration from train_per_action.py
 CSV_FILE = "/home/nikhilesh/Projects/NeSY-Imitation-Learning/train.csv"
@@ -177,7 +176,7 @@ class ExpertDataset(Dataset):
         # We return the raw action index (e.g. 2 for UP)
         # The loss function will handle mapping from predicates to this index
             
-        return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long)
+        return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), img_path
 
 
 def evaluate(agent, env, num_episodes=5):
@@ -212,47 +211,17 @@ def evaluate(agent, env, num_episodes=5):
     agent.model.train()
     return total_reward / num_episodes
 
-def get_balanced_sampler(dataset):
-    """
-    Creates a WeightedRandomSampler to balance the action distribution in the batches.
-    """
-    print("Computing class weights for balanced sampling...")
-    
-    # Extract all targets (actions)
-    if dataset.df is not None:
-        targets = dataset.df['action'].values
-    else:
-        # Dummy data is list of (state, action_tensor)
-        targets = [item[1].item() for item in dataset.data]
-        
-    targets = np.array(targets)
-    class_counts = Counter(targets)
-    
-    print(f"Class counts: {class_counts}")
-    
-    # Compute weight for each class: 1.0 / count
-    class_weights = {cls: 1.0 / count for cls, count in class_counts.items()}
-    
-    # Assign weight to each sample
-    samples_weights = np.array([class_weights[t] for t in targets])
-    samples_weights = torch.from_numpy(samples_weights).double()
-    
-    sampler = WeightedRandomSampler(samples_weights, len(samples_weights))
-    return sampler
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, default="getout", help="Environment name")
     parser.add_argument("--rules", type=str, default="getout_human", help="Ruleset name")
     parser.add_argument("--data_path", type=str, default=None, help="Path to expert data")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.0005, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
-    parser.add_argument("--sampler", type=str, default="balanced", choices=["none", "balanced"], help="Sampler to use (none/balanced)")
     args = parser.parse_args()
 
     make_deterministic(args.seed)
@@ -270,83 +239,116 @@ def main():
     # Pass env_name, prednames, and nudge_env to Dataset
     dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit)
 
-    # Create Sampler
-    sampler = None
-    shuffle = True
-    if args.sampler == "balanced":
-        sampler = get_balanced_sampler(dataset)
-        shuffle = False # Shuffle must be False when using a sampler
-
     # Use num_workers=0 because OCAtari might not be fork-safe or thread-safe in Dataset
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, shuffle=shuffle, num_workers=0)
+    import sys
+    
+    # DEBUG: Inspect 1000th frame specifically (Index 999 = Frame 12274)
+    target_idx = 999 
+    print(f"Inspecting {target_idx+1}th frame (index {target_idx})...")
+    
+    if len(dataset) <= target_idx:
+        print(f"Dataset has only {len(dataset)} samples. Cannot inspect index {target_idx}.")
+        sys.exit(0)
 
-    # Training Loop
-    print("Starting training...")
-    for epoch in range(args.epochs):
-        total_loss = 0
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{args.epochs}")
-        for states, actions in pbar:
-            states = states.to(device)
-            actions = actions.to(device)
-            
-            # Custom update logic to handle predicate aggregation
-            # agent.update expects standard NLL loss. We need to override or modify it.
-            # Ideally we modify ImitationAgent, but let's do it here for now to avoid breaking other things.
-            
-            # Forward pass
-            # probs: (batch, num_preds)
-            probs = agent.model(states)
+    # Note: We need to access the objects BEFORE they are converted to tensor if possible,
+    # but dataset.__getitem__ converts them.
+    # However, 'dataset.oc.objects' might hold the objects from the *last* call (which would be this one).
+    # let's call __getitem__
+    state, action, path = dataset[target_idx]
+    
+    # Now check dataset.oc.objects
+    print(f"\n----- DEBUG INFO FOR FRAME {target_idx+1} -----")
+    print(f"Image Path: {path}")
+    
+    print("\nOcatari Objects:")
+    for i, obj in enumerate(dataset.oc.objects):
+        # Format: Class: <name>, X: <x>, Y: <y>, W: <w>, H: <h>
+        # Check if it has xywh or just x,y,w,h
+        coords = "N/A"
+        if hasattr(obj, 'xywh'):
+            coords = obj.xywh
+        elif hasattr(obj, 'x'):
+             coords = (obj.x, obj.y, obj.w, obj.h)
+        
+        # Check orientation
+        orient = "N/A"
+        if hasattr(obj, 'orientation'):
+             orient = f"{obj.orientation.value}" if hasattr(obj.orientation, 'value') else f"{obj.orientation}"
+
+        print(f"{i}: {obj.__class__.__name__} | Pos: {coords} | Orient: {orient}")
+
+    # Add batch dimension
+    states = state.unsqueeze(0).to(device)
+    
+    # Forward pass
+    probs = agent.model(states)
+    
+    print("\nNeural Predicates (Valuation > 0.01):")
+    if hasattr(agent.model, 'V_0'):
+        V = agent.model.V_0
+        atoms = agent.model.atoms 
+        v_sample = V[0] 
+        for i, atom in enumerate(atoms):
+            val = v_sample[i].item()
+            if val > 0.01:
+                print(f"{atom}: {val:.4f}")
+    else:
+            print("Could not find V_0 in agent.model")
+
+    print("--------------------------------\n")
+    sys.exit(0)
+
             
             # Aggregate probabilities for each action
             # We need a tensor of shape (batch, num_actions) where num_actions = 6 (0-5)
-            # Initialize with zeros
-            batch_size = probs.size(0)
-            num_actions = 6
-            action_probs = torch.zeros(batch_size, num_actions, device=device)
-            
-            # Get prednames from agent
-            prednames = agent.model.get_prednames()
-            
-            # Sum probs for each predicate mapping to an action
-            for i, pred in enumerate(prednames):
-                if pred in PREDICATE_TO_ACTION_MAP:
-                    act_idx = PREDICATE_TO_ACTION_MAP[pred]
-                    action_probs[:, act_idx] += probs[:, i]
-            
-            # Normalize? Probs should sum to <= 1 (since we filtered NOOP, sum might be < 1 if NOOP was a predicate)
-            # But here we are summing disjoint sets of predicates.
-            # If all predicates map to SOME action, sum should be 1.
-            # If some predicates map to NOOP (which we filtered), sum < 1.
-            # We should re-normalize to avoid log(0) for valid actions?
-            # Or just use the sum.
-            
-            # Compute NLL Loss
-            # Add epsilon
-            log_probs = torch.log(action_probs + 1e-10)
-            loss = agent.loss_fn(log_probs, actions)
-            
-            # Backward pass
-            agent.optimizer.zero_grad()
-            loss.backward()
-            agent.optimizer.step()
-            
-            loss_val = loss.item()
-            total_loss += loss_val
-            pbar.set_postfix({"loss": f"{loss_val:.4f}"})
-            
-        avg_loss = total_loss / len(dataloader)
-        print(f"Epoch {epoch+1}/{args.epochs}, Loss: {avg_loss:.4f}")
+        # Initialize with zeros
+    batch_size = probs.size(0)
+    num_actions = 6
+    action_probs = torch.zeros(batch_size, num_actions, device=device)
+    
+    # Get prednames from agent
+    prednames = agent.model.get_prednames()
+    
+    # Sum probs for each predicate mapping to an action
+    for i, pred in enumerate(prednames):
+        if pred in PREDICATE_TO_ACTION_MAP:
+            act_idx = PREDICATE_TO_ACTION_MAP[pred]
+            action_probs[:, act_idx] += probs[:, i]
+    
+    # Normalize? Probs should sum to <= 1 (since we filtered NOOP, sum might be < 1 if NOOP was a predicate)
+    # But here we are summing disjoint sets of predicates.
+    # If all predicates map to SOME action, sum should be 1.
+    # If some predicates map to NOOP (which we filtered), sum < 1.
+    # We should re-normalize to avoid log(0) for valid actions?
+    # Or just use the sum.
+    
+    # Compute NLL Loss
+    # Add epsilon
+    log_probs = torch.log(action_probs + 1e-10)
+    loss = agent.loss_fn(log_probs, actions)
+    
+    # Backward pass
+    agent.optimizer.zero_grad()
+    loss.backward()
+    agent.optimizer.step()
+    
+    loss_val = loss.item()
+    total_loss += loss_val
+    pbar.set_postfix({"loss": f"{loss_val:.4f}"})
         
-        # Evaluation
-        if (epoch + 1) % 5 == 0:
-            avg_reward = evaluate(agent, env)
-            print(f"Evaluation Reward: {avg_reward:.2f}")
+    avg_loss = total_loss / len(dataloader)
+    print(f"Epoch {epoch+1}/{args.epochs}, Loss: {avg_loss:.4f}")
+    
+    # Evaluation
+    if (epoch + 1) % 5 == 0:
+        avg_reward = evaluate(agent, env)
+        print(f"Evaluation Reward: {avg_reward:.2f}")
 
-        # Save Model
-        os.makedirs("out/imitation", exist_ok=True)
-        save_path = f"out/imitation/{args.env}_{args.rules}_il.pth"
-        agent.save(save_path)
-        print(f"Model saved to {save_path}")
+    # Save Model
+    os.makedirs("out/imitation", exist_ok=True)
+    save_path = f"out/imitation/{args.env}_{args.rules}il.pth"
+    agent.save(save_path)
+    print(f"Model saved to {save_path}")
 
 if __name__ == "__main__":
     main()

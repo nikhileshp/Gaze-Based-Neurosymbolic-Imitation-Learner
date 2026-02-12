@@ -8,6 +8,8 @@ from nudge.agents.imitation_agent import ImitationAgent
 from nudge.env import NudgeBaseEnv
 from hackatari.core import HackAtari
 
+
+
 parser = ArgumentParser()
 parser.add_argument("-g", "--game", type=str, default="seaquest")
 parser.add_argument("-r", "--rules", type=str, default="default")
@@ -296,7 +298,7 @@ class ILRenderer(Renderer):
                 # Normalize value to 0-1 range (in case values are > 1)
                 
                 val_normalized = min(val, 1.0)
-                if(val_normalized < 0.99):
+                if(val_normalized):
                     print(i, pred_str, val_normalized)
                 
                     # Render background
@@ -304,7 +306,7 @@ class ILRenderer(Renderer):
                     color = np.clip(color, 0, 255).astype(int)  # Ensure valid RGB values
                     pygame.draw.rect(self.window, color.tolist(), [
                         anchor[0] - 2,
-                        neural_pred_start_y - 2 + count * 25,
+                        neural_pred_start_y - 2 + i * 25,
                         PREDICATE_PROBS_COL_WIDTH - 12,
                         22
                     ])
@@ -313,7 +315,7 @@ class ILRenderer(Renderer):
                     small_font = pygame.font.SysFont('Calibri', 14)
                     text = small_font.render(f"{val:.2f} - {pred_str}", True, "white", None)
                     text_rect = text.get_rect()
-                    text_rect.topleft = (self.env_render_shape[0] + 10, neural_pred_start_y + count * 25)
+                    text_rect.topleft = (self.env_render_shape[0] + 10, neural_pred_start_y + i * 25)
                     self.window.blit(text, text_rect)
         else:
             # Show message if no predicates
