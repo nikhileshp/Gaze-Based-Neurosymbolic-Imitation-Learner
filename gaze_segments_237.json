@@ -1,0 +1,121 @@
+[
+  {
+    "start_frame": 1,
+    "end_frame": 174,
+    "goal": "Diver",
+    "fixation_counts": {
+      "Diver": 16,
+      "Player": 7
+    }
+  },
+  {
+    "start_frame": 175,
+    "end_frame": 449,
+    "goal": "CollectedDiver",
+    "fixation_counts": {
+      "OxygenBar": 40,
+      "CollectedDiver": 88,
+      "Shark": 6
+    }
+  },
+  {
+    "start_frame": 450,
+    "end_frame": 1104,
+    "goal": "Diver",
+    "fixation_counts": {
+      "Diver": 27,
+      "Shark": 19,
+      "Submarine": 7,
+      "Player": 4
+    }
+  },
+  {
+    "start_frame": 1105,
+    "end_frame": 1389,
+    "goal": "Player",
+    "fixation_counts": {
+      "Diver": 2,
+      "Player": 9
+    }
+  },
+  {
+    "start_frame": 1390,
+    "end_frame": 1924,
+    "goal": "OxygenBar",
+    "fixation_counts": {
+      "CollectedDiver": 40,
+      "OxygenBar": 41,
+      "Shark": 3,
+      "Player": 12
+    }
+  },
+  {
+    "start_frame": 1925,
+    "end_frame": 2822,
+    "goal": "Shark",
+    "fixation_counts": {
+      "Player": 11,
+      "Shark": 16,
+      "CollectedDiver": 1
+    }
+  },
+  {
+    "start_frame": 2823,
+    "end_frame": 3717,
+    "goal": "CollectedDiver",
+    "fixation_counts": {
+      "CollectedDiver": 94,
+      "OxygenBar": 54,
+      "Diver": 22,
+      "Shark": 23,
+      "Submarine": 25,
+      "Player": 6
+    }
+  },
+  {
+    "start_frame": 3718,
+    "end_frame": 4401,
+    "goal": "Player",
+    "fixation_counts": {
+      "Player": 50,
+      "OxygenBar": 21,
+      "Submarine": 14,
+      "PlayerMissile": 1,
+      "Diver": 4
+    }
+  },
+  {
+    "start_frame": 4402,
+    "end_frame": 4833,
+    "goal": "Player",
+    "fixation_counts": {
+      "Submarine": 20,
+      "Shark": 3,
+      "Player": 22
+    }
+  },
+  {
+    "start_frame": 4834,
+    "end_frame": 5063,
+    "goal": "OxygenBar",
+    "fixation_counts": {
+      "CollectedDiver": 41,
+      "OxygenBar": 45
+    }
+  },
+  {
+    "start_frame": 5064,
+    "end_frame": 16110,
+    "goal": "OxygenBar",
+    "fixation_counts": {
+      "OxygenBar": 396,
+      "Diver": 361,
+      "Shark": 201,
+      "Player": 379,
+      "PlayerMissile": 9,
+      "Submarine": 174,
+      "CollectedDiver": 208,
+      "EnemyMissile": 3
+    }
+  }
+]
