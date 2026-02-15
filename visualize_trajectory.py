@@ -90,7 +90,7 @@ class TrajectoryVisualizer:
             from nudge.agents.imitation_agent import ImitationAgent
             
             # Init agent
-            agent = ImitationAgent("seaquest", "default", device)
+            agent = ImitationAgent("seaquest", "new", device)
             agent.load(self.agent_path)
             
             # We also need the env wrapper for state extraction logic
@@ -491,14 +491,14 @@ class TrajectoryVisualizer:
                 if self.current_frame_idx >= len(self.images):
                     self.paused = True
             
-            self.clock.tick(30) # 30 FPS
+            self.clock.tick(60) # 30 FPS
 
         pygame.quit()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", type=str, default="data/seaquest/gaze_data_tmp/54_RZ_2461867_Aug-11-09-35-18", help="Path to trajectory folder (images)")
-    parser.add_argument("--agent_path", type=str, default="out/imitation/seaquest_defaultil.pth", help="Path to trained agent .pth")
+    parser.add_argument("--data_path", type=str, default="data/seaquest/54_RZ_2461867_Aug-11-09-35-18", help="Path to trajectory folder (images)")
+    parser.add_argument("--agent_path", type=str, default="out/imitation/seaquest_new_il.pth", help="Path to trained agent .pth")
     parser.add_argument("--start_frame", type=int, default=0, help="Start frame index")
     
     args = parser.parse_args()
