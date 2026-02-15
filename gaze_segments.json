@@ -1,0 +1,130 @@
+[
+  {
+    "start_frame": 1,
+    "end_frame": 345,
+    "goal": "Diver",
+    "fixation_counts": {
+      "Diver": 36,
+      "Player": 4
+    }
+  },
+  {
+    "start_frame": 346,
+    "end_frame": 705,
+    "goal": "Diver",
+    "fixation_counts": {
+      "CollectedDiver": 2,
+      "Diver": 60,
+      "Shark": 6,
+      "Player": 9
+    }
+  },
+  {
+    "start_frame": 706,
+    "end_frame": 975,
+    "goal": "Shark",
+    "fixation_counts": {
+      "Shark": 15,
+      "Diver": 3,
+      "Player": 7
+    }
+  },
+  {
+    "start_frame": 976,
+    "end_frame": 1265,
+    "goal": "CollectedDiver",
+    "fixation_counts": {
+      "CollectedDiver": 52,
+      "OxygenBar": 13
+    }
+  },
+  {
+    "start_frame": 1266,
+    "end_frame": 1525,
+    "goal": "Diver",
+    "fixation_counts": {
+      "Diver": 20,
+      "Shark": 19,
+      "Player": 1
+    }
+  },
+  {
+    "start_frame": 1526,
+    "end_frame": 3500,
+    "goal": "Shark",
+    "fixation_counts": {
+      "Shark": 134,
+      "Player": 82,
+      "Diver": 92,
+      "CollectedDiver": 44,
+      "EnemyMissile": 1,
+      "Submarine": 4,
+      "OxygenBar": 21
+    }
+  },
+  {
+    "start_frame": 3501,
+    "end_frame": 5060,
+    "goal": "Shark",
+    "fixation_counts": {
+      "Submarine": 14,
+      "Diver": 94,
+      "OxygenBar": 45,
+      "Player": 46,
+      "Shark": 129,
+      "CollectedDiver": 75,
+      "PlayerMissile": 1
+    }
+  },
+  {
+    "start_frame": 5061,
+    "end_frame": 8690,
+    "goal": "Shark",
+    "fixation_counts": {
+      "Submarine": 38,
+      "Shark": 229,
+      "Diver": 99,
+      "Player": 80,
+      "CollectedDiver": 78,
+      "OxygenBar": 56,
+      "EnemyMissile": 1
+    }
+  },
+  {
+    "start_frame": 8691,
+    "end_frame": 12186,
+    "goal": "Player",
+    "fixation_counts": {
+      "Diver": 85,
+      "Player": 102,
+      "Shark": 96,
+      "Submarine": 31,
+      "CollectedDiver": 37,
+      "OxygenBar": 58,
+      "EnemyMissile": 1
+    }
+  },
+  {
+    "start_frame": 12187,
+    "end_frame": 12911,
+    "goal": "Player",
+    "fixation_counts": {
+      "Shark": 8,
+      "Submarine": 8,
+      "Player": 18
+    }
+  },
+  {
+    "start_frame": 12912,
+    "end_frame": 17200,
+    "goal": "Shark",
+    "fixation_counts": {
+      "Diver": 118,
+      "Shark": 187,
+      "Player": 142,
+      "CollectedDiver": 85,
+      "OxygenBar": 93,
+      "Submarine": 1
+    }
+  }
+]

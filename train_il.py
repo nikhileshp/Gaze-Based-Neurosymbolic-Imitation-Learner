@@ -109,10 +109,16 @@ class ExpertDataset(Dataset):
             return torch.tensor(state, dtype=torch.float32), torch.tensor(action, dtype=torch.long)
         
         row = self.df.iloc[idx]
+        # Mapping from frame_id to traj_folder
+        #Map Folders to trajectory_folder_parts
+        traj_folder_map = {}
+        for folder in os.listdir(BASE_IMAGE_DIR):
+            traj_folder_map[folder] = folder.split('_')[1]+"_"+folder.split('_')[2]
+
         
-        # Load Image
-        traj_folder = row['trajectory']
-        img_name = f"{row['frameid']}.png"
+        #Dictionary to map traj_folder_part to traj_folder
+        traj_folder = traj_folder_map[row['frame_id'].split('_')[0]+"_"+row['frame_id'].split('_')[1]]
+        img_name = f"{row['frame_id'].split('_')[2]}.png"
         img_path = os.path.join(BASE_IMAGE_DIR, traj_folder, img_name)
         
         try:
@@ -122,7 +128,8 @@ class ExpertDataset(Dataset):
             # Fallback for missing images
             # print(f"Error loading image {img_path}: {e}")
             image_array = np.zeros((210, 160, 3), dtype=np.uint8)
-
+            print(f"Error loading image {img_path}: {e}")
+            exit()
         # Extract Objects using OCAtari
         # OCAtari detects objects and updates internal state
         # We need to mock the ALE getScreenRGB method to return our image
