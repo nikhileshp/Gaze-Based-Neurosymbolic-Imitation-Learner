@@ -36,10 +36,10 @@ class NSFReasoner(nn.Module):
                 prednames.append(clause.head.pred.name)
         return prednames
 
-    def forward(self, x):
+    def forward(self, x, gaze=None):
         zs = x
         # convert to the valuation tensor
-        self.V_0 = self.fc(zs, self.atoms, self.bk)
+        self.V_0 = self.fc(zs, self.atoms, self.bk, gaze=gaze)
         # perform T-step forward-chaining reasoning
         self.V_T = self.im(self.V_0)
         # only return probs of actions

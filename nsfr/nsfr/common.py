@@ -6,7 +6,7 @@ from nsfr.nsfr import NSFReasoner
 from nsfr.valuation import ValuationModule
 
 
-def get_nsfr_model(env_name: str, rules: str, device: str, train=False):
+def get_nsfr_model(env_name: str, rules: str, device: str, train=False, gaze_threshold=None):
     current_path = os.path.dirname(__file__)
     lark_path = os.path.join(current_path, 'lark/exp.lark')
     lang_base_path = f"in/envs/{env_name}/logic/"
@@ -14,7 +14,9 @@ def get_nsfr_model(env_name: str, rules: str, device: str, train=False):
     lang, clauses, bk, atoms = get_lang(lark_path, lang_base_path, rules)
 
     val_fn_path = f"in/envs/{env_name}/valuation.py"
-    val_module = ValuationModule(val_fn_path, lang, device)
+    # Pass gaze_threshold to ValuationModule if it accepts it.
+    # We need to update ValuationModule __init__ as well.
+    val_module = ValuationModule(val_fn_path, lang, device, gaze_threshold=gaze_threshold)
 
     FC = FactsConverter(lang=lang, valuation_module=val_module, device=device)
     prednames = []
