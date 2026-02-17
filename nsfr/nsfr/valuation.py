@@ -40,7 +40,7 @@ class ValuationModule(nn.Module, ABC):
     val_fns: Dict[str, ValuationFunction]  # predicate names to corresponding valuation fn
 
     def __init__(self, val_fn_path: str, lang: Language, device: Union[torch.device, str],
-                 pretrained: bool = True):
+                 pretrained: bool = True, gaze_threshold=None):
         super().__init__()
 
         # Parse all valuation functions
@@ -51,13 +51,15 @@ class ValuationModule(nn.Module, ABC):
         self.lang = lang
         self.device = device
         self.pretrained = pretrained
+        self.gaze_threshold = gaze_threshold
 
-    def forward(self, zs: torch.Tensor, atom: Atom):
+    def forward(self, zs: torch.Tensor, atom: Atom, gaze: torch.Tensor = None):
         """Convert the object-centric representation to a valuation tensor.
 
             Args:
                 zs (tensor): The object-centric representation (the output of the YOLO model).
                 atom (atom): The target atom to compute its probability.
+                gaze (tensor): The gaze center (batch_size, 2). Optional.
 
             Returns:
                 A batch of the probabilities of the target atom.
@@ -69,7 +71,35 @@ class ValuationModule(nn.Module, ABC):
         # term: logical term
         # args: the vectorized input evaluated by the value function
         args = [self.ground_to_tensor(term, zs) for term in atom.terms]
-        return val_fn(*args)
+        
+        val = val_fn(*args)
+
+        # Gaze-based valuation scaling
+        # If gaze is provided and threshold is set, and predicate starts with "visible_"
+        if self.gaze_threshold is not None and gaze is not None and atom.pred.name.startswith("visible_"):
+            # Assume the first argument is the object
+            if len(args) > 0:
+                obj_tensor = args[0]
+                # Check consistency of shape
+                if obj_tensor.shape[0] == gaze.shape[0]:
+                    # Extract object position (x, y) at indices 1, 2
+                    # obj_tensor shape: (batch, features)
+                    obj_pos = obj_tensor[:, 1:3] 
+                    
+                    # Calculate Euclidean distance
+                    # gaze shape: (batch, 2)
+                    dist = torch.norm(obj_pos - gaze, dim=1)
+                    
+                    # Avoid division by zero
+                    dist = torch.clamp(dist, min=1e-6)
+                    
+                    # Scale factor: min(1.0, threshold / distance)
+                    scale = torch.clamp(self.gaze_threshold / dist, max=1.0)
+                    
+                    # Apply scaling
+                    val = val * scale
+
+        return val
 
     def ground_to_tensor(self, const: Const, zs: torch.Tensor):
         """Ground constant (term) into tensor representations.

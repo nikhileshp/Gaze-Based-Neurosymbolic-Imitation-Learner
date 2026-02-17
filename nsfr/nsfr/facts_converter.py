@@ -25,8 +25,8 @@ class FactsConverter(nn.Module):
     def __repr__(self):
         return "FactsConverter(entities={}, dimension={})".format(self.e, self.d)
 
-    def forward(self, Z, G, B):
-        return self.convert(Z, G, B)
+    def forward(self, Z, G, B, gaze=None):
+        return self.convert(Z, G, B, gaze=gaze)
 
     def get_params(self):
         return self.vm.get_params()
@@ -49,7 +49,7 @@ class FactsConverter(nn.Module):
             vs.append(self.convert_i(zs, G))
         return torch.stack(vs)
 
-    def convert(self, Z, G, B):
+    def convert(self, Z, G, B, gaze=None):
         batch_size = Z.size(0)
 
         # V = self.init_valuation(len(G), Z.size(0))
@@ -57,7 +57,7 @@ class FactsConverter(nn.Module):
             torch.float32).to(self.device)
         for i, atom in enumerate(G):
             if type(atom.pred) == NeuralPredicate and i > 1:
-                V[:, i] = self.vm(Z, atom)
+                V[:, i] = self.vm(Z, atom, gaze=gaze)
             elif atom in B:
                 # V[:, i] += 1.0
                 V[:, i] += torch.ones((batch_size,)).to(

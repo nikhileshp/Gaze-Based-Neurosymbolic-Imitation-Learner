@@ -14,8 +14,8 @@ from tqdm import tqdm
 from collections import Counter
 
 # Configuration from train_per_action.py
-CSV_FILE = "/home/nikhilesh/Projects/NeSY-Imitation-Learning/train.csv"
-BASE_IMAGE_DIR = "/home/nikhilesh/Projects/NeSY-Imitation-Learning/data/seaquest/gaze_data_tmp"
+CSV_FILE = "data/seaquest/train.csv"
+BASE_IMAGE_DIR = "data/seaquest/trajectories"
 
 # Mapping from Predicate Name to ALE Action Index
 # 0: noop, 1: fire, 2: up, 3: right, 4: left, 5: down
@@ -94,7 +94,8 @@ class ExpertDataset(Dataset):
             for _ in range(100):
                 state = torch.rand(self.state_shape)
                 action = torch.randint(0, len(agent_prednames), (1,)).item()
-                self.data.append((state, action))
+                gaze = torch.rand(2) * 160 # dummy gaze in image range
+                self.data.append((state, action, gaze))
         else:
             self.data = None # Use df
 
@@ -105,20 +106,33 @@ class ExpertDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.df is None:
-            state, action = self.data[idx]
-            return torch.tensor(state, dtype=torch.float32), torch.tensor(action, dtype=torch.long)
+            state, action, gaze = self.data[idx]
+            return torch.tensor(state, dtype=torch.float32), torch.tensor(action, dtype=torch.long), gaze
         
         row = self.df.iloc[idx]
         # Mapping from frame_id to traj_folder
         #Map Folders to trajectory_folder_parts
         traj_folder_map = {}
         for folder in os.listdir(BASE_IMAGE_DIR):
-            traj_folder_map[folder] = folder.split('_')[1]+"_"+folder.split('_')[2]
+            # Skip non-directories (like .DS_Store) and ensure proper format
+            folder_path = os.path.join(BASE_IMAGE_DIR, folder)
+            if not os.path.isdir(folder_path):
+                continue
+            
+            # Split folder name and verify it has at least 3 parts
+            parts = folder.split('_')
+            if len(parts) < 3:
+                continue
+            
+            # Create mapping: "part1_part2" -> full_folder_name
+            traj_folder_map[parts[1] + "_" + parts[2]] = folder
 
         
         #Dictionary to map traj_folder_part to traj_folder
         traj_folder = traj_folder_map[row['frame_id'].split('_')[0]+"_"+row['frame_id'].split('_')[1]]
         img_name = f"{row['frame_id'].split('_')[2]}.png"
+        img_name = row['frame_id'].split('_')[0]+"_"+row['frame_id'].split('_')[1]+'_'+img_name
+        traj_folder = traj_folder.replace('.txt', '')
         img_path = os.path.join(BASE_IMAGE_DIR, traj_folder, img_name)
         
         try:
@@ -181,10 +195,23 @@ class ExpertDataset(Dataset):
         # Assuming 'action' column contains the action index
         action_idx = int(row['action'])
         
+        # Extract Gaze Data
+        gaze_center = torch.zeros(2, dtype=torch.float32)
+        if 'gaze_positions' in row and pd.notna(row['gaze_positions']):
+            try:
+                # gaze_positions is a string of comma-separated floats "x1,y1,x2,y2,..."
+                gaze_vals = [float(x) for x in str(row['gaze_positions']).split(',')]
+                if len(gaze_vals) > 0 and len(gaze_vals) % 2 == 0:
+                    gaze_vals = np.array(gaze_vals).reshape(-1, 2)
+                    mean_gaze = np.mean(gaze_vals, axis=0)
+                    gaze_center = torch.tensor(mean_gaze, dtype=torch.float32)
+            except ValueError:
+                pass # Use default (0,0) if parsing fails
+
         # We return the raw action index (e.g. 2 for UP)
         # The loss function will handle mapping from predicates to this index
             
-        return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long)
+        return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), gaze_center
 
 
 def evaluate(agent, env, num_episodes=5):
@@ -260,6 +287,8 @@ def main():
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
     parser.add_argument("--sampler", type=str, default="balanced", choices=["none", "balanced"], help="Sampler to use (none/balanced)")
+    parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Threshold for gaze-based valuation scaling")
+    parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     args = parser.parse_args()
 
     make_deterministic(args.seed)
@@ -275,7 +304,8 @@ def main():
 
     # Initialize Agent
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
-    agent = ImitationAgent(args.env, args.rules, device, lr=args.lr)
+    agent_gaze_threshold = args.gaze_threshold if args.use_gaze else None
+    agent = ImitationAgent(args.env, args.rules, device, lr=args.lr, gaze_threshold=agent_gaze_threshold)
 
     # Load Data
     # Pass env_name, prednames, and nudge_env to Dataset
@@ -296,9 +326,10 @@ def main():
     for epoch in range(args.epochs):
         total_loss = 0
         pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{args.epochs}")
-        for states, actions in pbar:
+        for states, actions, gazes in pbar:
             states = states.to(device)
             actions = actions.to(device)
+            gazes = gazes.to(device)
             
             # Custom update logic to handle predicate aggregation
             # agent.update expects standard NLL loss. We need to override or modify it.
@@ -306,7 +337,10 @@ def main():
             
             # Forward pass
             # probs: (batch, num_preds)
-            probs = agent.model(states)
+            if args.use_gaze:
+                probs = agent.model(states, gazes)
+            else:
+                probs = agent.model(states, None)
             
             # Aggregate probabilities for each action
             # We need a tensor of shape (batch, num_actions) where num_actions = 6 (0-5)
@@ -355,7 +389,8 @@ def main():
 
         # Save Model
         os.makedirs("out/imitation", exist_ok=True)
-        save_path = f"out/imitation/{args.env}_{args.rules}_il.pth"
+        gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
+        save_path = f"out/imitation/{args.env}_{args.rules}_il{gaze_str}.pth"
         agent.save(save_path)
         print(f"Model saved to {save_path}")
 
