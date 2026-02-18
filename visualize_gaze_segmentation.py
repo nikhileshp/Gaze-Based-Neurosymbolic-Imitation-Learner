@@ -100,7 +100,7 @@ class SegmentationVisualizer:
                 if self.current_frame_idx >= len(self.images):
                     self.paused = True
             
-            self.clock.tick(30)
+            self.clock.tick(20)
             
         pygame.quit()
 
@@ -141,11 +141,17 @@ class SegmentationVisualizer:
         y += 40
         
         color = "green"
-        if goal == "OxygenBar": color = "cyan"
-        elif goal == "Enemy": color = "red"
-        elif goal == "Surface": color = "yellow"
+        if "oxygen" in goal.lower(): color = "cyan"
+        elif "enemy" in goal.lower(): color = "red"
+        elif "surface" in goal.lower(): color = "yellow"
         
         txt = self.font.render(f"Goal: {goal}", True, color)
+        self.window.blit(txt, (start_x, y))
+        y += 40
+        
+        # Movement
+        movement = curr_seg.get("movement", "none") if curr_seg else "N/A"
+        txt = self.font.render(f"Move: {movement}", True, "white")
         self.window.blit(txt, (start_x, y))
         y += 40
         
@@ -172,8 +178,8 @@ class SegmentationVisualizer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", type=str, default="/home/nikhilesh/Projects/NUDGE/data/seaquest/237_RZ_9656617_Feb-08-14-12-21")
-    parser.add_argument("--json_file", type=str, default="gaze_segments_237.json")
+    parser.add_argument("--data_dir", type=str, default="data/seaquest/seaquest/54_RZ_2461867_Aug-11-09-35-18")
+    parser.add_argument("--json_file", type=str, default="gaze_goals_verification.json")
     args = parser.parse_args()
     
     vis = SegmentationVisualizer(args.data_dir, args.json_file)

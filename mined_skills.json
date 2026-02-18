@@ -1,0 +1,88 @@
+{
+  "0": {
+    "id": "0",
+    "label": "Player Navigation",
+    "preconditions": {},
+    "effects": {}
+  },
+  "1": {
+    "id": "1",
+    "label": "Engaging Submarine",
+    "preconditions": {
+      "visible_enemy(obj(focus))": 0.345679012345679,
+      "close_by_enemy(obj0,obj(focus))": 0.2962962962962963
+    },
+    "effects": {
+      "not(right_of_enemy(obj0,obj(focus)))": 0.4090909090909091,
+      "not(same_depth_enemy(obj0,obj(focus)))": 0.2878787878787879,
+      "not(visible_enemy(obj(focus)))": 0.6818181818181818,
+      "not(left_of_enemy(obj0,obj(focus)))": 0.33333333333333326,
+      "not(deeper_than_enemy(obj0,obj(focus)))": 0.36363636363636365,
+      "not(close_by_enemy(obj0,obj(focus)))": 0.5454545454545454
+    }
+  },
+  "2": {
+    "id": "2",
+    "label": "Tracking Enemy",
+    "preconditions": {},
+    "effects": {
+      "not(same_depth_enemy(obj0,obj(focus)))": 0.2967032967032967,
+      "not(visible_enemy(obj(focus)))": 0.26373626373626374,
+      "not(close_by_enemy(obj0,obj(focus)))": 0.27472527472527475
+    }
+  },
+  "3": {
+    "id": "3",
+    "label": "Rescuing Diver",
+    "preconditions": {},
+    "effects": {
+      "not(visible_diver(obj(focus)))": 0.2890625
+    }
+  },
+  "4": {
+    "id": "4",
+    "label": "Saving Diver",
+    "preconditions": {},
+    "effects": {
+      "not(is_collected_diver(obj(focus)))": 0.34883720930232553
+    }
+  },
+  "5": {
+    "id": "5",
+    "label": "Surfacing",
+    "preconditions": {},
+    "effects": {
+      "above_water(obj0)": 0.2692307692307692,
+      "not(below_water(obj0))": 0.3076923076923077
+    }
+  },
+  "6": {
+    "id": "6",
+    "label": "Checking Oxygen",
+    "preconditions": {},
+    "effects": {
+      "not(oxygen_low(obj(focus)))": 0.2857142857142857,
+      "not(oxygen_critical(obj(focus)))": 0.26785714285714285
+    }
+  },
+  "7": {
+    "id": "7",
+    "label": "Attacking Shark",
+    "preconditions": {},
+    "effects": {
+      "facing_right(obj0)": 0.2804878048780488,
+      "not(higher_than_enemy(obj0,obj(focus)))": 0.2682926829268293,
+      "not(facing_left(obj0))": 0.2804878048780488,
+      "not(visible_enemy(obj(focus)))": 0.3597560975609756,
+      "not(left_of_enemy(obj0,obj(focus)))": 0.29878048780487804
+    }
+  },
+  "8": {
+    "id": "8",
+    "label": "Dodging Missile",
+    "preconditions": {},
+    "effects": {
+      "not(visible_missile(obj(focus)))": 0.3181818181818182
+    }
+  }
+}

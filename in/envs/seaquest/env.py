@@ -22,9 +22,9 @@ class NudgeEnv(NudgeBaseEnv):
 
     def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False):
         super().__init__(mode)
-        self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="ram",
+        self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="vision",
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
-        self.n_objects = 47 # Increased from 43 due to +4 EnemyMissile
+        self.n_objects = 48 # Increased from 47 to include Surface
         self.n_features = 5  # visible, x-pos, y-pos, right-facing, type_id
 
         # Compute index offsets. Needed to deal with multiple same-category objects
@@ -63,7 +63,8 @@ class NudgeEnv(NudgeBaseEnv):
             'Diver': 1, 'CollectedDiver': 6,
             'OxygenBar': 2,
             'Player': 3,
-            'EnemyMissile': 5, 'PlayerMissile': 5
+            'EnemyMissile': 5, 'PlayerMissile': 5,
+            'Surface': 7
         }
 
         for obj in raw_state:
@@ -80,7 +81,7 @@ class NudgeEnv(NudgeBaseEnv):
                 # print(obj.w)
                 # DEBUG: Print OxygenBar attributes once
                 if not hasattr(self, '_oxygen_debug_printed'):
-                    # print(f"DEBUG OxygenBar attributes: {dir(obj)}")
+                    # print(f"DEBUG OxygenBar attributes: {dir(obj)}\")")
                     # print(f"  value={getattr(obj, 'value', 'N/A')}, x={obj.x}, y={obj.y}, w={obj.w}, h={obj.h}")
                     # print(f"  Using width (w={oxygen_level}) as oxygen level")
                     self._oxygen_debug_printed = True
