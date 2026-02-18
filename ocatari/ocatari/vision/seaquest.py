@@ -83,6 +83,12 @@ class EnemyMissile(GameObject):
         self.rgb = 66, 72, 200
 
 
+class Surface(GameObject):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rgb = 0, 0, 0
+
+
 def _detect_objects(objects, obs, hud=False):
     player = []
     for color in objects_colors["player"]:
@@ -191,6 +197,22 @@ def _detect_objects(objects, obs, hud=False):
         for i in range(6):
             if type(objects[36+i]) != NoObject:
                 objects[36+i] = NoObject()
+
+    # Detect Surface - Black line between y=45 and y=55
+    # Create a synthetic surface object spanning the width of the screen
+    import numpy as np
+    surface_region = obs[45:56, :, :]  # y-range 45-55, full width
+    black_color = np.array([0, 0, 0])
+    black_pixels = np.all(surface_region == black_color, axis=-1)
+
+    if np.any(black_pixels):
+        # Surface exists - create full-width object at y=55 (where the black line is)
+        if type(objects[42]) is NoObject:
+            objects[42] = Surface(0, 55, 160, 1)  # x=0, y=55, w=160 (full screen), h=1
+        else:
+            objects[42].xywh = (0, 55, 160, 1)
+    else:
+        objects[42] = NoObject()
 
     if hud:
         score = find_objects(

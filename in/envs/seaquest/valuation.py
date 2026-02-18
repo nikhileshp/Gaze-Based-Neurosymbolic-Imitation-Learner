@@ -326,3 +326,25 @@ def below_water(player: th.Tensor) -> th.Tensor:
     y = player[..., 2]
     is_surface = y > 55
     return bool_to_probs(vis & is_surface)
+
+
+def above_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:
+    """True if player is above the surface."""
+    player_vis = player[..., 0] == 1
+    surface_vis = surface[..., 0] == 1
+    player_y = player[..., 2]
+    surface_y = surface[..., 2]
+    
+    result = player_vis & surface_vis & (player_y < surface_y)
+    return bool_to_probs(result)
+
+
+def below_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:
+    """True if player is below the surface."""
+    player_vis = player[..., 0] == 1
+    surface_vis = surface[..., 0] == 1
+    player_y = player[..., 2]
+    surface_y = surface[..., 2]
+    
+    result = player_vis & surface_vis & (player_y > surface_y)
+    return bool_to_probs(result)
