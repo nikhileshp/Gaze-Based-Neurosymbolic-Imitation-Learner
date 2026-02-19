@@ -12,7 +12,7 @@ class NudgeBaseEnv(ABC):
     def __init__(self, mode: str):
         self.mode = mode  # either 'ppo' or 'logic'
 
-    def reset(self) -> (torch.tensor, torch.tensor):
+    def reset(self, seed: int = None, options: dict = None) -> (torch.tensor, torch.tensor):
         """Returns logic_state, neural_state"""
         raise NotImplementedError
 

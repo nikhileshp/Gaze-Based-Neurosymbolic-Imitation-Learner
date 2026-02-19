@@ -161,17 +161,17 @@ def _detect_objects(objects, obs, hud=False):
         elif dm[1] < 190 and dm[2] > 2:
             missiles.append(dm)
 
-    match_objects(objects, divers, 25, 4, Diver)
-    match_objects(objects, missiles, 29, 4, EnemyMissile)
+    match_objects(objects, divers[:4], 25, 4, Diver)
+    match_objects(objects, missiles[:4], 29, 4, EnemyMissile)
 
     shark = []
     for enemyColor in enemy_colors.values():
         shark.extend(find_objects(obs, enemyColor, min_distance=1))
 
-    match_objects(objects, shark, 1, 12, Shark)
+    match_objects(objects, shark[:12], 1, 12, Shark)
 
     submarine = find_objects(obs, objects_colors["submarine"], min_distance=1, size=(10,12), tol_s=2)
-    match_objects(objects, submarine, 13, 12, Submarine)
+    match_objects(objects, submarine[:12], 13, 12, Submarine)
 
     oxygen_bar = find_objects(
         obs, objects_colors["oxygen_bar"], min_distance=1)
