@@ -79,7 +79,7 @@ def process_chunk(chunk_indices, dataset_args):
     return []
 
 
-def worker_fn(args_tuple, env_name):
+def worker_fn(args_tuple, env_name, device):
     worker_id, indices = args_tuple
     
     # Set num threads to 1 to avoid thread contention
@@ -95,7 +95,6 @@ def worker_fn(args_tuple, env_name):
     # Init Agent
     from nudge.agents.imitation_agent import ImitationAgent
     rules = "new" 
-    device = "cpu"
     try:
         agent = ImitationAgent(env_name, rules, device)
         model = agent.model
@@ -137,7 +136,7 @@ def worker_fn(args_tuple, env_name):
                 atoms_vals = model.fc(batch_state, model.atoms, model.bk)
              
             # Store
-            atom_probs = atoms_vals[0].numpy().tolist()
+            atom_probs = atoms_vals[0].cpu().numpy().tolist()
             
             # We compress: only store active atoms? 
             # Or just store the full vector (254 floats). 
@@ -163,7 +162,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, default="seaquest")
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--output", type=str, default="data/seaquest/train_atoms.pkl")
+    parser.add_argument("--output", type=str, default="train_atoms.pkl")
+    parser.add_argument("--device", type=str, default="cpu")
     args = parser.parse_args()
     
     if not os.path.exists(CSV_FILE):
@@ -178,7 +178,7 @@ def main():
     # We can invoke agent once to get atom names and save metadata
     print("Extracting atom names...")
     from nudge.agents.imitation_agent import ImitationAgent
-    dummy_agent = ImitationAgent(args.env, "new", "cpu")
+    dummy_agent = ImitationAgent(args.env, "new", args.device)
     atom_names = [str(a) for a in dummy_agent.model.atoms]
     print(f"Model has {len(atom_names)} atoms.")
     
@@ -192,7 +192,7 @@ def main():
     ctx = multiprocessing.get_context('spawn')
     
     # Initialize partial function with env_name fixed
-    worker_partial = partial(worker_fn, env_name=args.env)
+    worker_partial = partial(worker_fn, env_name=args.env, device=args.device)
 
     with ctx.Pool(args.num_workers) as pool:
         results_nested = []

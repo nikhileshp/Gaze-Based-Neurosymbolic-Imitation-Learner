@@ -72,11 +72,28 @@ class ValuationModule(nn.Module, ABC):
         # args: the vectorized input evaluated by the value function
         args = [self.ground_to_tensor(term, zs) for term in atom.terms]
         
-        val = val_fn(*args)
+        # Try to pass gaze map if available and function accepts it
+        if gaze is not None and len(gaze.shape) > 2:
+            try:
+                # Check signature or just try calling
+                # Inspecting is safer but slower? 
+                # Let's inspect once and cache? Or just inspect now.
+                sig = inspect.signature(val_fn)
+                if 'gaze' in sig.parameters:
+                    val = val_fn(*args, gaze=gaze)
+                else:
+                    val = val_fn(*args)
+            except Exception as e:
+                # Fallback
+                print(f"Error calling {atom.pred.name} with gaze: {e}")
+                val = val_fn(*args)
+        else:
+            val = val_fn(*args)
 
-        # Gaze-based valuation scaling
+        # Gaze-based valuation scaling (Old Logic for points)
         # If gaze is provided and threshold is set, and predicate starts with "visible_"
-        if self.gaze_threshold is not None and gaze is not None and atom.pred.name.startswith("visible_"):
+        # Only do this if gaze is POINT (len shape == 2)
+        if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and atom.pred.name.startswith("visible_"):
             # Assume the first argument is the object
             if len(args) > 0:
                 obj_tensor = args[0]
@@ -98,7 +115,7 @@ class ValuationModule(nn.Module, ABC):
                     
                     # Apply scaling
                     val = val * scale
-
+        
         return val
 
     def ground_to_tensor(self, const: Const, zs: torch.Tensor):

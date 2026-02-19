@@ -55,9 +55,18 @@ class FactsConverter(nn.Module):
         # V = self.init_valuation(len(G), Z.size(0))
         V = torch.zeros((batch_size, len(G))).to(
             torch.float32).to(self.device)
+        # Pre-compute gaze integral image if applicable
+        gaze_arg = None
+        if gaze is not None:
+             if gaze.dim() == 3: # (B, H, W) -> Compute integral
+                  gaze_padded = torch.nn.functional.pad(gaze, (1, 0, 1, 0))
+                  gaze_arg = gaze_padded.cumsum(dim=1).cumsum(dim=2)
+             else:
+                  gaze_arg = gaze
+
         for i, atom in enumerate(G):
             if type(atom.pred) == NeuralPredicate and i > 1:
-                V[:, i] = self.vm(Z, atom, gaze=gaze)
+                V[:, i] = self.vm(Z, atom, gaze=gaze_arg)
             elif atom in B:
                 # V[:, i] += 1.0
                 V[:, i] += torch.ones((batch_size,)).to(
