@@ -13,9 +13,14 @@ def evaluate(agent, env, num_episodes=5):
     """
     agent.model.eval()
     episode_rewards = []
-    
+
+        
     for i in range(num_episodes):
-        state = env.reset()
+        try:
+            state = env.reset(seed=i + 42)
+        except TypeError:
+            print("Warning: env.reset() does not accept seed. Results may vary.")
+            state = env.reset()
         done = False
         total_reward = 0
         while not done:

@@ -40,8 +40,8 @@ class NudgeEnv(NudgeBaseEnv):
             offset += max_count
         self.relevant_objects = set(MAX_ESSENTIAL_OBJECTS.keys())
 
-    def reset(self):
-        self.env.reset()
+    def reset(self, seed: int = None, options: dict = None):
+        self.env.reset(seed=seed, options=options)
         state = self.env.objects
         return self.convert_state(state)
 
