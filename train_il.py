@@ -19,22 +19,15 @@ BASE_IMAGE_DIR = "data/seaquest/trajectories"
 
 # Mapping from Predicate Name to ALE Action Index
 # 0: noop, 1: fire, 2: up, 3: right, 4: left, 5: down
-PREDICATE_TO_ACTION_MAP = {
-    'up_air': 2,
-    'fire_left': 1,
-    'fire_right': 1,
-    'left_aim': 4,
-    'right_aim': 3,
-    'down_aim': 5,
-    'up_aim': 2,
-    'up_evade': 2,
-    'down_evade': 5,
-    'left_to_diver': 4,
-    'right_to_diver': 3,
-    'up_to_diver': 2,
-    'down_to_diver': 5,
-    'noop': 0
+PRIMITIVE_ACTION_MAP = {
+    'noop': 0,
+    'fire': 1,
+    'up': 2,
+    'right': 3,
+    'left': 4,
+    'down': 5
 }
+
 
  
 
@@ -97,7 +90,7 @@ class ExpertDataset(Dataset):
         # Filter out NOOP (0) and actions not in our map target values
         if self.df is not None:
              initial_len = len(self.df)
-             supported_actions = set(PREDICATE_TO_ACTION_MAP.values())
+             supported_actions = set(PRIMITIVE_ACTION_MAP.values())
              self.df = self.df[self.df['action'].isin(supported_actions)]
              print(f"Filtered to supported actions: {len(self.df)} samples")
         
@@ -111,7 +104,7 @@ class ExpertDataset(Dataset):
                         item['original_index'] = i
              
              # Filter supported actions
-             supported_actions = set(PREDICATE_TO_ACTION_MAP.values())
+             supported_actions = set(PRIMITIVE_ACTION_MAP.values())
              initial_len = len(self.data)
              self.data = [d for d in self.data if d.get('action') in supported_actions]
              print(f"Filtered pre-computed data to supported actions: {initial_len} -> {len(self.data)} samples")
@@ -425,8 +418,9 @@ def main():
             
             # Sum probs for each predicate mapping to an action
             for i, pred in enumerate(prednames):
-                if pred in PREDICATE_TO_ACTION_MAP:
-                    act_idx = PREDICATE_TO_ACTION_MAP[pred]
+                prefix = pred.split('_')[0]
+                if prefix in PRIMITIVE_ACTION_MAP:
+                    act_idx = PRIMITIVE_ACTION_MAP[prefix]
                     action_probs[:, act_idx] += probs[:, i]
             
             # Normalize? Probs should sum to <= 1 (since we filtered NOOP, sum might be < 1 if NOOP was a predicate)
