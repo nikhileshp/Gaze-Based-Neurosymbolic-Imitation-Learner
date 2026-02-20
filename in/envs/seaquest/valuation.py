@@ -54,7 +54,7 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     x = (obj[:, 1] * sx).long()
     y = (obj[:, 2] * sy).long()
     w = (obj[:, 3] * sx).long()
-    h = int(height * sy)
+    h = (obj[:, 4] * sy).long()
     
     # Clip coordinates to valid range [0, 84]
     # We use 0-84 because for integral image, index 84 corresponds to sum of all 0-83
@@ -108,12 +108,14 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
 
 
 def facing_left(player: th.Tensor) -> th.Tensor:
-    result = player[..., 3] == 12
+    # Orientation is at index 5
+    result = player[..., 5] == 12
     return bool_to_probs(result)
 
 
 def facing_right(player: th.Tensor) -> th.Tensor:
-    result = player[..., 3] == 4
+    # Orientation is at index 5
+    result = player[..., 5] == 4
     return bool_to_probs(result)
 
 
@@ -302,7 +304,7 @@ def right_of_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 
 def oxygen_low(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
-    oxygen_width = oxygen_bar[..., 1]  # Width in pixels
+    oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
     result = oxygen_width < 16
     
     # DEBUG: Print first few calls
@@ -349,8 +351,8 @@ def closeby(obj1: th.Tensor, obj2: th.Tensor) -> th.Tensor:
 
 def type(obj: th.Tensor, type_oh: th.Tensor) -> th.Tensor:
     # Check type equality
-    # obj has type_id at index 4
-    obj_type_id = obj[..., 4].long()
+    # obj has type_id at index 6
+    obj_type_id = obj[..., 6].long()
     
     # type_oh is one-hot vector, get index
     target_type_id = type_oh.argmax(dim=-1)
@@ -371,7 +373,7 @@ def divers_collected_full(obj: th.Tensor) -> th.Tensor:
 
 def oxygen_critical(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 5 pixels (critical)."""
-    oxygen_width = oxygen_bar[..., 1]
+    oxygen_width = oxygen_bar[..., 3] # Width in pixels (index 3)
     result = oxygen_width < 5
     return bool_to_probs(result)
 

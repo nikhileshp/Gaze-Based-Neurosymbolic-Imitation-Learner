@@ -25,7 +25,7 @@ class NudgeEnv(NudgeBaseEnv):
         self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="vision",
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
         self.n_objects = 48 # Increased from 47 to include Surface
-        self.n_features = 5  # visible, x-pos, y-pos, right-facing, type_id
+        self.n_features = 7  # visible, x-pos, y-pos, width, height, right-facing, type_id
 
         # Compute index offsets. Needed to deal with multiple same-category objects
         self.obj_offsets = {}
@@ -77,8 +77,7 @@ class NudgeEnv(NudgeBaseEnv):
                 #print all object keys and values
                 # In Seaquest, oxygen level is represented by the bar's WIDTH
                 oxygen_level = getattr(obj, "w", 0)  # Use width instead of value
-                # print(oxygen_level)
-                # print(obj.w)
+                
                 # DEBUG: Print OxygenBar attributes once
                 if not hasattr(self, '_oxygen_debug_printed'):
                     # print(f"DEBUG OxygenBar attributes: {dir(obj)}\")")
@@ -86,11 +85,14 @@ class NudgeEnv(NudgeBaseEnv):
                     # print(f"  Using width (w={oxygen_level}) as oxygen level")
                     self._oxygen_debug_printed = True
                 
-                state[idx] = th.tensor([1, int(oxygen_level), int(obj.y), 0, type_id], dtype=th.int32)
+                # [vis, x, y, w, h, orientation, type_id]
+                state[idx] = th.tensor([1, int(obj.x), int(obj.y), int(obj.w), int(obj.h), 0, type_id], dtype=th.int32)
             else:
                 orientation = getattr(obj, "orientation", None)
                 orientation = orientation.value if orientation is not None else 0
-                state[idx] = th.tensor([1, *obj.center, orientation, type_id])
+                w = getattr(obj, "w", 0)
+                h = getattr(obj, "h", 0)
+                state[idx] = th.tensor([1, *obj.center, w, h, orientation, type_id])
             obj_count[obj.category] += 1
 
         return state
