@@ -287,8 +287,8 @@ class ILRenderer(Renderer):
             colored_heatmap = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
             colored_heatmap = cv2.cvtColor(colored_heatmap, cv2.COLOR_BGR2RGB)
             
-            # Pygame surfaces expect (width, height, channels), but CV2 array is (height, width, channels)
-            heatmap_surface = pygame.surfarray.make_surface(colored_heatmap.swapaxes(0, 1))
+            # Pygame surfaces expect (width, height, channels), and our array is already aligned as (width, height, channels) due to array_to_surface mapping.
+            heatmap_surface = pygame.surfarray.make_surface(colored_heatmap)
             heatmap_surface.set_alpha(110) # Semi-transparent
             self.window.blit(heatmap_surface, (0, 0))
 
