@@ -53,6 +53,10 @@ class NudgeEnv(NudgeBaseEnv):
         state = self.env.objects
         return self.convert_state(state), reward, done
 
+    def get_rgb_frame(self):
+        # HackAtari wraps the environment. We need to access the unwrapped ALE env.
+        return self.env.unwrapped.ale.getScreenRGB()
+
     def extract_logic_state(self, raw_state):
         state = th.zeros((self.n_objects, self.n_features), dtype=th.int32)
 

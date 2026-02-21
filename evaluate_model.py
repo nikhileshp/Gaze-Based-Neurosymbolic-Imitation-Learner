@@ -2,11 +2,26 @@ import os
 import argparse
 import torch
 import numpy as np
+from collections import deque
+import cv2
+
 from nudge.agents.imitation_agent import ImitationAgent
 from nudge.env import NudgeBaseEnv
 from nudge.utils import make_deterministic
 
-def evaluate(agent, env, num_episodes=5):
+# Import gaze predictor if available
+try:
+    from scripts.gaze_predictor import Human_Gaze_Predictor
+except ImportError:
+    Human_Gaze_Predictor = None
+
+def preprocess_frame(frame):
+    """Convert raw 210x160x3 RGB frame to 84x84 grayscale frame."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
+    return resized
+
+def evaluate(agent, env, num_episodes=5, gaze_predictor=None):
     """
     Evaluates the agent in the environment for a set number of episodes.
     Returns the list of total rewards for each episode.
@@ -21,15 +36,44 @@ def evaluate(agent, env, num_episodes=5):
         except TypeError:
             print("Warning: env.reset() does not accept seed. Results may vary.")
             state = env.reset()
+            
         done = False
         total_reward = 0
+        
+        # Initialize the gaze frame buffer if gaze predictor is active
+        frame_buffer = None
+        if gaze_predictor is not None:
+            frame_buffer = deque(maxlen=4)
+            # Fetch the first frame and duplicate it 4 times to fill the initial buffer
+            initial_rgb = env.get_rgb_frame()
+            initial_gray = preprocess_frame(initial_rgb)
+            for _ in range(4):
+                frame_buffer.append(initial_gray)
+                
         while not done:
+            # Generate the gaze heatmap if predictor is available
+            gaze_tensor = None
+            if gaze_predictor is not None:
+                # Shape buffer into (1, 4, 84, 84) NHWC -> NCHW handled inside predict_and_save style or directly here
+                # Convert deque to numpy array of shape (84, 84, 4)
+                img_stack = np.stack(frame_buffer, axis=-1)
+                
+                # Convert to tensor (1, 4, 84, 84)
+                input_tensor = torch.tensor(img_stack, dtype=torch.float32, device=gaze_predictor.device)
+                input_tensor = input_tensor.permute(2, 0, 1).unsqueeze(0) # (1, 4, H, W)
+                
+                with torch.no_grad():
+                    gaze_pred = gaze_predictor.model(input_tensor) # Outputs (1, 1, 84, 84) spatial softmax
+                    
+                gaze_tensor = gaze_pred.squeeze(0).squeeze(0) # Reduce to (84, 84) for the Valuation Module
+            
             # state is (logic_state, neural_state)
             logic_state, _ = state
             logic_state_tensor = torch.tensor(logic_state, dtype=torch.float32, device=agent.device).unsqueeze(0)
             
             # Select action index
-            action_idx = agent.act(logic_state_tensor)
+            # agent.act passes gaze down to the NSFR model if provided
+            action_idx = agent.act(logic_state_tensor, gaze=gaze_tensor)
             
             # Map action index to predicate name
             prednames = agent.model.get_prednames()
@@ -38,6 +82,12 @@ def evaluate(agent, env, num_episodes=5):
             # Step environment
             state, reward, done = env.step(predicate)
             total_reward += reward
+            
+            # Update gaze frame buffer
+            if gaze_predictor is not None and not done:
+                next_rgb = env.get_rgb_frame()
+                next_gray = preprocess_frame(next_rgb)
+                frame_buffer.append(next_gray)
             
         episode_rewards.append(total_reward)
         print(f"Episode {i+1}: Reward = {total_reward}")
@@ -54,6 +104,8 @@ def main():
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data logic in model")
     parser.add_argument("--gaze_threshold", type=float, default=20.0, help="Gaze threshold if use_gaze is set")
+    parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
+    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor.pth", help="Path to the .pth gaze predictor weights")
     
     args = parser.parse_args()
 
@@ -61,6 +113,19 @@ def main():
     device_name = "cuda" if torch.cuda.is_available() and args.device != "cpu" else "cpu"
     device = torch.device(device_name)
     print(f"Using device: {device}")
+    
+    # Initialize Gaze Predictor 
+    gaze_predictor = None
+    if args.use_gazemap:
+        if Human_Gaze_Predictor is None:
+            print("Error: Could not import Human_Gaze_Predictor. Ensure gaze_predictor.py is in the scripts/ folder.")
+            return
+            
+        print(f"Initializing Gaze Predictor from {args.gaze_model_path}...")
+        gaze_predictor = Human_Gaze_Predictor(args.env)
+        # Using default padding/stride/rho/lr for init_model
+        gaze_predictor.init_model(args.gaze_model_path)
+        gaze_predictor.model.eval()
 
     # Set seed
     make_deterministic(args.seed)
@@ -84,7 +149,7 @@ def main():
 
     # Run Evaluation
     print(f"Starting evaluation for {args.episodes} episodes...")
-    rewards = evaluate(agent, env, num_episodes=args.episodes)
+    rewards = evaluate(agent, env, num_episodes=args.episodes, gaze_predictor=gaze_predictor)
 
     # Calculate Statistics
     mean_reward = np.mean(rewards)
