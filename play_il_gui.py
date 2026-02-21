@@ -31,7 +31,8 @@ import cv2
 def preprocess_frame(frame):
     """Convert raw 210x160x3 RGB frame to 84x84 grayscale frame."""
     gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    return cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
+    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
+    return resized / 255.0
 
 class AgentWrapper:
     def __init__(self, agent, env, debug=False, gaze_predictor=None):
