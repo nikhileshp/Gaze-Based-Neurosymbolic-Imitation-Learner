@@ -32,7 +32,7 @@ PRIMITIVE_ACTION_MAP = {
  
 
 class ExpertDataset(Dataset):
-    def __init__(self, env_name, agent_prednames, data_path=None, nudge_env=None, limit=None, use_gazemap=False):
+    def __init__(self, env_name, agent_prednames, data_path=None, nudge_env=None, limit=None, use_gazemap=False, trajectory=None):
 
         self.env_name = env_name
         self.agent_prednames = agent_prednames
@@ -92,7 +92,13 @@ class ExpertDataset(Dataset):
              initial_len = len(self.df)
              supported_actions = set(PRIMITIVE_ACTION_MAP.values())
              self.df = self.df[self.df['action'].isin(supported_actions)]
-             print(f"Filtered to supported actions: {len(self.df)} samples")
+             
+             # Filter by trajectory if specified
+             if trajectory is not None:
+                 print(f"Filtering dataset for trajectory {trajectory}...")
+                 self.df = self.df[self.df['trajectory_number'] == trajectory]
+             
+             print(f"Filtered to supported actions/trajectory: {len(self.df)} samples")
         
         # Filter pre-computed data
         if self.data is not None and isinstance(self.data, list) and len(self.data) > 0 and 'action' in self.data[0]:
@@ -109,6 +115,11 @@ class ExpertDataset(Dataset):
              self.data = [d for d in self.data if d.get('action') in supported_actions]
              print(f"Filtered pre-computed data to supported actions: {initial_len} -> {len(self.data)} samples")
              
+             # Filter by trajectory
+             if trajectory is not None:
+                 print(f"Filtering pre-computed data for trajectory {trajectory}...")
+                 self.data = [d for d in self.data if d.get('trajectory_number') == trajectory]
+
              if limit:
                  self.data = self.data[:limit]
 
@@ -253,7 +264,7 @@ class ExpertDataset(Dataset):
 
 def evaluate(agent, env, num_episodes=5):
     agent.model.eval()
-    total_reward = 0
+    rewards = []
     for _ in range(num_episodes):
         state = env.reset()
         done = False
@@ -269,46 +280,10 @@ def evaluate(agent, env, num_episodes=5):
             
             state, reward, done = env.step(predicate)
             episode_reward += reward
-        total_reward += episode_reward
+        rewards.append(episode_reward)
     agent.model.train()
-    return total_reward / num_episodes
+    return rewards
 
-def get_balanced_sampler(dataset):
-    """
-    Creates a WeightedRandomSampler to balance the action distribution in the batches.
-    """
-    print("Computing class weights for balanced sampling...")
-    
-    # Extract all targets (actions)
-    if dataset.df is not None:
-        targets = dataset.df['action'].values
-    else:
-        # Check first item to determine format
-        if len(dataset.data) > 0:
-            first_item = dataset.data[0]
-            if isinstance(first_item, dict):
-                # Pkl dict format
-                targets = [item['action'] for item in dataset.data]
-            else:
-                # Tuple format (state, action, gaze)
-                targets = [item[1].item() for item in dataset.data]
-        else:
-            targets = []
-        
-    targets = np.array(targets)
-    class_counts = Counter(targets)
-    
-    print(f"Class counts: {class_counts}")
-    
-    # Compute weight for each class: 1.0 / count
-    class_weights = {cls: 1.0 / count for cls, count in class_counts.items()}
-    
-    # Assign weight to each sample
-    samples_weights = np.array([class_weights[t] for t in targets])
-    samples_weights = torch.from_numpy(samples_weights).double()
-    
-    sampler = WeightedRandomSampler(samples_weights, len(samples_weights))
-    return sampler
 
 
 def main():
@@ -322,7 +297,6 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
-    parser.add_argument("--sampler", type=str, default="balanced", choices=["none", "balanced"], help="Sampler to use (none/balanced)")
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Threshold for gaze-based valuation scaling")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", action="store_true", help="Use full gaze map for valuation")
@@ -353,89 +327,69 @@ def main():
     agent_gaze_threshold = args.gaze_threshold if args.use_gaze else None
     agent = ImitationAgent(args.env, args.rules, device, lr=args.lr, gaze_threshold=agent_gaze_threshold)
 
-    # Load Data
-    # Pass env_name, prednames, and nudge_env to Dataset
-    dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap)
-    
-    if args.data_path and args.data_path.endswith('.pkl'):
-        if hasattr(dataset, 'atom_names'):
-            model_atoms = [str(a) for a in agent.model.atoms]
-            if dataset.atom_names != model_atoms:
-                print("WARNING: Atoms in .pkl file do not match agent's atoms!")
-                print(f"File has {len(dataset.atom_names)} atoms")
-                print(f"Model has {len(model_atoms)} atoms")
-                # Check for set equality
-                if set(dataset.atom_names) == set(model_atoms):
-                     print("Atoms sets are identical but ORDER is different. This will cause training issues!")
-                else:
-                     print("Atom sets are different.")
-                
-                # Optional: Reorder dataset.data to match model_atoms if sets are same?
-                # That would be a nice feature but maybe out of scope for now.
-                print("Continuing... but be warned.")
-
-
-    # Create Sampler
-    sampler = None
-    shuffle = True
-    if args.sampler == "balanced":
-        sampler = get_balanced_sampler(dataset)
-        shuffle = False # Shuffle must be False when using a sampler
-
-    # Use num_workers=0 because OCAtari might not be fork-safe or thread-safe in Dataset
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, shuffle=shuffle, num_workers=0)
+    # Determine trajectories to iterate over
+    # We look at train.csv to find all trajectory numbers
+    data_path = args.data_path or CSV_FILE
+    if os.path.exists(data_path):
+        full_df = pd.read_csv(data_path)
+        if 'trajectory_number' in full_df.columns:
+            trajectories = sorted(full_df['trajectory_number'].unique())
+            print(f"Found {len(trajectories)} trajectories: {trajectories}")
+        else:
+            print("Warning: 'trajectory_number' column not found in CSV. Using single trajectory [1].")
+            trajectories = [1]
+    else:
+        print(f"Warning: Data path {data_path} not found for trajectory analysis. Using default [1].")
+        trajectories = [1]
 
     # Training Loop
-    print("Starting training...")
+    print(f"Starting iterative training for {args.epochs} epoch(s)...")
+    results_log = []
+    
+    num_trajs = len(trajectories)
+    
     for epoch in range(args.epochs):
+        # Cyclic trajectory selection: wrap around using modulo
+        traj_num = trajectories[epoch % num_trajs]
+        print(f"\n--- Epoch {epoch+1}/{args.epochs} (Trajectory {traj_num}) ---")
+        
+        # Load Data for this specific trajectory
+        dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
+        
+        if len(dataset) == 0:
+            print(f"Skipping empty trajectory {traj_num}")
+            continue
+
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+
         total_loss = 0
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{args.epochs}")
+        pbar = tqdm(dataloader, desc=f"Training Traj {traj_num}")
         for states, actions, gazes in pbar:
             states = states.to(device)
             actions = actions.to(device)
             gazes = gazes.to(device)
             
-            # Custom update logic to handle predicate aggregation
-            # agent.update expects standard NLL loss. We need to override or modify it.
-            # Ideally we modify ImitationAgent, but let's do it here for now to avoid breaking other things.
-            
             # Forward pass
-            # probs: (batch, num_preds)
             if args.use_gaze:
                 probs = agent.model(states, gazes)
             else:
                 probs = agent.model(states, None)
             
             # Aggregate probabilities for each action
-            # We need a tensor of shape (batch, num_actions) where num_actions = 6 (0-5)
-            # Initialize with zeros
             batch_size = probs.size(0)
             num_actions = 6
             action_probs = torch.zeros(batch_size, num_actions, device=device)
             
-            # Get prednames from agent
             prednames = agent.model.get_prednames()
-            
-            # Sum probs for each predicate mapping to an action
             for i, pred in enumerate(prednames):
                 prefix = pred.split('_')[0]
                 if prefix in PRIMITIVE_ACTION_MAP:
                     act_idx = PRIMITIVE_ACTION_MAP[prefix]
                     action_probs[:, act_idx] += probs[:, i]
             
-            # Normalize? Probs should sum to <= 1 (since we filtered NOOP, sum might be < 1 if NOOP was a predicate)
-            # But here we are summing disjoint sets of predicates.
-            # If all predicates map to SOME action, sum should be 1.
-            # If some predicates map to NOOP (which we filtered), sum < 1.
-            # We should re-normalize to avoid log(0) for valid actions?
-            # Or just use the sum.
-            
-            # Compute NLL Loss
-            # Add epsilon
             log_probs = torch.log(action_probs + 1e-10)
             loss = agent.loss_fn(log_probs, actions)
             
-            # Backward pass
             agent.optimizer.zero_grad()
             loss.backward()
             agent.optimizer.step()
@@ -445,20 +399,41 @@ def main():
             pbar.set_postfix({"loss": f"{loss_val:.4f}"})
             
         avg_loss = total_loss / len(dataloader)
-        print(f"Epoch {epoch+1}/{args.epochs}, Loss: {avg_loss:.4f}")
+        print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
         
         # Evaluation
-        if (epoch + 1) % 5 == 0:
-            avg_reward = evaluate(agent, env)
-            print(f"Evaluation Reward: {avg_reward:.2f}")
+        rewards = evaluate(agent, env, num_episodes=5)
+        mean_reward = np.mean(rewards)
+        std_reward = np.std(rewards)
+        print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
+        
+        results_log.append({
+            'epoch': epoch + 1,
+            'trajectory': traj_num,
+            'mean_reward': mean_reward,
+            'std_reward': std_reward
+        })
 
-        # Save Model
-        os.makedirs("out/imitation", exist_ok=True)
-        gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
-        gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-        save_path = f"out/imitation{args.env}_{args.rules}_il_{gaze_str}.pth"
-        agent.save(save_path)
-        print(f"Model saved to {save_path}")
+    # Save Final Model
+    os.makedirs("out/imitation", exist_ok=True)
+    gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
+    gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
+    save_path = f"out/imitation/{args.env}_{args.rules}_il_combined{gaze_str}.pth"
+    agent.save(save_path)
+    print(f"Final model saved to {save_path}")
+
+    # Print final learning curve log
+    print("\n" + "="*30)
+    print("LEARNING CURVE LOG")
+    print("="*30)
+    print("Epoch | Trajectory | Mean Score | Std Dev")
+    for res in results_log:
+        print(f"{res['epoch']:5d} | {res['trajectory']:10d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f}")
+    print("="*30)
+    #store the results log in a csv file
+    results_df = pd.DataFrame(results_log)
+    results_df.to_csv(f"out/imitation/{args.env}_{args.rules}_il_combined{gaze_str}.csv", index=False)
+    print(f"Results log saved to out/imitation/{args.env}_{args.rules}_il_combined{gaze_str}.csv") 
 
 if __name__ == "__main__":
     main()
