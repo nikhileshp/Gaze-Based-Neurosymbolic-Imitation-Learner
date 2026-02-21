@@ -22,6 +22,10 @@ class NudgeBaseEnv(ABC):
         Returns (logic_state, neural_state), reward, done"""
         raise NotImplementedError
 
+    def get_rgb_frame(self):
+        """Returns the raw RGB frame from the underlying environment (e.g., 210x160x3 for Atari)."""
+        raise NotImplementedError
+
     def extract_logic_state(self, raw_state) -> torch.tensor:
         """Turns the raw state representation into logic representation."""
         raise NotImplementedError

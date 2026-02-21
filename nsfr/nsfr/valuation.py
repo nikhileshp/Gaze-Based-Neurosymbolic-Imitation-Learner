@@ -157,8 +157,8 @@ class ValuationModule(nn.Module, ABC):
 
         # Gaze-based valuation scaling (Old Logic for points)
         # If gaze is provided and threshold is set, and predicate starts with "visible_"
-        # Only do this if gaze is POINT (len shape == 2)
-        if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and pred_name.startswith("visible_"):
+        # Only do this if gaze is POINT (len shape == 2 and size is 2 in last dim)
+        if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and gaze.shape[1] == 2 and pred_name.startswith("visible_"):
              # Assume args[0] is the object
              if len(args) > 0:
                 obj_tensor = args[0]
