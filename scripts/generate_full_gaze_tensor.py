@@ -61,13 +61,20 @@ def parse_gaze_positions(gaze_str):
         return []
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate full gaze tensor")
+    parser.add_argument('--csv_path', type=str, default='data/seaquest/train.csv', help='Path to input CSV')
+    parser.add_argument('--output_tensor_path', type=str, default='data/seaquest/gaze_masks.pt', help='Path to output tensor')
+    parser.add_argument('--gaze_mask_sigma', type=float, default=5.0, help='Sigma for gaze mask (Gamma)')
+    args = parser.parse_args()
+
     # Configuration
-    csv_path = 'data/seaquest/train.csv'
-    output_tensor_path = 'data/seaquest/gaze_masks.pt'
+    csv_path = args.csv_path
+    output_tensor_path = args.output_tensor_path
     k_window = 4  # Symmetric window size
     
     # Parameters
-    gaze_mask_sigma = 15.0  # Gamma
+    gaze_mask_sigma = args.gaze_mask_sigma  # Gamma
     gaze_mask_coef = 0.7    # Alpha
     variance_expansion = 0.99 # Beta
     
@@ -79,78 +86,34 @@ def main():
     
     print(f"Found {len(df)} rows. Generating full gaze tensor...")
     
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
     # Sigmas and coefficients
     saliency_sigmas = [gaze_mask_sigma / (variance_expansion**d) for d in range(k_window + 1)]
     coeficients = [gaze_mask_coef**d for d in range(k_window + 1)]
     
     MASK = GazeToMask(84, saliency_sigmas, coeficients=coeficients)
+    MASK.masks = MASK.masks.to(device)
     
-    # Pre-allocate tensor
-    # Shape: (N, 84, 84)
-    # Use float16 to save space? Standard implies float32.
-    # 84*84 * 4 bytes * 1M rows ~= 28GB.
-    # 84*84 * 17200 rows (one run) ~= 480MB.
-    # How big is train.csv?
-    # If 80GB CSV... this tensor will be huge.
-    # Wait, the user said "Store the mask for every frame in train.csv as a tensor".
-    # If it fits in memory.
-    # Let's check CSV size first.
-    # But I'll assume for now I process it all.
-    
-    # Note: Processing row by row and stacking might be slow and memory intensive if list grows.
-    # Better to pre-allocate if we know length.
     num_frames = len(df)
     print(f"Total frames: {num_frames}")
     
-    # List to store tensors, then stack (might be heavy)
-    # Or write to disk incrementally?
-    # torch.save usually expects full object.
-    # Let's try to collect in CPU memory.
-    
-    all_masks = []
-    
-    pbar = tqdm(total=num_frames)
-    
-    # Optimize: Pre-parse gaze positions?
-    # Parsing strings is slow.
-    # We can do it on the fly.
-    
-    # We need to be careful with window boundaries across episodes.
-    # Symmetric window shouldn't cross episodes ideally.
-    # We can group by episode_id.
-    
-    episode_groups = df.groupby('episode_id')
-    
-    # We need to maintain the original order for the final tensor to match CSV rows index-wise.
-    # So we should iterate the DF, but handle boundaries.
-    # Actually, grouping by episode_id and processing each group is safer.
-    # But we need to put them back in original order.
-    # Does groupby preserve order? Yes if sort=False.
-    
-    # Let's process by episode to respect boundaries.
-    
-    # Create a tensor of zeros to fill
+    # We should keep full_tensor on CPU if it's too large, but doing accumulations on GPU.
     full_tensor = torch.zeros((num_frames, 84, 84), dtype=torch.float32)
     
     current_idx = 0
     
-    for episode_id, group in tqdm(df.groupby('episode_id', sort=False)):
-        # Reset index for the group to 0..n
+    pbar = tqdm(total=num_frames, desc="Generating mask")
+    for episode_id, group in df.groupby('episode_id', sort=False):
         group = group.reset_index(drop=True)
         group_len = len(group)
         
-        # We need to fill full_tensor[current_idx : current_idx + group_len]
-        
-        # Extract gaze lists for this episode
-        # Optimization: Parse all strings in this group first?
-        # Maybe
-        
         for i in range(group_len):
-            # Window in group context
             start_idx = max(0, i - k_window)
             end_idx = min(group_len - 1, i + k_window)
             
-            accumulated_mask = torch.zeros([84, 84])
+            accumulated_mask = torch.zeros([84, 84], device=device)
             
             for j in range(start_idx, end_idx + 1):
                 distance = abs(j - i)
@@ -164,10 +127,12 @@ def main():
             if accumulated_mask.max() > 0:
                 accumulated_mask = accumulated_mask / accumulated_mask.max()
             
-            full_tensor[current_idx + i] = accumulated_mask
+            full_tensor[current_idx + i] = accumulated_mask.cpu()
+            pbar.update(1)
             
         current_idx += group_len
             
+    pbar.close()
     print(f"Saving tensor to {output_tensor_path}...")
     torch.save(full_tensor, output_tensor_path)
     print("Done.")
