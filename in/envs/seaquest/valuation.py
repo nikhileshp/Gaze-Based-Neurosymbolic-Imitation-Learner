@@ -5,28 +5,129 @@ from nsfr.utils.common import bool_to_probs
 
 LOWER_BOUND = 0.60
 HIGHER_BOUND = 0.99
-def visible_missile(obj: th.Tensor) -> th.Tensor:
+def visible_missile(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:
     result = obj[..., 0] == 1
-    return bool_to_probs(result)
+    val = bool_to_probs(result)
+    if gaze is not None and len(gaze.shape) > 2:
+        # Missile height is approx 4
+        gaze_val = _get_gaze_value(obj, gaze, height=4)
+        val = th.where(result, gaze_val, val)
+    return val
 
 
-def visible_enemy(obj: th.Tensor) -> th.Tensor:
+def visible_enemy(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:  
     result = obj[..., 0] == 1
-    return bool_to_probs(result)
+    val = bool_to_probs(result)
+    if gaze is not None and len(gaze.shape) > 2:
+        # Enemy height is approx 10
+        gaze_val = _get_gaze_value(obj, gaze, height=10)
+
+        val = th.where(result, gaze_val, val)
+    return val
 
 
-def visible_diver(obj: th.Tensor) -> th.Tensor:
+def visible_diver(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:
     result = obj[..., 0] == 1
-    return bool_to_probs(result)
+    val = bool_to_probs(result)
+    if gaze is not None and len(gaze.shape) > 2:
+        # Diver height is approx 11
+        gaze_val = _get_gaze_value(obj, gaze, height=11)
+        val = th.where(result, gaze_val, val)
+    return val
+
+
+def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Tensor:
+    """
+    Calculate average gaze intensity within the object's bounding box.
+    Vectorized implementation using integral images for speed.
+    obj: (batch, features) [vis, x, y, w, ...]
+    gaze: (batch, 84, 84)
+    height: approximate height of object (since obj might not have it)
+    """
+    batch_size = obj.shape[0]
+    device = obj.device
+
+    # Scaling factors (160x210 -> 84x84)
+    sx = 84.0 / 160.0
+    sy = 84.0 / 210.0
+    
+    # Coordinates (Vectorized)
+    x = (obj[:, 1] * sx).long()
+    y = (obj[:, 2] * sy).long()
+    w = (obj[:, 3] * sx).long()
+    h = (obj[:, 4] * sy).long()
+    
+    # Clip coordinates to valid range [0, 84]
+    # We use 0-84 because for integral image, index 84 corresponds to sum of all 0-83
+    x1 = x.clamp(0, 84)
+    y1 = y.clamp(0, 84)
+    x2 = (x + w).clamp(0, 84)
+    y2 = (y + h).clamp(0, 84)
+    
+    # Calculate area (clamp min=1 to avoid division by zero)
+    area = ((x2 - x1) * (y2 - y1)).float().clamp(min=1.0)
+    
+    # Compute Integral Image (Summed Area Table)
+    # Pad left and top with 0 for easy indexing (0,0 corresponds to sum=0)
+    # Result shape: (batch, 85, 85)
+    # gaze is (batch, 84, 84)
+    
+    # Compute Integral Image (Summed Area Table)
+    # If gaze is already integral (85x85), use it. Else compute.
+    if gaze.shape[-1] == 85:
+        integral = gaze
+    else:
+        gaze_padded = th.nn.functional.pad(gaze, (1, 0, 1, 0)) # Pad left and top
+        integral = gaze_padded.cumsum(dim=1).cumsum(dim=2)
+    
+    # Gather values at corners using batch indices
+    # We need to index (b, y, x)
+    b_idx = th.arange(batch_size, device=device)
+    
+    # x1, y1, x2, y2 are definitely in [0, 84] range, valid for indexing [0, 85] size
+    
+    # Bottom-Right (y2, x2)
+    val_br = integral[b_idx, y2, x2]
+    # Top-Left (y1, x1)
+    val_tl = integral[b_idx, y1, x1]
+    # Top-Right (y1, x2)
+    val_tr = integral[b_idx, y1, x2]
+    # Bottom-Left (y2, x1)
+    val_bl = integral[b_idx, y2, x1]
+    
+    total_val = val_br - val_tr - val_bl + val_tl
+    
+    avg_val = total_val / area
+    
+    # The heatmap is softmax-normalized: all 84*84=7056 pixels sum to 1.0.
+    # So uniform density = 1/7056 per pixel. Raw avg_val is always ~0.0001,
+    # which would zero out every visible object if used directly.
+    #
+    # Solution: compute an attention_ratio = (object density) / (uniform density).
+    # - ratio == 1  ->  object gets exactly its fair share of gaze  ->  keep ~0.99
+    # - ratio >> 1  ->  object is actively gazed at                 ->  keep 0.99
+    # - ratio << 1  ->  object is not being looked at               ->  suppress
+    uniform_density = 1.0 / (84.0 * 84.0)  # ~0.000142
+    attention_ratio = avg_val / uniform_density  # dimensionless, ~1.0 for uniform gaze
+    
+    # Scale to [0.01, 0.99] probability range
+    gaze_prob = th.clamp(0.99 * attention_ratio, 0.01, 0.99)
+    
+    # Mask out invisible objects (vis <= 0.5)
+    vis_mask = (obj[:, 0] > 0.5).float()
+    
+    return gaze_prob * vis_mask
 
 
 def facing_left(player: th.Tensor) -> th.Tensor:
-    result = player[..., 3] == 12
+    # Orientation is at index 5
+    result = player[..., 5] == 12
     return bool_to_probs(result)
 
 
 def facing_right(player: th.Tensor) -> th.Tensor:
-    result = player[..., 3] == 4
+    # Orientation is at index 5
+    result = player[..., 5] == 4
     return bool_to_probs(result)
 
 
@@ -215,7 +316,7 @@ def right_of_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 
 def oxygen_low(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
-    oxygen_width = oxygen_bar[..., 1]  # Width in pixels
+    oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
     result = oxygen_width < 16
     
     # DEBUG: Print first few calls
@@ -262,8 +363,8 @@ def closeby(obj1: th.Tensor, obj2: th.Tensor) -> th.Tensor:
 
 def type(obj: th.Tensor, type_oh: th.Tensor) -> th.Tensor:
     # Check type equality
-    # obj has type_id at index 4
-    obj_type_id = obj[..., 4].long()
+    # obj has type_id at index 6
+    obj_type_id = obj[..., 6].long()
     
     # type_oh is one-hot vector, get index
     target_type_id = type_oh.argmax(dim=-1)
@@ -284,7 +385,7 @@ def divers_collected_full(obj: th.Tensor) -> th.Tensor:
 
 def oxygen_critical(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 5 pixels (critical)."""
-    oxygen_width = oxygen_bar[..., 1]
+    oxygen_width = oxygen_bar[..., 3] # Width in pixels (index 3)
     result = oxygen_width < 5
     return bool_to_probs(result)
 
@@ -326,3 +427,25 @@ def below_water(player: th.Tensor) -> th.Tensor:
     y = player[..., 2]
     is_surface = y > 55
     return bool_to_probs(vis & is_surface)
+
+
+def above_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:
+    """True if player is above the surface."""
+    player_vis = player[..., 0] == 1
+    surface_vis = surface[..., 0] == 1
+    player_y = player[..., 2]
+    surface_y = surface[..., 2]
+    
+    result = player_vis & surface_vis & (player_y < surface_y)
+    return bool_to_probs(result)
+
+
+def below_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:
+    """True if player is below the surface."""
+    player_vis = player[..., 0] == 1
+    surface_vis = surface[..., 0] == 1
+    player_y = player[..., 2]
+    surface_y = surface[..., 2]
+    
+    result = player_vis & surface_vis & (player_y > surface_y)
+    return bool_to_probs(result)

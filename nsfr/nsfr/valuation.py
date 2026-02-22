@@ -40,36 +40,136 @@ class ValuationModule(nn.Module, ABC):
     val_fns: Dict[str, ValuationFunction]  # predicate names to corresponding valuation fn
 
     def __init__(self, val_fn_path: str, lang: Language, device: Union[torch.device, str],
-                 pretrained: bool = True):
+                 pretrained: bool = True, gaze_threshold=None):
         super().__init__()
 
         # Parse all valuation functions
         val_fn_module = load_module(val_fn_path)
         all_functions = inspect.getmembers(val_fn_module, inspect.isfunction)
         self.val_fns = {fn[0]: fn[1] for fn in all_functions}
-
+        
         self.lang = lang
         self.device = device
         self.pretrained = pretrained
+        self.gaze_threshold = gaze_threshold
+        
+        # Cache for term grounding (term.name -> index or onehot)
+        self.term_cache = {}
 
-    def forward(self, zs: torch.Tensor, atom: Atom):
+    def forward(self, zs: torch.Tensor, atom: Atom, gaze: torch.Tensor = None):
         """Convert the object-centric representation to a valuation tensor.
 
             Args:
                 zs (tensor): The object-centric representation (the output of the YOLO model).
                 atom (atom): The target atom to compute its probability.
+                gaze (tensor): The gaze center (batch_size, 2). Optional.
 
             Returns:
                 A batch of the probabilities of the target atom.
         """
-        try:
-            val_fn = self.val_fns[atom.pred.name]
-        except KeyError as e:
-            raise NotImplementedError(f"Missing implementation for valuation function '{atom.pred.name}'.")
         # term: logical term
         # args: the vectorized input evaluated by the value function
         args = [self.ground_to_tensor(term, zs) for term in atom.terms]
-        return val_fn(*args)
+        return self._call_val_fn(atom.pred.name, args, gaze)
+
+    def batch_forward(self, zs: torch.Tensor, pred_name: str, atoms: Sequence[Atom], gaze: torch.Tensor = None):
+        """Convert object-centric representation to valuation tensors for a batch of atoms of the same predicate.
+        
+        Args:
+            zs: (Batch, Features)
+            pred_name: str
+            atoms: List of Atom objects (length N)
+            gaze: (Batch, H, W)
+            
+        Returns:
+            (Batch, N) tensor of valuations
+        """
+        batch_size = zs.size(0)
+        num_atoms = len(atoms)
+        if num_atoms == 0:
+            return torch.zeros(batch_size, 0).to(self.device)
+            
+        # 1. Gather Arguments: List of [Arg0_Tensor, Arg1_Tensor, ...]
+        # Each ArgX_Tensor should be (Batch * N, Features)
+        
+        # Assume all atoms have same arity and term structure (guaranteed by predicate grouping)
+        arity = len(atoms[0].terms)
+        flat_args = []
+        
+        for i in range(arity):
+            # Gather i-th term from all atoms
+            # ground_to_tensor returns (Batch, F)
+            # We want to stack them to (Batch, N, F) then reshape to (Batch*N, F)
+            
+            # Optimization: Pre-resolve indices to avoid repeated ground_to_tensor overhead?
+            # ground_to_tensor is already cached.
+            
+            term_tensors = [self.ground_to_tensor(atom.terms[i], zs) for atom in atoms]
+            # Stack: (Batch, N, F)
+            stacked = torch.stack(term_tensors, dim=1)
+            # Reshape: (Batch*N, F)
+            flat = stacked.view(batch_size * num_atoms, -1)
+            flat_args.append(flat)
+            
+        # 2. Expand Gaze if needed
+        flat_gaze = None
+        if gaze is not None and len(gaze.shape) > 2:
+            # gaze: (Batch, H, W)
+            # expand to (Batch, N, H, W) -> (Batch*N, H, W)
+            gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1, -1)
+            flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, gaze.shape[1], gaze.shape[2])
+        elif gaze is not None:
+             # Point gaze: (Batch, 2)
+             gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1)
+             flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, -1)
+
+        # 3. Call Valuation Function
+        # Result will be (Batch*N, ) or (Batch*N, 1)
+        val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze)
+        
+        # 4. Reshape back
+        val = val_flat.view(batch_size, num_atoms)
+        return val
+
+    def _call_val_fn(self, pred_name, args, gaze):
+        try:
+            val_fn = self.val_fns[pred_name]
+        except KeyError as e:
+            raise NotImplementedError(f"Missing implementation for valuation function '{pred_name}'.")
+
+        # Try to pass gaze map if available and function accepts it
+        if gaze is not None and len(gaze.shape) > 2:
+            try:
+                # Check signature or just try calling
+                # Inspecting is safer but slower? 
+                # Let's inspect once and cache? Or just inspect now.
+                sig = inspect.signature(val_fn)
+                if 'gaze' in sig.parameters:
+                    val = val_fn(*args, gaze=gaze)
+                else:
+                    val = val_fn(*args)
+            except Exception as e:
+                # Fallback
+                print(f"Error calling {pred_name} with gaze: {e}")
+                val = val_fn(*args)
+        else:
+            val = val_fn(*args)
+
+        # Gaze-based valuation scaling (Old Logic for points)
+        # If gaze is provided and threshold is set, and predicate starts with "visible_"
+        # Only do this if gaze is POINT (len shape == 2 and size is 2 in last dim)
+        if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and gaze.shape[1] == 2 and pred_name.startswith("visible_"):
+             # Assume args[0] is the object
+             if len(args) > 0:
+                obj_tensor = args[0]
+                if obj_tensor.shape[0] == gaze.shape[0]:
+                    obj_pos = obj_tensor[:, 1:3] 
+                    dist = torch.norm(obj_pos - gaze, dim=1)
+                    dist = torch.clamp(dist, min=1e-6)
+                    scale = torch.clamp(self.gaze_threshold / dist, max=1.0)
+                    val = val * scale
+        
+        return val
 
     def ground_to_tensor(self, const: Const, zs: torch.Tensor):
         """Ground constant (term) into tensor representations.
@@ -78,23 +178,38 @@ class ValuationModule(nn.Module, ABC):
                 const (const): The term to be grounded.
                 zs (tensor): The object-centric state representation.
         """
+        # Check cache first
+        if const.name in self.term_cache:
+            cached_val = self.term_cache[const.name]
+             # If it's an integer, it's an object index
+            if isinstance(cached_val, int):
+                return zs[:, cached_val]
+            else:
+                 # It's a param tuple for one-hot (index, length)
+                return self.to_onehot_batch(cached_val[0], cached_val[1], zs.size(0))
+
         # Check if the constant name is in the reserved style, e.g., "obj0", "obj1", etc.
         result = re.match(r"obj(\d+)", const.name)  # Changed to match obj0, obj1, obj2, ...
         if result is not None:
             # The constant is an object constant
             obj_id = result[1]
             obj_index = int(obj_id)  # No need to subtract 1 since we now support obj0
+            self.term_cache[const.name] = obj_index
             return zs[:, obj_index]
 
         elif const.dtype.name == 'object':
             obj_index = self.lang.term_index(const)
+            self.term_cache[const.name] = obj_index
             return zs[:, obj_index]
 
         elif const.dtype.name == 'image':
             return zs
 
         else:
-            return self.term_to_onehot(const, batch_size=zs.size(0))
+             # Compute params for one-hot and cache them
+            params = self.get_onehot_params(const)
+            self.term_cache[const.name] = params
+            return self.to_onehot_batch(params[0], params[1], zs.size(0))
 
     def term_to_onehot(self, term, batch_size):
         """Ground terms into tensor representations.
@@ -119,6 +234,23 @@ class ValuationModule(nn.Module, ABC):
         elif term.dtype.name == 'type':
             return self.to_onehot_batch(self.lang.term_index(term), len(self.lang.get_by_dtype_name(term.dtype.name)),
                                         batch_size)
+        else:
+            assert True, 'Invalid term: ' + str(term)
+
+    def get_onehot_params(self, term):
+        """Get parameters (index, length) for one-hot encoding."""
+        if term.dtype.name == 'color':
+            return self.colors.index(term.name), len(self.colors)
+        elif term.dtype.name == 'shape':
+            return self.shapes.index(term.name), len(self.shapes)
+        elif term.dtype.name == 'material':
+            return self.materials.index(term.name), len(self.materials)
+        elif term.dtype.name == 'size':
+            return self.sizes.index(term.name), len(self.sizes)
+        elif term.dtype.name == 'side':
+            return self.sides.index(term.name), len(self.sides)
+        elif term.dtype.name == 'type':
+            return self.lang.term_index(term), len(self.lang.get_by_dtype_name(term.dtype.name))
         else:
             assert True, 'Invalid term: ' + str(term)
 

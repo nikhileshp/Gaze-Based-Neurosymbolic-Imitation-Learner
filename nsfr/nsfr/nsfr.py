@@ -36,10 +36,17 @@ class NSFReasoner(nn.Module):
                 prednames.append(clause.head.pred.name)
         return prednames
 
-    def forward(self, x):
+    def forward(self, x, gaze=None):
         zs = x
-        # convert to the valuation tensor
-        self.V_0 = self.fc(zs, self.atoms, self.bk)
+        # Check if input is already a valuation (pre-computed atoms)
+        # Valuation V_0 has shape (batch_size, num_atoms) -> 2D
+        # Object state input usually has shape (batch_size, num_objects, num_features) -> 3D
+        if zs.dim() == 2 and zs.size(1) == len(self.atoms):
+            self.V_0 = zs
+        else:
+            # convert to the valuation tensor
+            self.V_0 = self.fc(zs, self.atoms, self.bk, gaze=gaze)
+            
         # perform T-step forward-chaining reasoning
         self.V_T = self.im(self.V_0)
         # only return probs of actions
