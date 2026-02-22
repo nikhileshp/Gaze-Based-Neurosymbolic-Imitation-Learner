@@ -19,6 +19,7 @@ MAX_NB_OBJECTS = {
     'PlayerMissile': 1,
     'OxygenBar': 1,
     'CollectedDiver': 6,
+    'Surface': 1,
 }
 
 MAX_NB_OBJECTS_HUD = {
@@ -31,6 +32,7 @@ MAX_NB_OBJECTS_HUD = {
     'PlayerMissile': 1,
     'OxygenBar': 1,
     'CollectedDiver': 6,
+    'Surface': 1,
     'PlayerScore': 1,
     'Lives': 1,
     'OxygenBarDepleted': 1,
@@ -207,6 +209,19 @@ class CollectedDiver(GameObject):
         self.hud = True
 
 
+class Surface(GameObject):
+    """
+    The water surface line.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._xy = 0, 55
+        self.rgb = 0, 0, 0
+        self.wh = 160, 1
+        self.hud = False
+
+
 # parses MAX_NB* dicts, returns default init list of objects
 def _get_max_objects(hud=False):
     def fromdict(max_obj_dict):
@@ -254,6 +269,7 @@ def _init_objects_ram(hud=False):
     objects.extend([NoObject()]*10)
     objects.extend([OxygenBar()])
     objects.extend([CollectedDiver()]*6)
+    objects.extend([Surface()])  # Add Surface at index 42
 
     if hud:
         objects.extend([PlayerScore(), Lives(), OxygenBarDepleted()])

@@ -22,10 +22,10 @@ class NudgeEnv(NudgeBaseEnv):
 
     def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False):
         super().__init__(mode)
-        self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="ram",
+        self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="vision",
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
-        self.n_objects = 47 # Increased from 43 due to +4 EnemyMissile
-        self.n_features = 5  # visible, x-pos, y-pos, right-facing, type_id
+        self.n_objects = 48 # Increased from 47 to include Surface
+        self.n_features = 7  # visible, x-pos, y-pos, width, height, right-facing, type_id
 
         # Compute index offsets. Needed to deal with multiple same-category objects
         self.obj_offsets = {}
@@ -40,8 +40,8 @@ class NudgeEnv(NudgeBaseEnv):
             offset += max_count
         self.relevant_objects = set(MAX_ESSENTIAL_OBJECTS.keys())
 
-    def reset(self):
-        self.env.reset()
+    def reset(self, seed: int = None, options: dict = None):
+        self.env.reset(seed=seed, options=options)
         state = self.env.objects
         return self.convert_state(state)
 
@@ -53,6 +53,10 @@ class NudgeEnv(NudgeBaseEnv):
         state = self.env.objects
         return self.convert_state(state), reward, done
 
+    def get_rgb_frame(self):
+        # HackAtari wraps the environment. We need to access the unwrapped ALE env.
+        return self.env.unwrapped.ale.getScreenRGB()
+
     def extract_logic_state(self, raw_state):
         state = th.zeros((self.n_objects, self.n_features), dtype=th.int32)
 
@@ -63,7 +67,8 @@ class NudgeEnv(NudgeBaseEnv):
             'Diver': 1, 'CollectedDiver': 6,
             'OxygenBar': 2,
             'Player': 3,
-            'EnemyMissile': 5, 'PlayerMissile': 5
+            'EnemyMissile': 5, 'PlayerMissile': 5,
+            'Surface': 7
         }
 
         for obj in raw_state:
@@ -76,20 +81,22 @@ class NudgeEnv(NudgeBaseEnv):
                 #print all object keys and values
                 # In Seaquest, oxygen level is represented by the bar's WIDTH
                 oxygen_level = getattr(obj, "w", 0)  # Use width instead of value
-                # print(oxygen_level)
-                # print(obj.w)
+                
                 # DEBUG: Print OxygenBar attributes once
                 if not hasattr(self, '_oxygen_debug_printed'):
-                    # print(f"DEBUG OxygenBar attributes: {dir(obj)}")
+                    # print(f"DEBUG OxygenBar attributes: {dir(obj)}\")")
                     # print(f"  value={getattr(obj, 'value', 'N/A')}, x={obj.x}, y={obj.y}, w={obj.w}, h={obj.h}")
                     # print(f"  Using width (w={oxygen_level}) as oxygen level")
                     self._oxygen_debug_printed = True
                 
-                state[idx] = th.tensor([1, int(oxygen_level), int(obj.y), 0, type_id], dtype=th.int32)
+                # [vis, x, y, w, h, orientation, type_id]
+                state[idx] = th.tensor([1, int(obj.x), int(obj.y), int(obj.w), int(obj.h), 0, type_id], dtype=th.int32)
             else:
                 orientation = getattr(obj, "orientation", None)
                 orientation = orientation.value if orientation is not None else 0
-                state[idx] = th.tensor([1, *obj.center, orientation, type_id])
+                w = getattr(obj, "w", 0)
+                h = getattr(obj, "h", 0)
+                state[idx] = th.tensor([1, *obj.center, w, h, orientation, type_id])
             obj_count[obj.category] += 1
 
         return state

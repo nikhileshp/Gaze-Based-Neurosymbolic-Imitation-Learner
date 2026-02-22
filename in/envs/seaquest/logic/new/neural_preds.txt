@@ -24,3 +24,5 @@ surface_submarine:1:osurfacesub
 is_collected_diver:1:ocollecteddiver
 above_water:1:oplayer
 below_water:1:oplayer
+above_surface:2:oplayer,osurface
+below_surface:2:oplayer,osurface

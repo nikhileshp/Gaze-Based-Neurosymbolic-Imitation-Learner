@@ -17,9 +17,25 @@ parser.add_argument("-a", "--agent_path", type=str, default="out/imitation/seaqu
 parser.add_argument("-np", "--no_predicates", action="store_true")
 parser.add_argument("-d", "--device", type=str, default="cpu")
 parser.add_argument("-db", "--debug",type=bool, default=False)
+parser.add_argument("--use_gazemap", action="store_true", help="Visualize gaze predictions dynamically")
+parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
+
+try:
+    from scripts.gaze_predictor import Human_Gaze_Predictor
+except ImportError:
+    Human_Gaze_Predictor = None
+
+from collections import deque
+import cv2
+
+def preprocess_frame(frame):
+    """Convert raw 210x160x3 RGB frame to 84x84 grayscale frame."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
+    return resized / 255.0
 
 class AgentWrapper:
-    def __init__(self, agent, env, debug=False):
+    def __init__(self, agent, env, debug=False, gaze_predictor=None):
         self.agent = agent
         self.env = env
         self.actor = agent.model # For Renderer to access prednames and print_program
@@ -27,6 +43,16 @@ class AgentWrapper:
         self.current_neural_predicates = []  # Store for GUI display
         self.current_objects = []  # Store detected objects
         self.debug = debug
+        self.gaze_predictor = gaze_predictor
+        self.latest_gaze_map = None
+        self.frame_buffer = None
+        
+        if self.gaze_predictor is not None:
+            self.frame_buffer = deque(maxlen=4)
+            initial_rgb = env.get_rgb_frame()
+            initial_gray = preprocess_frame(initial_rgb)
+            for _ in range(4):
+                self.frame_buffer.append(initial_gray)
 
     def act(self, state):
         # Renderer passes state as tensor with batch dim (1, num_atoms, num_features)
@@ -41,13 +67,32 @@ class AgentWrapper:
                                     f"({obj.x}, {obj.y})" if hasattr(obj, 'x') else "N/A") 
                                    for obj in objects[:10]]
         
+        # Advance Gaze Frame Buffer and Predict
+        gaze_tensor = None
+        if self.gaze_predictor is not None:
+            if self.step_count > 1: # On exact first step, we use the prefilled buffer from init
+                next_rgb = self.env.get_rgb_frame()
+                next_gray = preprocess_frame(next_rgb)
+                self.frame_buffer.append(next_gray)
+            
+            img_stack = np.stack(self.frame_buffer, axis=-1)
+            input_tensor = torch.tensor(img_stack, dtype=torch.float32, device=self.gaze_predictor.device)
+            input_tensor = input_tensor.permute(2, 0, 1).unsqueeze(0) # (1, 4, H, W)
+            
+            with torch.no_grad():
+                gaze_pred = self.gaze_predictor.model(input_tensor)
+            gaze_tensor = gaze_pred.squeeze(0) # (1, 84, 84) for Valuation backend
+            self.latest_gaze_map = gaze_tensor.squeeze(0).cpu().numpy() # (84, 84) for OpenCV
+            
         # Get action probabilities and extract valuation tensor
         with torch.no_grad():
             if state.dim() == 1:
                 state_input = state.unsqueeze(0)
             else:
                 state_input = state
-            probs = self.agent.model(state_input).squeeze(0)
+            
+            # Pass gaze to NSFR model if available
+            probs = self.agent.model(state_input, gaze=gaze_tensor).squeeze(0)
             
             # Get the valuation tensor from the model (this has the actual atom probabilities)
             if hasattr(self.agent.model, 'V_0'):
@@ -69,7 +114,7 @@ class AgentWrapper:
         else:
             self.current_neural_predicates = []
         
-        action_idx = self.agent.act(state)
+        action_idx = self.agent.act(state, gaze=gaze_tensor)
         
         # Enhanced debug output every 10 steps
         if self.debug:
@@ -223,6 +268,31 @@ class ILRenderer(Renderer):
         self.reset = False
         self.takeover = False
 
+    def _render_env(self):
+        super()._render_env()
+        # Overlay the live Gaze Predictor heatmap if available
+        if hasattr(self.model, 'latest_gaze_map') and self.model.latest_gaze_map is not None:
+            gaze_map = self.model.latest_gaze_map
+            import cv2
+            import numpy as np
+            import pygame
+            
+            # gaze_map is (84, 84). We need to resize it to self.env_render_shape (which is (width, height) usually (160, 210))
+            # Wait, self.env_render_shape is (210, 160) from frame.shape[:2]. cv2.resize takes (width, height)
+            # We want it to stretch out to match the window frame exactly.
+            target_size = (self.env_render_shape[1], self.env_render_shape[0]) 
+            heatmap = cv2.resize(gaze_map, target_size)
+            
+            # Normalize map to 0-255 (intensify by 2.0x for visibility)
+            heatmap_norm = np.clip(heatmap * 255.0 * 2.5, 0, 255).astype(np.uint8)
+            colored_heatmap = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
+            colored_heatmap = cv2.cvtColor(colored_heatmap, cv2.COLOR_BGR2RGB)
+            
+            # Pygame surfaces expect (width, height, channels), and our array is already aligned as (width, height, channels) due to array_to_surface mapping.
+            heatmap_surface = pygame.surfarray.make_surface(colored_heatmap)
+            heatmap_surface.set_alpha(110) # Semi-transparent
+            self.window.blit(heatmap_surface, (0, 0))
+
     def _render_predicate_probs(self):
         """Override to show action probabilities and neural predicates"""
         # First show action probabilities (from parent)
@@ -333,6 +403,18 @@ if __name__ == "__main__":
     # NudgeBaseEnv defaults: render_mode="rgb_array"
     env = NudgeBaseEnv.from_name(args.game, mode="logic", render_oc_overlay=True)
     
+    # Initialize Gaze Predictor if requested
+    gaze_predictor = None
+    if args.use_gazemap:
+        if Human_Gaze_Predictor is None:
+            print("Error: Could not import Human_Gaze_Predictor. Ensure gaze_predictor.py exists in scripts/.")
+            import sys; sys.exit(1)
+            
+        print(f"Initializing Gaze Predictor from {args.gaze_model_path}...")
+        gaze_predictor = Human_Gaze_Predictor(args.game)
+        gaze_predictor.init_model(args.gaze_model_path)
+        gaze_predictor.model.eval()
+
     # Initialize Agent
     agent = ImitationAgent(args.game, args.rules, args.device)
     
@@ -343,7 +425,7 @@ if __name__ == "__main__":
     agent.model.eval() # Set to eval mode
     
     # Wrap Agent
-    model = AgentWrapper(agent, env, debug=args.debug)
+    model = AgentWrapper(agent, env, debug=args.debug, gaze_predictor=gaze_predictor)
     
     # Run Renderer
     renderer = ILRenderer(model=model,
