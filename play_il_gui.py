@@ -81,8 +81,8 @@ class AgentWrapper:
             
             with torch.no_grad():
                 gaze_pred = self.gaze_predictor.model(input_tensor)
-            gaze_tensor = gaze_pred.squeeze(0).squeeze(0) # (84, 84)
-            self.latest_gaze_map = gaze_tensor.cpu().numpy()
+            gaze_tensor = gaze_pred.squeeze(0) # (1, 84, 84) for Valuation backend
+            self.latest_gaze_map = gaze_tensor.squeeze(0).cpu().numpy() # (84, 84) for OpenCV
             
         # Get action probabilities and extract valuation tensor
         with torch.no_grad():
