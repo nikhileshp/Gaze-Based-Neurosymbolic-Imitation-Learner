@@ -216,7 +216,7 @@ def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
 
     # print("Result", result, "Object y", obj_y, "Player y", player_y, "prox", prox)
-    return prox*bool_to_probs(result)
+    return bool_to_probs(result)
 
 
 def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -249,6 +249,12 @@ def close_by_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # Only return proximity if object exists, else 0
     return proximity * bool_to_probs(obj_exists)
 
+def not_close_by_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+    obj_exists = obj[..., 0] == 1  # Check if object exists/visible
+    proximity = _close_by(player, obj)
+    # Only return proximity if object exists, else 0
+    return (1-proximity) * bool_to_probs(obj_exists)
+
 
 def close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
@@ -256,10 +262,19 @@ def close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # Only return proximity if object exists, else 0
     return proximity * bool_to_probs(obj_exists)
 
+def not_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+    obj_exists = obj[..., 0] == 1  # Check if object exists/visible
+    proximity = _close_by(player, obj)
+    # Only return proximity if object exists, else 0
+    return (1-proximity) * bool_to_probs(obj_exists)
+
 
 def close_by_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    proximity = _close_by(player, obj)
+    # proximity = _close_by(player, obj)
+    player_y = player[..., 2]
+    obj_y = obj[..., 2]
+    proximity = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
     # Only return proximity if object exists, else 0
     return proximity * bool_to_probs(obj_exists)
 
@@ -269,8 +284,10 @@ def _close_by(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_x = obj[..., 1]
     obj_y = obj[..., 2]
-    result = th.clip((128 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 128, 0, 1)
-    return result
+    # result = th.clip((128 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 128, 0, 1)
+    #use a threshold of 15 px and return 1 if the distance is less than 15 px else 0
+    bool_val = abs(player_x - obj_x) + abs(player_y - obj_y) < 50
+    return bool_val
 
 
 def left_of_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
