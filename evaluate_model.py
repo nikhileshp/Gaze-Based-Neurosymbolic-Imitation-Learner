@@ -65,7 +65,7 @@ def evaluate(agent, env, num_episodes=5, gaze_predictor=None):
                 with torch.no_grad():
                     gaze_pred = gaze_predictor.model(input_tensor) # Outputs (1, 1, 84, 84) spatial softmax
                     
-                gaze_tensor = gaze_pred.squeeze(0).squeeze(0) # Reduce to (84, 84) for the Valuation Module
+                gaze_tensor = gaze_pred.squeeze(0) # Reduce to (1, 84, 84) for the Valuation Module
             
             # state is (logic_state, neural_state)
             logic_state, _ = state
@@ -105,7 +105,7 @@ def main():
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data logic in model")
     parser.add_argument("--gaze_threshold", type=float, default=20.0, help="Gaze threshold if use_gaze is set")
     parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
-    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor.pth", help="Path to the .pth gaze predictor weights")
+    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
     
     args = parser.parse_args()
 
