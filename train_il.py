@@ -262,11 +262,11 @@ class ExpertDataset(Dataset):
         return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), gaze_center
 
 
-def evaluate(agent, env, num_episodes=5):
+def evaluate(agent, env, num_episodes=5, seed=42):
     agent.model.eval()
     rewards = []
-    for _ in range(num_episodes):
-        state = env.reset()
+    for i in range(num_episodes):
+        state = env.reset(i+seed)
         done = False
         episode_reward = 0
         while not done:
@@ -281,6 +281,7 @@ def evaluate(agent, env, num_episodes=5):
             state, reward, done = env.step(predicate)
             episode_reward += reward
         rewards.append(episode_reward)
+        print(f"Episode {i+1} Reward: {episode_reward}")
     agent.model.train()
     return rewards
 
@@ -293,7 +294,7 @@ def main():
     parser.add_argument("--data_path", type=str, default=None, help="Path to expert data")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--lr", type=float, default=0.0005, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
@@ -343,15 +344,15 @@ def main():
         trajectories = [1]
 
     # Training Loop
-    print(f"Starting iterative training for {args.epochs} epoch(s)...")
+    print("Starting iterative training by trajectory...")
     results_log = []
     
-    num_trajs = len(trajectories)
+    # Use args.epochs as the number of trajectories to process if it's less than total trajectories
+    num_iters = min(args.epochs, len(trajectories))
     
-    for epoch in range(args.epochs):
-        # Cyclic trajectory selection: wrap around using modulo
-        traj_num = trajectories[epoch % num_trajs]
-        print(f"\n--- Epoch {epoch+1}/{args.epochs} (Trajectory {traj_num}) ---")
+    for epoch in range(num_iters):
+        traj_num = trajectories[epoch]
+        print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
         
         # Load Data for this specific trajectory
         dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
@@ -402,7 +403,7 @@ def main():
         print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
         
         # Evaluation
-        rewards = evaluate(agent, env, num_episodes=5)
+        rewards = evaluate(agent, env, num_episodes=5, seed=args.seed)
         mean_reward = np.mean(rewards)
         std_reward = np.std(rewards)
         print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
@@ -411,18 +412,19 @@ def main():
             'epoch': epoch + 1,
             'trajectory': traj_num,
             'mean_reward': mean_reward,
-            'std_reward': std_reward
+            'std_reward': std_reward,
+            'gaze': args.use_gaze,    
         })
 
-    # Save Final Model
-    os.makedirs("out/imitation", exist_ok=True)
-    gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
-    gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-    save_path = f"out/imitation/{args.env}_{args.rules}_il_combined{gaze_str}.pth"
-    agent.save(save_path)
-    print(f"Final model saved to {save_path}")
+        # Save Model
+        os.makedirs("out/imitation", exist_ok=True)
+        gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
+        gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
+        save_path = f"out/imitation/{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+        agent.save(save_path)
+        print(f"Model saved to {save_path}")
 
-    # Print final learning curve log
+    # Print and Save final learning curve log
     print("\n" + "="*30)
     print("LEARNING CURVE LOG")
     print("="*30)
@@ -430,10 +432,17 @@ def main():
     for res in results_log:
         print(f"{res['epoch']:5d} | {res['trajectory']:10d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f}")
     print("="*30)
-    #store the results log in a csv file
+
+    # Save results to CSV
+
     results_df = pd.DataFrame(results_log)
-    results_df.to_csv(f"out/imitation/{args.env}_{args.rules}_il_combined{gaze_str}.csv", index=False)
-    print(f"Results log saved to out/imitation/{args.env}_{args.rules}_il_combined{gaze_str}.csv") 
+    results_csv_path = os.path.join("out/imitation", f"{args.env}_{args.rules}_lr_{args.lr}_results.csv")
+    #If results_csv_path exists, append to file
+    if os.path.exists(results_csv_path):
+        results_df.to_csv(results_csv_path, mode='a', header=False, index=False)
+    else:
+        results_df.to_csv(results_csv_path, index=False)
+    print(f"Results saved to {results_csv_path}")
 
 if __name__ == "__main__":
     main()
