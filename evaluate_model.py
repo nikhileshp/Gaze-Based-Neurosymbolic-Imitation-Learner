@@ -21,7 +21,7 @@ def preprocess_frame(frame):
     resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
     return resized / 255.0
 
-def evaluate(agent, env, num_episodes=5, gaze_predictor=None):
+def evaluate(agent, env, num_episodes=5, gaze_predictor=None, log_interval=100, valuation_interval=50):
     """
     Evaluates the agent in the environment for a set number of episodes.
     Returns the list of total rewards for each episode.
@@ -39,6 +39,7 @@ def evaluate(agent, env, num_episodes=5, gaze_predictor=None):
             
         done = False
         total_reward = 0
+        step_count = 0
         
         # Initialize the gaze frame buffer if gaze predictor is active
         frame_buffer = None
@@ -75,6 +76,17 @@ def evaluate(agent, env, num_episodes=5, gaze_predictor=None):
             # agent.act passes gaze down to the NSFR model if provided
             action_idx = agent.act(logic_state_tensor, gaze=gaze_tensor)
             
+            # Print top atom valuations every valuation_interval steps
+            if valuation_interval > 0 and step_count % valuation_interval == 0 and step_count > 0:
+                if hasattr(agent.model, 'V_0') and agent.model.V_0 is not None:
+                    v0 = agent.model.V_0.squeeze(0).detach().cpu()
+                    atoms = agent.model.atoms
+                    pairs = sorted(zip(atoms, v0.tolist()), key=lambda x: x[1], reverse=True)
+                    visible_pairs = [(a, v) for a, v in pairs if str(a).startswith("visible_") and v > 0.01]
+                    print(f"  --- visible_ Valuations at Step {step_count} ---")
+                    for atom, val in visible_pairs:
+                        print(f"    {val:.3f}  {atom}")
+            
             # Map action index to predicate name
             prednames = agent.model.get_prednames()
             predicate = prednames[action_idx]
@@ -82,6 +94,9 @@ def evaluate(agent, env, num_episodes=5, gaze_predictor=None):
             # Step environment
             state, reward, done = env.step(predicate)
             total_reward += reward
+            step_count += 1
+            if log_interval > 0 and step_count % log_interval == 0:
+                print(f"  Episode {i+1} | Step {step_count} | Cumulative Reward: {total_reward:.1f}")
             
             # Update gaze frame buffer
             if gaze_predictor is not None and not done:
@@ -102,6 +117,8 @@ def main():
     parser.add_argument("--episodes", type=int, default=10, help="Number of evaluation episodes")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
+    parser.add_argument("--log_interval", type=int, default=100, help="Print cumulative reward every N steps (0 to disable)")
+    parser.add_argument("--valuation_interval", type=int, default=50, help="Print top atom valuations every N steps (0 to disable)")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data logic in model")
     parser.add_argument("--gaze_threshold", type=float, default=20.0, help="Gaze threshold if use_gaze is set")
     parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
@@ -149,7 +166,8 @@ def main():
 
     # Run Evaluation
     print(f"Starting evaluation for {args.episodes} episodes...")
-    rewards = evaluate(agent, env, num_episodes=args.episodes, gaze_predictor=gaze_predictor)
+    rewards = evaluate(agent, env, num_episodes=args.episodes, gaze_predictor=gaze_predictor,
+                       log_interval=args.log_interval, valuation_interval=args.valuation_interval)
 
     # Calculate Statistics
     mean_reward = np.mean(rewards)

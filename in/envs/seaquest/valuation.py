@@ -99,24 +99,24 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     
     avg_val = total_val / area
     
-    # DEBUG TRACE
-    if area[0].item() > 1.0:
-        # print(f"Gaze Integration Debug - Area: {area[0].item()}, Total Val: {total_val[0].item():.5f}, Avg: {avg_val[0].item():.5f}")
-        pass
-        
+    # The heatmap is softmax-normalized: all 84*84=7056 pixels sum to 1.0.
+    # So uniform density = 1/7056 per pixel. Raw avg_val is always ~0.0001,
+    # which would zero out every visible object if used directly.
+    #
+    # Solution: compute an attention_ratio = (object density) / (uniform density).
+    # - ratio == 1  ->  object gets exactly its fair share of gaze  ->  keep ~0.99
+    # - ratio >> 1  ->  object is actively gazed at                 ->  keep 0.99
+    # - ratio << 1  ->  object is not being looked at               ->  suppress
+    uniform_density = 1.0 / (84.0 * 84.0)  # ~0.000142
+    attention_ratio = avg_val / uniform_density  # dimensionless, ~1.0 for uniform gaze
+    
+    # Scale to [0.01, 0.99] probability range
+    gaze_prob = th.clamp(0.99 * attention_ratio, 0.01, 0.99)
+    
     # Mask out invisible objects (vis <= 0.5)
     vis_mask = (obj[:, 0] > 0.5).float()
     
-    final_val = avg_val * vis_mask
-    
-    # DEBUG TRACE
-    # if vis_mask[0].item() > 0.5 and total_val[0].item() > 0.001:
-    #     print(f"BBOX Gaze Mass: {total_val[0].item():.4f} | Scaled Avg: {avg_val[0].item():.4f}")
-        
-    return final_val
-
-
-
+    return gaze_prob * vis_mask
 
 
 def facing_left(player: th.Tensor) -> th.Tensor:
