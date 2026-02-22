@@ -12,7 +12,7 @@ class NudgeBaseEnv(ABC):
     def __init__(self, mode: str):
         self.mode = mode  # either 'ppo' or 'logic'
 
-    def reset(self) -> (torch.tensor, torch.tensor):
+    def reset(self, seed: int = None, options: dict = None) -> (torch.tensor, torch.tensor):
         """Returns logic_state, neural_state"""
         raise NotImplementedError
 
@@ -20,6 +20,10 @@ class NudgeBaseEnv(ABC):
         """If is_mapped is False, the action will be mapped from model action space to env action space.
         I.e., if is_mapped is True, this method feeds 'action' into the wrapped env directly.
         Returns (logic_state, neural_state), reward, done"""
+        raise NotImplementedError
+
+    def get_rgb_frame(self):
+        """Returns the raw RGB frame from the underlying environment (e.g., 210x160x3 for Atari)."""
         raise NotImplementedError
 
     def extract_logic_state(self, raw_state) -> torch.tensor:

@@ -13,3 +13,6 @@ left_to_diver(X):-right_of_diver(P,D),close_by_diver(P,D),visible_diver(D).
 right_to_diver(X):-left_of_diver(P,D),close_by_diver(P,D),visible_diver(D).
 up_to_diver(X):-deeper_than_diver(P,D),close_by_diver(P,D),visible_diver(D).
 down_to_diver(X):-higher_than_diver(P,D),close_by_diver(P,D),visible_diver(D).
+
+
+

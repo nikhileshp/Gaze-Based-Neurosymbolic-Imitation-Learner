@@ -32,7 +32,9 @@ class DataUtils(object):
         clauses = []
         with open(path) as f:
             for line in f:
-                line = line.replace('\n', '')
+                line = line.strip()
+                if not line:
+                    continue
                 tree = self.lp_clause.parse(line)
                 clause = ExpTree(lang).transform(tree)
                 clauses.append(clause)
@@ -46,7 +48,13 @@ class DataUtils(object):
         if os.path.isfile(path):
             with open(path) as f:
                 for line in f:
-                    tree = self.lp_atom.parse(line[:-2])
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Remove the trailing period if present
+                    if line.endswith('.'):
+                        line = line[:-1]
+                    tree = self.lp_atom.parse(line)
                     atom = ExpTree(lang).transform(tree)
                     atoms.append(atom)
         return atoms
