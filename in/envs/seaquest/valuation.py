@@ -15,12 +15,13 @@ def visible_missile(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:
     return val
 
 
-def visible_enemy(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:
+def visible_enemy(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:  
     result = obj[..., 0] == 1
     val = bool_to_probs(result)
     if gaze is not None and len(gaze.shape) > 2:
         # Enemy height is approx 10
         gaze_val = _get_gaze_value(obj, gaze, height=10)
+
         val = th.where(result, gaze_val, val)
     return val
 
@@ -98,10 +99,21 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     
     avg_val = total_val / area
     
+    # DEBUG TRACE
+    if area[0].item() > 1.0:
+        # print(f"Gaze Integration Debug - Area: {area[0].item()}, Total Val: {total_val[0].item():.5f}, Avg: {avg_val[0].item():.5f}")
+        pass
+        
     # Mask out invisible objects (vis <= 0.5)
     vis_mask = (obj[:, 0] > 0.5).float()
     
-    return avg_val * vis_mask
+    final_val = avg_val * vis_mask
+    
+    # DEBUG TRACE
+    # if vis_mask[0].item() > 0.5 and total_val[0].item() > 0.001:
+    #     print(f"BBOX Gaze Mass: {total_val[0].item():.4f} | Scaled Avg: {avg_val[0].item():.4f}")
+        
+    return final_val
 
 
 
