@@ -31,7 +31,8 @@ import cv2
 def preprocess_frame(frame):
     """Convert raw 210x160x3 RGB frame to 84x84 grayscale frame."""
     gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    return cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
+    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
+    return resized / 255.0
 
 class AgentWrapper:
     def __init__(self, agent, env, debug=False, gaze_predictor=None):
@@ -287,8 +288,8 @@ class ILRenderer(Renderer):
             colored_heatmap = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
             colored_heatmap = cv2.cvtColor(colored_heatmap, cv2.COLOR_BGR2RGB)
             
-            # Pygame surfaces expect (width, height, channels), but CV2 array is (height, width, channels)
-            heatmap_surface = pygame.surfarray.make_surface(colored_heatmap.swapaxes(0, 1))
+            # Pygame surfaces expect (width, height, channels), and our array is already aligned as (width, height, channels) due to array_to_surface mapping.
+            heatmap_surface = pygame.surfarray.make_surface(colored_heatmap)
             heatmap_surface.set_alpha(110) # Semi-transparent
             self.window.blit(heatmap_surface, (0, 0))
 
