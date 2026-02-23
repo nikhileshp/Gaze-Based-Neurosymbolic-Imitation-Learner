@@ -20,11 +20,8 @@ class ImitationAgent(nn.Module):
         """
         from scripts.data_utils import PRIMITIVE_ACTION_MAP
         
-        # Forward pass (get rule valuations)
+        # Forward pass
         probs = self.model(states, gazes)
-        
-        # Apply softmax across all rules to make them compete
-        probs = torch.softmax(probs, dim=1)
         
         # Aggregate rule probabilities into primitive actions
         B = probs.size(0)
@@ -58,12 +55,7 @@ class ImitationAgent(nn.Module):
         with torch.no_grad():
             if state.dim() == 1:
                 state = state.unsqueeze(0)
-                
-            # Forward pass (get rule valuations)
             probs = self.model(state, gaze)
-            
-            # Apply softmax across all rules to make them compete
-            probs = torch.softmax(probs, dim=1)
             
             # Aggregate probabilities for the 6 primitive actions
             action_probs = torch.zeros(1, 6, device=self.device)
