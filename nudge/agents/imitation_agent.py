@@ -26,13 +26,20 @@ class ImitationAgent(nn.Module):
         # Apply softmax across all rules to make them compete
         probs = torch.softmax(probs, dim=1)
         
-        # Aggregate rule probabilities into primitive actions
+        # Aggregate rule probabilities into primitive actions (average, not sum)
+        # Averaging prevents actions with more rules from dominating by sheer count.
         B = probs.size(0)
         action_probs = torch.zeros(B, 6, device=self.device)
+        action_rule_counts = torch.zeros(6, device=self.device)
         for i, pred in enumerate(self.model.get_prednames()):
             prefix = pred.split('_')[0]
             if prefix in PRIMITIVE_ACTION_MAP:
-                action_probs[:, PRIMITIVE_ACTION_MAP[prefix]] += probs[:, i]
+                idx = PRIMITIVE_ACTION_MAP[prefix]
+                action_probs[:, idx] += probs[:, i]
+                action_rule_counts[idx] += 1
+        # Normalize by rule count (avoid divide-by-zero for actions with no rules)
+        action_rule_counts = action_rule_counts.clamp(min=1)
+        action_probs = action_probs / action_rule_counts.unsqueeze(0)
                 
         # Compute loss (NLL on log probabilities)
         log_probs = torch.log(action_probs + 1e-10)
@@ -53,8 +60,6 @@ class ImitationAgent(nn.Module):
             state: Logic state tensor (1, num_atoms) or (num_atoms)
             gaze: Gaze center tensor (1, 2) or None
         """
-        from scripts.data_utils import PRIMITIVE_ACTION_MAP
-        
         with torch.no_grad():
             if state.dim() == 1:
                 state = state.unsqueeze(0)
@@ -65,32 +70,19 @@ class ImitationAgent(nn.Module):
             # Apply softmax across all rules to make them compete
             probs = torch.softmax(probs, dim=1)
             
-            # Aggregate probabilities for the 6 primitive actions
-            action_probs = torch.zeros(1, 6, device=self.device)
+            # Pick the rule with the highest probability directly (argmax over rules)
             prednames = self.model.get_prednames()
-            for i, pred in enumerate(prednames):
-                prefix = pred.split('_')[0]
-                if prefix in PRIMITIVE_ACTION_MAP:
-                    action_probs[0, PRIMITIVE_ACTION_MAP[prefix]] += probs[0, i]
-            
-            # DEBUG: Print probabilities occasionally
-            # We can use a global counter or just check if it's been a while
+            best_rule_idx = torch.argmax(probs[0]).item()
+            best_rule = prednames[best_rule_idx]
+            predicate = best_rule.split('_')[0]  # primitive action prefix
+
+            # DEBUG: Print the winning rule occasionally
             if not hasattr(self, '_act_count'): self._act_count = 0
             self._act_count += 1
             if self._act_count % 50 == 0:
-                action_names = ['noop', 'fire', 'up', 'right', 'left', 'down']
-                prob_str = " | ".join([f"{name}: {p:.3f}" for name, p in zip(action_names, action_probs[0])])
-                print(f"  [DEBUG Agent] Probs: {prob_str}")
-                # Also print the top 3 rules
                 top_rule_vals, top_rule_idxs = torch.topk(probs[0], 3)
                 top_rules = [f"{prednames[idx]}: {val:.3f}" for val, idx in zip(top_rule_vals, top_rule_idxs)]
-                print(f"  [DEBUG Agent] Top Rules: {', '.join(top_rules)}")
-            
-            action_idx = torch.argmax(action_probs, dim=1).item()
-            
-            # Convert index back to name for environment compatibility
-            inv_map = {v: k for k, v in PRIMITIVE_ACTION_MAP.items()}
-            predicate = inv_map[action_idx]
+                print(f"  [DEBUG Agent] Top Rules: {', '.join(top_rules)} -> action: {predicate}")
             
         return predicate
 
