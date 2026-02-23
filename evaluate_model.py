@@ -60,7 +60,7 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             gaze_tensor = None
             if gaze_predictor is not None:
                 # Shape buffer into (1, 4, 84, 84) NHWC -> NCHW handled inside predict_and_save style or directly here
-                # Convert deque to numpy array of shape (84, 84, 4)
+                # Convert dequection = action.split("_")[0] to numpy array of shape (84, 84, 4)
                 img_stack = np.stack(frame_buffer, axis=-1)
                 
                 # Convert to tensor (1, 4, 84, 84)
@@ -80,7 +80,7 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             # agent.act returns the primitive action string (e.g., 'up', 'fire')
             # after aggregating clause probabilities.
             predicate = agent.act(logic_state_tensor, gaze=gaze_tensor)
-            
+            print(predicate)
             # Step environment
             state, reward, done = env.step(predicate)
             total_reward += reward

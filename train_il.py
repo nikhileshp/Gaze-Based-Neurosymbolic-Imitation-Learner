@@ -222,28 +222,21 @@ def main():
                 actions = actions.to(device)
                 gazes   = gazes.to(device)
 
-                if args.use_gaze:
-                    probs = agent.model(states, gazes)
-                else:
-                    probs = agent.model(states, None)
-
-                B = probs.size(0)
-                action_probs = torch.zeros(B, 6, device=device)
-                for i, pred in enumerate(agent.model.get_prednames()):
-                    prefix = pred.split('_')[0]
-                    if prefix in PRIMITIVE_ACTION_MAP:
-                        action_probs[:, PRIMITIVE_ACTION_MAP[prefix]] += probs[:, i]
-
-                log_probs = torch.log(action_probs + 1e-10)
-                loss = agent.loss_fn(log_probs, actions)
-
-                agent.optimizer.zero_grad()
-                loss.backward()
-                agent.optimizer.step()
-
-                total_loss += loss.item()
+                # Perform update using the agent's unified method
+                loss_val = agent.update(states, actions, gazes if args.use_gaze else None)
+                
+                total_loss += loss_val
                 n_batches  += 1
-                pbar.set_postfix({"loss": f"{loss.item():.4f}"})
+                pbar.set_postfix({"loss": f"{loss_val:.4f}"})
+
+                # DEBUG: Print distribution for the first batch of the first epoch
+                if epoch == 0 and n_batches == 1:
+                    print("\n[DEBUG] First Batch Stats:")
+                    print(f"  GT Actions counter: {Counter(actions.tolist())}")
+                    mean_probs = action_probs.mean(dim=0).detach().cpu().numpy()
+                    action_names = ['noop', 'fire', 'up', 'right', 'left', 'down']
+                    prob_str = " | ".join([f"{name}: {p:.3f}" for name, p in zip(action_names, mean_probs)])
+                    print(f"  Mean Pred Probs: {prob_str}")
 
             # Optional PER Replay for full dataset (sampling from recent successes/failures)
             # 1. Add some samples to buffer from this epoch
@@ -341,26 +334,9 @@ def main():
                 actions = actions.to(device)
                 gazes   = gazes.to(device)
 
-                if args.use_gaze:
-                    probs = agent.model(states, gazes)
-                else:
-                    probs = agent.model(states, None)
-
-                B = probs.size(0)
-                action_probs = torch.zeros(B, 6, device=device)
-                prednames = agent.model.get_prednames()
-                for i, pred in enumerate(prednames):
-                    prefix = pred.split('_')[0]
-                    if prefix in PRIMITIVE_ACTION_MAP:
-                        action_probs[:, PRIMITIVE_ACTION_MAP[prefix]] += probs[:, i]
-
-                log_probs = torch.log(action_probs + 1e-10)
-                loss = agent.loss_fn(log_probs, actions)
-                agent.optimizer.zero_grad()
-                loss.backward()
-                agent.optimizer.step()
+                # Perform update using the agent's unified method
+                loss_val = agent.update(states, actions, gazes if args.use_gaze else None)
                 
-                loss_val = loss.item()
                 total_loss += loss_val
                 pbar.set_postfix({"loss": f"{loss_val:.4f}"})
                 
