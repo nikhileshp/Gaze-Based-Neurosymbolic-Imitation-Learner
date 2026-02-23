@@ -111,7 +111,7 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     attention_ratio = avg_val / uniform_density  # dimensionless, ~1.0 for uniform gaze
     
     # Scale to [0.01, 0.99] probability range
-    gaze_prob = th.clamp(0.99 * attention_ratio, 0.01, 0.99)
+    gaze_prob = th.clamp(0.99 * attention_ratio, 0.5, 0.99)
     
     # Mask out invisible objects (vis <= 0.5)
     vis_mask = (obj[:, 0] > 0.5).float()
@@ -284,10 +284,10 @@ def _close_by(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_x = obj[..., 1]
     obj_y = obj[..., 2]
-    # result = th.clip((128 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 128, 0, 1)
+    result = th.clip((128 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 128, 0, 1)
     #use a threshold of 15 px and return 1 if the distance is less than 15 px else 0
-    bool_val = abs(player_x - obj_x) + abs(player_y - obj_y) < 50
-    return bool_val
+    # bool_val = abs(player_x - obj_x) + abs(player_y - obj_y) < 50
+    return result
 
 
 def left_of_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
