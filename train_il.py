@@ -335,24 +335,28 @@ def main():
                         # Apply softmax across all rules to make them compete
                         probs = torch.softmax(probs, dim=1)
                         
-                        B = probs.size(0)
-                        # Aggregate rules into Actions using Mean (fixes Rule-Count Bias)
+                        # Aggregate rules into Actions using Max (Argmax Aggregation)
                         # Match the logic in agent.update
-                        action_scores = torch.zeros(B, 6, device=device)
-                        action_rule_counts = torch.zeros(6, device=device)
-                        
+                        action_rule_probs = {idx: [] for idx in range(6)}
                         for i, pred in enumerate(agent.model.get_prednames()):
                             prefix = pred.split('_')[0]
                             if prefix in PRIMITIVE_ACTION_MAP:
                                 idx = PRIMITIVE_ACTION_MAP[prefix]
-                                action_scores[:, idx] += probs[:, i]
-                                action_rule_counts[idx] += 1
-                                
-                        action_rule_counts = action_rule_counts.clamp(min=1)
-                        action_averages = action_scores / action_rule_counts.unsqueeze(0)
+                                action_rule_probs[idx].append(probs[:, i])
+                        
+                        action_scores_list = []
+                        for idx in range(6):
+                            if action_rule_probs[idx]:
+                                stacked = torch.stack(action_rule_probs[idx], dim=1)
+                                m, _ = torch.max(stacked, dim=1)
+                                action_scores_list.append(m)
+                            else:
+                                action_scores_list.append(torch.zeros(B, device=device))
+                        
+                        action_scores = torch.stack(action_scores_list, dim=1)
                         
                         # Normalize to action distribution
-                        action_probs = action_averages / (action_averages.sum(dim=1, keepdim=True) + 1e-10)
+                        action_probs = action_scores / (action_scores.sum(dim=1, keepdim=True) + 1e-10)
                         
                         eps = 1e-10
                         log_p = torch.log(action_probs + eps)

@@ -32,26 +32,33 @@ class ImitationAgent(nn.Module):
         
         # Apply softmax across all rules to make them compete
         B = probs.size(0)
-        # 1. Aggregate rules into Actions using Mean (fixes Rule-Count Bias)
-        # The user wants "divide it only by up actions", implying we normalize by rule count per action class.
-        action_scores = torch.zeros(B, 6, device=self.device)
-        action_rule_counts = torch.zeros(6, device=self.device)
-        
+        # 1. Aggregate rules into Actions using Max (Argmax Aggregation)
+        # This makes the action probability dependent on its single best rule.
+        # We use a list to collect results for each action to avoid in-place ops.
+        action_rule_probs = {idx: [] for idx in range(6)}
         for i, pred in enumerate(self.model.get_prednames()):
             prefix = pred.split('_')[0]
             if prefix in PRIMITIVE_ACTION_MAP:
                 idx = PRIMITIVE_ACTION_MAP[prefix]
-                action_scores[:, idx] += probs[:, i]
-                action_rule_counts[idx] += 1
-                
-        # Handle actions with no rules (clamp to 1 to avoid /0)
-        action_rule_counts = action_rule_counts.clamp(min=1)
-        action_averages = action_scores / action_rule_counts.unsqueeze(0)
+                action_rule_probs[idx].append(probs[:, i])
+        
+        action_scores_list = []
+        for idx in range(6):
+            if action_rule_probs[idx]:
+                # Stack rules for this action: (B, num_rules)
+                stacked = torch.stack(action_rule_probs[idx], dim=1)
+                # Max across rules: (B,)
+                m, _ = torch.max(stacked, dim=1)
+                action_scores_list.append(m)
+            else:
+                action_scores_list.append(torch.zeros(B, device=self.device))
+        
+        action_scores = torch.stack(action_scores_list, dim=1) # (B, 6)
         
         # 2. Convert to Action Probability Distribution
-        # We normalize the averages so they sum to 1.0 across all 6 actions.
+        # We normalize the scores so they sum to 1.0 across all 6 actions.
         # This allows P(UP) to reach 1.0 if its rules are firing, even if it has many rules.
-        action_probs = action_averages / (action_averages.sum(dim=1, keepdim=True) + 1e-10)
+        action_probs = action_scores / (action_scores.sum(dim=1, keepdim=True) + 1e-10)
         
         # 3. Compute NLL losses
         eps = 1e-10
