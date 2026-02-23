@@ -3,8 +3,8 @@ fire_left(X):-same_depth_enemy(P,E),visible_enemy(E),facing_left(P),right_of_ene
 fire_right(X):-same_depth_enemy(P,E),visible_enemy(E),facing_right(P),left_of_enemy(P,E).
 left_aim(X):-right_of_enemy(P,E),facing_right(P),same_depth_enemy(P,E),visible_enemy(E).
 right_aim(X):-left_of_enemy(P,E),facing_left(P),same_depth_enemy(P,E),visible_enemy(E).
-down_aim(X):-higher_than_enemy(P,E),visible_enemy(E).
-up_aim(X):-deeper_than_enemy(P,E),visible_enemy(E).
+down_aim(X):-higher_than_enemy(P,E),visible_enemy(E),not_close_by_enemy(P,E).
+up_aim(X):-deeper_than_enemy(P,E),visible_enemy(E),not_close_by_enemy(P,E).
 up_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E).
 down_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E).
 up_evade(X):-close_by_missile(P,M),same_depth_missile(P,M),visible_missile(M).
