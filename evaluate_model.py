@@ -80,7 +80,6 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             # agent.act returns the primitive action string (e.g., 'up', 'fire')
             # after aggregating clause probabilities.
             predicate = agent.act(logic_state_tensor, gaze=gaze_tensor)
-            print(predicate)
             # Step environment
             state, reward, done = env.step(predicate)
             total_reward += reward
