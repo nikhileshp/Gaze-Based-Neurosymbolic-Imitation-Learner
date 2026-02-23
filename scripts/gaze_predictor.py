@@ -3,7 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import sys 
+import numpy as np
+import sys
 
 def my_softmax(x):
     """
@@ -178,37 +179,86 @@ class Human_Gaze_Predictor:
 
 if __name__ == "__main__":
     import argparse
-    from load_data import *
     
-    parser = argparse.ArgumentParser(description="Generate human gaze heatmaps from trained PyTorch predictor model.")
-    parser.add_argument('--trajectories_dir', '-t', type=str, required=True, help="Path to the trajectories directory.")
-    parser.add_argument('--labels_csv', '-l', type=str, required=True, help="Path to the labels CSV file.")
-    parser.add_argument('--game_name', '-g', type=str, required=True, help="Name of the game (e.g., seaquest).")
-    parser.add_argument('--model_weights', '-m', type=str, required=False, default=None, help="Path to the pre-trained gaze model .pth file.")
-    parser.add_argument('--train', action='store_true', help="Set this flag to train the model instead of generating predictions.")
-    parser.add_argument('--gaze_masks', type=str, default="data/seaquest/gaze_masks.pt", help="Path to the ground truth gaze masks .pt file (required for training).")
-    parser.add_argument('--epochs', type=int, default=10, help="Number of epochs to train.")
-    parser.add_argument('--lr', type=float, default=1.0, help="Learning rate for Adadelta optimizer (default: 1.0).")
-    parser.add_argument('--rho', type=float, default=0.95, help="Rho parameter for Adadelta optimizer (default: 0.95).")
-    parser.add_argument('--weight_decay', type=float, default=0.0, help="Weight decay for regularization (default: 0.0).")
-    parser.add_argument('--log_csv', type=str, default=None, help="Path to save training learning curve metrics (Epoch vs Loss) as CSV.")
+    parser = argparse.ArgumentParser(description="Train or generate human gaze heatmaps.")
+    # ----- new .pt-based flow -----
+    parser.add_argument('--dataset', type=str, default=None,
+                        help='Path to .pt dataset file (from convert_trajectories_to_pt.py). '
+                             'When provided, this takes priority over --trajectories_dir / --labels_csv.')
+    parser.add_argument('--frame_stack', type=int, default=4,
+                        help='Number of frames to stack as one input sample (default: 4).')
+    # ----- legacy CSV-based flow -----
+    parser.add_argument('--trajectories_dir', '-t', type=str, default=None,
+                        help='Path to the trajectories directory (legacy CSV flow).')
+    parser.add_argument('--labels_csv', '-l', type=str, default=None,
+                        help='Path to the labels CSV file (legacy CSV flow).')
+    parser.add_argument('--gaze_masks', type=str, default='data/seaquest/gaze_masks.pt',
+                        help='Ground truth gaze masks .pt file (legacy flow only).')
+    # ----- shared args -----
+    parser.add_argument('--game_name', '-g', type=str, required=True,
+                        help='Game name prefix for the saved checkpoint (e.g. seaquest).')
+    parser.add_argument('--model_weights', '-m', type=str, default=None,
+                        help='Path to a .pth checkpoint to resume training from.')
+    parser.add_argument('--train', action='store_true',
+                        help='Train the model (required for legacy CSV flow; always trains in .pt flow).')
+    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--lr', type=float, default=1.0)
+    parser.add_argument('--rho', type=float, default=0.95)
+    parser.add_argument('--weight_decay', type=float, default=0.0)
+    parser.add_argument('--log_csv', type=str, default=None,
+                        help='CSV path to log (epoch, avg_loss) pairs.')
     args = parser.parse_args()
 
-    d = Dataset(args.trajectories_dir, args.labels_csv)
-    # For gaze prediction
-    d.generate_data_for_gaze_prediction()
-    
-    gp = Human_Gaze_Predictor(args.game_name) #game name
-    gp.init_model(args.model_weights, lr=args.lr, rho=args.rho, weight_decay=args.weight_decay) #gaze model .pth file
+    gp = Human_Gaze_Predictor(args.game_name)
+    gp.init_model(args.model_weights, lr=args.lr, rho=args.rho, weight_decay=args.weight_decay)
     gp.log_csv = args.log_csv
-    
-    if args.train:
-        print(f"Loading ground truth masks from {args.gaze_masks}...")
-        masks_tensor = torch.load(args.gaze_masks, map_location='cpu') # Shape (Num_Frames, 84, 84)
-        
-        # d.gaze_imgs corresponds to training frames starting after pastK=3
-        valid_indices = d.original_indices[3:]
-        
-        gp.train_model(d.gaze_imgs, masks_tensor, valid_indices, epochs=args.epochs)
+
+    # ── .pt dataset flow ─────────────────────────────────────────────────────
+    if args.dataset:
+        print(f"Loading .pt dataset from {args.dataset} ...")
+        data = torch.load(args.dataset, map_location='cpu', weights_only=False)
+
+        obs        = data['observations']   # numpy (T, H, W) uint8
+        gaze_masks = data['gaze_image']     # numpy or tensor (T, H, W) float32
+
+        if not isinstance(gaze_masks, torch.Tensor):
+            gaze_masks = torch.from_numpy(gaze_masks)
+
+        T, H, W    = obs.shape
+        k          = args.frame_stack
+        print(f"  Frames: {T}  |  Size: {H}x{W}  |  Stack: {k}")
+
+        obs_f32 = obs.astype(np.float32) / 255.0
+
+        # Build NHWC stacked frames
+        N             = T - (k - 1)
+        imgs_nhwc     = np.zeros((N, H, W, k), dtype=np.float32)
+        valid_indices = torch.arange(k - 1, T, dtype=torch.long)
+        for i in range(N):
+            for j in range(k):
+                imgs_nhwc[i, :, :, j] = obs_f32[i + j]
+
+        print(f"  imgs_nhwc : {imgs_nhwc.shape}")
+        print(f"  gaze_masks: {tuple(gaze_masks.shape)}")
+
+        gp.train_model(imgs_nhwc, gaze_masks, valid_indices,
+                       epochs=args.epochs, batch_size=args.batch_size)
+
+    # ── Legacy CSV flow ───────────────────────────────────────────────────────
     else:
-        gp.predict_and_save(d.gaze_imgs)
+        from load_data import Dataset
+        if not args.trajectories_dir or not args.labels_csv:
+            parser.error('--trajectories_dir and --labels_csv are required when --dataset is not set.')
+
+        d = Dataset(args.trajectories_dir, args.labels_csv)
+        d.generate_data_for_gaze_prediction()
+
+        if args.train:
+            print(f"Loading ground truth masks from {args.gaze_masks}...")
+            masks_tensor = torch.load(args.gaze_masks, map_location='cpu')
+            valid_indices = d.original_indices[3:]
+            gp.train_model(d.gaze_imgs, masks_tensor, valid_indices,
+                           epochs=args.epochs, batch_size=args.batch_size)
+        else:
+            gp.predict_and_save(d.gaze_imgs)

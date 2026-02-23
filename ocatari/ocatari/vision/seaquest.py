@@ -170,9 +170,29 @@ def _detect_objects(objects, obs, hud=False):
 
     match_objects(objects, shark[:12], 1, 12, Shark)
 
-    submarine = find_objects(obs, objects_colors["submarine"], min_distance=1, size=(10,12), tol_s=2)
-    match_objects(objects, submarine[:12], 13, 12, Submarine)
+    submarine_all = find_objects(obs, objects_colors["submarine"], min_distance=1, size=(10,12), tol_s=2)
+    
+    # Detect surface submarines separately: same gray color but in y=40-53 band.
+    # They are smaller (approx 8x7) so we use relaxed size constraints.
+    import numpy as np
+    surface_band = obs.copy()
+    surface_band[:40, :, :] = 0   # blank out everything above band
+    surface_band[54:, :, :] = 0   # blank out everything below band
+    surface_subs_raw = find_objects(surface_band, objects_colors["submarine"], min_distance=1, size=(4,3), tol_s=8)
+    
+    # Assign surface sub to slot 33 BEFORE match_objects so it doesn't steal a Submarine slot
+    if surface_subs_raw:
+        s = surface_subs_raw[0]
+        if type(objects[33]) is NoObject:
+            objects[33] = Submarine(*s)
+        else:
+            objects[33].xywh = s
+    else:
+        objects[33] = NoObject()
 
+    # Map underwater submarines (full-size gray, not in surface band) to slots 13-24
+    match_objects(objects, submarine_all[:12], 13, 12, Submarine)
+    
     oxygen_bar = find_objects(
         obs, objects_colors["oxygen_bar"], min_distance=1)
     if oxygen_bar:
