@@ -90,7 +90,7 @@ class FactsConverter(nn.Module):
         # 2. Batch Evaluation
         for pred_name, atoms in self.atom_groups.items():
             # Get valuations: (Batch, N)
-            vals = self.vm.batch_forward(Z, pred_name, atoms, gaze=gaze_arg)
+            vals = self.vm.batch_forward(Z, pred_name, atoms, gaze=gaze_arg, all_objects=Z)
             
             # Scatter back to V
             # indices: (N,)
