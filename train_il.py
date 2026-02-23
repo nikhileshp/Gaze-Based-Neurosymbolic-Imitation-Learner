@@ -230,13 +230,13 @@ def main():
                 pbar.set_postfix({"loss": f"{loss_val:.4f}"})
 
                 # DEBUG: Print distribution for the first batch of the first epoch
-                if epoch == 0 and n_batches == 1:
-                    print("\n[DEBUG] First Batch Stats:")
-                    print(f"  GT Actions counter: {Counter(actions.tolist())}")
-                    mean_probs = action_probs.mean(dim=0).detach().cpu().numpy()
-                    action_names = ['noop', 'fire', 'up', 'right', 'left', 'down']
-                    prob_str = " | ".join([f"{name}: {p:.3f}" for name, p in zip(action_names, mean_probs)])
-                    print(f"  Mean Pred Probs: {prob_str}")
+                # if epoch == 0 and n_batches == 1:
+                #     print("\n[DEBUG] First Batch Stats:")
+                #     print(f"  GT Actions counter: {Counter(actions.tolist())}")
+                #     mean_probs = action_probs.mean(dim=0).detach().cpu().numpy()
+                #     action_names = ['noop', 'fire', 'up', 'right', 'left', 'down']
+                #     prob_str = " | ".join([f"{name}: {p:.3f}" for name, p in zip(action_names, mean_probs)])
+                #     print(f"  Mean Pred Probs: {prob_str}")
 
             # Optional PER Replay for full dataset (sampling from recent successes/failures)
             # 1. Add some samples to buffer from this epoch
