@@ -25,14 +25,22 @@ class PrioritizedReplayBuffer:
         self.priorities = []
         self.position = 0
 
-    def add(self, states, actions, gazes, losses):
+    def add(self, states, actions, gazes, losses, ep_nums=None, step_idxs=None):
         """Add a batch of experiences with their associated losses as priorities."""
         if torch.is_tensor(states): states = states.cpu()
         if torch.is_tensor(actions): actions = actions.cpu()
         if torch.is_tensor(gazes): gazes = gazes.cpu()
+        if torch.is_tensor(ep_nums): ep_nums = ep_nums.cpu()
+        if torch.is_tensor(step_idxs): step_idxs = step_idxs.cpu()
         
         for i in range(len(states)):
-            experience = (states[i], actions[i], gazes[i])
+            experience = (
+                states[i], 
+                actions[i], 
+                gazes[i], 
+                ep_nums[i] if ep_nums is not None else -1, 
+                step_idxs[i] if step_idxs is not None else -1
+            )
             priority = (abs(losses[i]) + 1e-6) ** self.alpha
             
             if len(self.buffer) < self.capacity:
@@ -56,8 +64,10 @@ class PrioritizedReplayBuffer:
         states = torch.stack([s[0] for s in samples])
         actions = torch.stack([s[1] for s in samples])
         gazes = torch.stack([s[2] for s in samples])
+        ep_nums = torch.stack([torch.tensor(s[3]) for s in samples])
+        step_idxs = torch.stack([torch.tensor(s[4]) for s in samples])
         
-        return states, actions, gazes, indices
+        return states, actions, gazes, ep_nums, step_idxs, indices
 
     def update_priorities(self, indices, losses):
         for idx, loss in zip(indices, losses):
@@ -181,14 +191,13 @@ def main():
             val_dataset   = None
             print(f"Train: {len(train_dataset)} samples (no validation split)")
 
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=args.batch_size,
-            shuffle=True,
-            num_workers=args.num_workers,
-            pin_memory=(device.type == 'cuda'),
-            persistent_workers=(args.num_workers > 0),
-        )
+        # Get unique episodes from train_dataset for per-epoch selection
+        if isinstance(train_dataset, torch.utils.data.Subset):
+            ep_nums_all = train_dataset.dataset.ep_nums[train_dataset.indices]
+        else:
+            ep_nums_all = train_dataset.ep_nums
+        unique_eps = torch.unique(ep_nums_all)
+        print(f"Found {len(unique_eps)} unique episodes in training set.")
         val_loader = DataLoader(
             val_dataset, batch_size=args.batch_size * 2, shuffle=False,
             num_workers=args.num_workers, pin_memory=(device.type == 'cuda'),
@@ -205,30 +214,54 @@ def main():
         num_iters = args.num_episodes if args.num_episodes is not None else "full"
         experiment_str = f"{args.env}_{args.rules}_il_lr_{args.lr}_num_ep_{num_iters}"
 
-        # Initialize PER, Early Stopping and Best Model tracking
-        # BEST Model and Valuation tracking
+        # Load pre-computed valuations if they exist
+        valuations = None
+        if os.path.exists(args.valuation_path):
+            print(f"Loading pre-computed valuations from {args.valuation_path}...")
+            valuations = torch.load(args.valuation_path, map_location=device)
+        else:
+            print(f"No pre-computed valuations found at {args.valuation_path}. Training from logic states.")
+
+        replay_buffer = PrioritizedReplayBuffer(capacity=25000)
+        replay_steps = 1
         best_mean_reward = -float('inf')
         patience = 5
         patience_counter = 0
-        
-        # Load pre-computed valuations if they exist
-        valuations = None
-        # if os.path.exists(args.valuation_path):
-            # print(f"Loading pre-computed valuations from {args.valuation_path}...")
-            # valuations = torch.load(args.valuation_path, map_location=device)
-        # else:
-            # print(f"No pre-computed valuations found at {args.valuation_path}. Training from logic states.")
 
         for epoch in range(args.epochs):
             print(f"\n--- Epoch {epoch+1}/{args.epochs} ---")
+            
+            # Select episode for this epoch: Episode i
+            target_ep_id = unique_eps[epoch % len(unique_eps)]
+            print(f"Epoch {epoch+1} -> Training on Episode ID: {target_ep_id.item()}")
+            
+            if isinstance(train_dataset, torch.utils.data.Subset):
+                # subset_ep_nums = train_dataset.dataset.ep_nums[train_dataset.indices]
+                # ep_mask = (subset_ep_nums == target_ep_id)
+                # Correct way for Subset
+                all_indices = torch.tensor(train_dataset.indices)
+                all_ep_nums = train_dataset.dataset.ep_nums[all_indices]
+                ep_mask = (all_ep_nums == target_ep_id)
+                epoch_indices = all_indices[ep_mask].tolist()
+                epoch_dataset = torch.utils.data.Subset(train_dataset.dataset, epoch_indices)
+            else:
+                indices = torch.where(train_dataset.ep_nums == target_ep_id)[0]
+                epoch_dataset = torch.utils.data.Subset(train_dataset, indices)
+            
+            epoch_loader = DataLoader(
+                epoch_dataset,
+                batch_size=args.batch_size,
+                shuffle=True,
+                num_workers=args.num_workers,
+                pin_memory=(device.type == 'cuda'),
+            )
+
             agent.model.train()
 
             total_loss, n_batches = 0.0, 0
-            pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}")
+            pbar = tqdm(epoch_loader, desc=f"Epoch {epoch+1}")
             for states, actions, gazes, ep_nums, step_idxs in pbar:
-                states  = states.to(device)
-                actions = actions.to(device)
-                gazes   = gazes.to(device)
+                states, actions, gazes = states.to(device), actions.to(device), gazes.to(device)
 
                 # Look up pre-computed valuations if available
                 vT_batch = None
@@ -236,24 +269,42 @@ def main():
                     # Construct batch from pre-computed V_T
                     vT_list = []
                     for ep_id, step_idx in zip(ep_nums, step_idxs):
-                        vT_list.append(valuations[ep_id.item()][step_idx.item()])
+                        ep_id, s_idx = ep_id.item(), step_idx.item()
+                        if ep_id in valuations and s_idx < len(valuations[ep_id]):
+                            vT_list.append(valuations[ep_id][s_idx])
+                        else:
+                            # Fallback if step missing
+                            vT_list.append(torch.zeros(len(agent.model.atoms)).to(device))
                     vT_batch = torch.stack(vT_list).to(device)
 
-                # Perform update using the agent's unified method
-                loss_val = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch)
+                # ── UPDATE A: Discovery (Fresh Batch) ──
+                loss_val, ind_losses = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch)
                 
+                # Add to PER
+                replay_buffer.add(states, actions, gazes, ind_losses, ep_nums, step_idxs)
+                
+                # ── UPDATE B: Focus (Replay Batch) ──
+                if len(replay_buffer) >= args.batch_size:
+                    for _ in range(replay_steps):
+                        sample = replay_buffer.sample(args.batch_size)
+                        if sample:
+                            s_r, a_r, g_r, e_r, st_r, indices = sample
+                            s_r, a_r, g_r = s_r.to(device), a_r.to(device), g_r.to(device)
+                            
+                            vT_r = None
+                            if valuations is not None:
+                                vT_r_list = []
+                                for ep_id, s_idx in zip(e_r, st_r):
+                                    ep_id, s_idx = ep_id.item(), s_idx.item()
+                                    vT_r_list.append(valuations[ep_id][s_idx] if ep_id in valuations else torch.zeros(len(agent.model.atoms)).to(device))
+                                vT_r = torch.stack(vT_r_list).to(device)
+                            
+                            l_r, ind_l_r = agent.update(s_r, a_r, g_r if args.use_gaze else None, vT=vT_r)
+                            replay_buffer.update_priorities(indices, ind_l_r)
+
                 total_loss += loss_val
                 n_batches  += 1
-                pbar.set_postfix({"loss": f"{loss_val:.4f}"})
-
-                # DEBUG: Print distribution for the first batch of the first epoch
-                # if epoch == 0 and n_batches == 1:
-                #     print("\n[DEBUG] First Batch Stats:")
-                #     print(f"  GT Actions counter: {Counter(actions.tolist())}")
-                #     mean_probs = action_probs.mean(dim=0).detach().cpu().numpy()
-                #     action_names = ['noop', 'fire', 'up', 'right', 'left', 'down']
-                #     prob_str = " | ".join([f"{name}: {p:.3f}" for name, p in zip(action_names, mean_probs)])
-                #     print(f"  Mean Pred Probs: {prob_str}")
+                pbar.set_postfix({"loss": f"{loss_val:.4f}", "per": f"{len(replay_buffer)}"})
 
             # Optional PER Replay for full dataset (sampling from recent successes/failures)
             # 1. Add some samples to buffer from this epoch
@@ -280,18 +331,37 @@ def main():
                         else:
                             probs = agent.model(states, gazes if args.use_gaze else None)
                         
+                        # Ensure model is in same mode as trainer's update for aggregation
+                        # Apply softmax across all rules to make them compete
+                        probs = torch.softmax(probs, dim=1)
+                        
                         B = probs.size(0)
-                        act_p = torch.zeros(B, 6, device=device)
+                        # Aggregate rules into Actions using Mean (fixes Rule-Count Bias)
+                        # Match the logic in agent.update
+                        action_scores = torch.zeros(B, 6, device=device)
+                        action_rule_counts = torch.zeros(6, device=device)
+                        
                         for i, pred in enumerate(agent.model.get_prednames()):
                             prefix = pred.split('_')[0]
                             if prefix in PRIMITIVE_ACTION_MAP:
-                                act_p[:, PRIMITIVE_ACTION_MAP[prefix]] += probs[:, i]
-                        log_p = torch.log(act_p + 1e-10)
-                        val_loss += agent.loss_fn(log_p, actions).item()
+                                idx = PRIMITIVE_ACTION_MAP[prefix]
+                                action_scores[:, idx] += probs[:, i]
+                                action_rule_counts[idx] += 1
+                                
+                        action_rule_counts = action_rule_counts.clamp(min=1)
+                        action_averages = action_scores / action_rule_counts.unsqueeze(0)
+                        
+                        # Normalize to action distribution
+                        action_probs = action_averages / (action_averages.sum(dim=1, keepdim=True) + 1e-10)
+                        
+                        eps = 1e-10
+                        log_p = torch.log(action_probs + eps)
+                        batch_loss = agent.loss_fn(log_p, actions)
+                        val_loss += batch_loss.item()
                         val_n += 1
                 print(f"Epoch {epoch+1} Val Loss:   {val_loss / max(val_n, 1):.4f}")
             # Evaluation in environment
-            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, valuation_interval=100, log_interval=100, gaze_predictor=(gaze_predictor if args.use_gazemap else None))
+            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, valuation_interval=0, log_interval=0, gaze_predictor=(gaze_predictor if args.use_gazemap else None))
             mean_reward, std_reward = np.mean(rewards), np.std(rewards)
             print(f"Epoch {epoch+1} Eval Score: Mean={mean_reward:.2f}  Std={std_reward:.2f}")
 
@@ -362,7 +432,7 @@ def main():
                 gazes   = gazes.to(device)
 
                 # Perform update using the agent's unified method
-                loss_val = agent.update(states, actions, gazes if args.use_gaze else None)
+                loss_val, _ = agent.update(states, actions, gazes if args.use_gaze else None)
                 
                 total_loss += loss_val
                 pbar.set_postfix({"loss": f"{loss_val:.4f}"})
@@ -404,10 +474,8 @@ def main():
                             act_p_b[:, PRIMITIVE_ACTION_MAP[prefix]] += p_b[:, i]
                     log_p_b = torch.log(act_p_b + 1e-10)
                     l_b_ind = torch.nn.functional.nll_loss(log_p_b, a_b, reduction='none')
-                    agent.optimizer.zero_grad()
-                    l_b_ind.mean().backward()
-                    agent.optimizer.step()
-                    replay_buffer.update_priorities(indices, l_b_ind.detach().cpu().numpy())
+                    l_b_ind_mean, l_b_ind = agent.update(s_b, a_b, g_b if args.use_gaze else None)
+                    replay_buffer.update_priorities(indices, l_b_ind)
 
             avg_loss = total_loss / len(dataloader)
             print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
