@@ -135,7 +135,7 @@ def gaze_object_attention_normalized(
 
     # Sum gaze over every object slot — shape (B, N)
     # Flatten all_objects to (B*N, features), compute sums, reshape back
-    flat_objs = all_objects.view(B * N, -1)                    # (B*N, F)
+    flat_objs = all_objects.reshape(B * N, -1)                    # (B*N, F)
     flat_gaze = integral.unsqueeze(1).expand(-1, N, -1, -1)    # (B, N, 85, 85)
     flat_gaze = flat_gaze.reshape(B * N, 85, 85)               # (B*N, 85, 85)
 
@@ -166,7 +166,7 @@ def gaze_object_attention_normalized(
     # Zero out absent objects
     present_all = (flat_objs[:, 0] > 0.5).float()             # (B*N)
     sums = sums * present_all
-    sums = sums.view(B, N)                                     # (B, N)
+    sums = sums.reshape(B, N)                                     # (B, N)
 
     # Normalize across all objects per frame
     total = sums.sum(dim=1, keepdim=True).clamp(min=1e-8)     # (B, 1)
