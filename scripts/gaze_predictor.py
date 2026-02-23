@@ -1,10 +1,10 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-import sys
+import os
+from scripts.data_utils import load_gaze_predictor_data
 
 def my_softmax(x):
     """
@@ -139,7 +139,7 @@ class Human_Gaze_Predictor:
                 df = pd.DataFrame([{'epoch': epoch + 1, 'loss': avg_loss}])
                 df.to_csv(self.log_csv, mode='a', header=False, index=False)
             
-        save_path = f"{self.game_name}_gaze_predictor_2.pth"
+        save_path = f"models/gaze_predictor/{self.game_name}_gaze_predictor_2.pth"
         torch.save(self.model.state_dict(), save_path)
         print(f"Model saved to {save_path}")
   
@@ -216,31 +216,9 @@ if __name__ == "__main__":
 
     # ── .pt dataset flow ─────────────────────────────────────────────────────
     if args.dataset:
-        print(f"Loading .pt dataset from {args.dataset} ...")
-        data = torch.load(args.dataset, map_location='cpu', weights_only=False)
-
-        obs        = data['observations']   # numpy (T, H, W) uint8
-        gaze_masks = data['gaze_image']     # numpy or tensor (T, H, W) float32
-
-        if not isinstance(gaze_masks, torch.Tensor):
-            gaze_masks = torch.from_numpy(gaze_masks)
-
-        T, H, W    = obs.shape
-        k          = args.frame_stack
-        print(f"  Frames: {T}  |  Size: {H}x{W}  |  Stack: {k}")
-
-        obs_f32 = obs.astype(np.float32) / 255.0
-
-        # Build NHWC stacked frames
-        N             = T - (k - 1)
-        imgs_nhwc     = np.zeros((N, H, W, k), dtype=np.float32)
-        valid_indices = torch.arange(k - 1, T, dtype=torch.long)
-        for i in range(N):
-            for j in range(k):
-                imgs_nhwc[i, :, :, j] = obs_f32[i + j]
-
-        print(f"  imgs_nhwc : {imgs_nhwc.shape}")
-        print(f"  gaze_masks: {tuple(gaze_masks.shape)}")
+        imgs_nhwc, gaze_masks, valid_indices = load_gaze_predictor_data(
+            args.dataset, frame_stack=args.frame_stack, device='cpu'
+        )
 
         gp.train_model(imgs_nhwc, gaze_masks, valid_indices,
                        epochs=args.epochs, batch_size=args.batch_size)

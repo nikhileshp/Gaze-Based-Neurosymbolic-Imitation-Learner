@@ -3,120 +3,192 @@ import torch as th
 from nsfr.utils.common import bool_to_probs
 
 
-LOWER_BOUND = 0.60
+GAZE_LOWER_BOUND = 0.1  # Non-attended but present objects get at least this probability
+LOWER_BOUND = 0.5
 HIGHER_BOUND = 0.99
-def visible_missile(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:
+
+def visible_missile(obj: th.Tensor, gaze: th.Tensor = None, all_objects: th.Tensor = None) -> th.Tensor:
+    """Probability that a missile is 'visible' (attended to).
+    When gaze is provided together with all_objects, uses normalized gaze attention.
+    Otherwise falls back to binary presence."""
     result = obj[..., 0] == 1
     val = bool_to_probs(result)
-    if gaze is not None and len(gaze.shape) > 2:
-        # Missile height is approx 4
-        gaze_val = _get_gaze_value(obj, gaze, height=4)
+    if gaze is not None and all_objects is not None:
+        gaze_val = gaze_object_attention_normalized(obj, gaze, all_objects)
         val = th.where(result, gaze_val, val)
     return val
 
 
-def visible_enemy(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:  
+def visible_enemy(obj: th.Tensor, gaze: th.Tensor = None, all_objects: th.Tensor = None) -> th.Tensor:
+    """Probability that an enemy is 'visible' (attended to).
+    When gaze is provided together with all_objects, uses normalized gaze attention.
+    Otherwise falls back to binary presence."""
     result = obj[..., 0] == 1
     val = bool_to_probs(result)
-    if gaze is not None and len(gaze.shape) > 2:
-        # Enemy height is approx 10
-        gaze_val = _get_gaze_value(obj, gaze, height=10)
-
+    if gaze is not None and all_objects is not None:
+        gaze_val = gaze_object_attention_normalized(obj, gaze, all_objects)
         val = th.where(result, gaze_val, val)
     return val
 
 
-def visible_diver(obj: th.Tensor, gaze: th.Tensor = None) -> th.Tensor:
+def visible_diver(obj: th.Tensor, gaze: th.Tensor = None, all_objects: th.Tensor = None) -> th.Tensor:
+    """Probability that a diver is 'visible' (attended to).
+    When gaze is provided together with all_objects, uses normalized gaze attention.
+    Otherwise falls back to binary presence."""
     result = obj[..., 0] == 1
     val = bool_to_probs(result)
-    if gaze is not None and len(gaze.shape) > 2:
-        # Diver height is approx 11
-        gaze_val = _get_gaze_value(obj, gaze, height=11)
+    if gaze is not None and all_objects is not None:
+        gaze_val = gaze_object_attention_normalized(obj, gaze, all_objects)
         val = th.where(result, gaze_val, val)
     return val
 
 
-def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Tensor:
+def gaze_bbox_sum(obj: th.Tensor, gaze: th.Tensor) -> th.Tensor:
     """
-    Calculate average gaze intensity within the object's bounding box.
-    Vectorized implementation using integral images for speed.
-    obj: (batch, features) [vis, x, y, w, ...]
-    gaze: (batch, 84, 84)
-    height: approximate height of object (since obj might not have it)
+    Compute the sum of gaze heatmap values within each object's bounding box.
+    Uses a Summed Area Table (integral image) for speed.
+
+    Args:
+        obj:  (B, N_FEATURES)  — logic state row: [present, cx, cy, w, h, orient, type_id]
+              Coordinates are in original game space (160×210).
+        gaze: (B, 84, 84)      — normalized gaze heatmap (values sum to 1 per frame).
+
+    Returns:
+        raw_sum: (B,)  — sum of gaze mass inside the object's bbox (0 for absent objects).
     """
-    batch_size = obj.shape[0]
+    B = obj.shape[0]
     device = obj.device
 
-    # Scaling factors (160x210 -> 84x84)
+    # Scale from game space (160×210) to heatmap space (84×84)
     sx = 84.0 / 160.0
     sy = 84.0 / 210.0
-    
-    # Coordinates (Vectorized)
-    x = (obj[:, 1] * sx).long()
-    y = (obj[:, 2] * sy).long()
-    w = (obj[:, 3] * sx).long()
-    h = (obj[:, 4] * sy).long()
-    
-    # Clip coordinates to valid range [0, 84]
-    # We use 0-84 because for integral image, index 84 corresponds to sum of all 0-83
+
+    # Object centre coordinates → top-left corner for the bbox
+    cx = obj[:, 1].float()
+    cy = obj[:, 2].float()
+    w  = obj[:, 3].float()
+    h  = obj[:, 4].float()
+
+    # Convert to heatmap pixel coordinates
+    x  = ((cx - w / 2) * sx).long()
+    y  = ((cy - h / 2) * sy).long()
+    dw = (w * sx).long().clamp(min=1)
+    dh = (h * sy).long().clamp(min=1)
+
     x1 = x.clamp(0, 84)
     y1 = y.clamp(0, 84)
-    x2 = (x + w).clamp(0, 84)
-    y2 = (y + h).clamp(0, 84)
-    
-    # Calculate area (clamp min=1 to avoid division by zero)
-    area = ((x2 - x1) * (y2 - y1)).float().clamp(min=1.0)
-    
-    # Compute Integral Image (Summed Area Table)
-    # Pad left and top with 0 for easy indexing (0,0 corresponds to sum=0)
-    # Result shape: (batch, 85, 85)
-    # gaze is (batch, 84, 84)
-    
-    # Compute Integral Image (Summed Area Table)
-    # If gaze is already integral (85x85), use it. Else compute.
+    x2 = (x + dw).clamp(0, 84)
+    y2 = (y + dh).clamp(0, 84)
+
+    # Build integral image (SAT) — shape (B, 85, 85)
     if gaze.shape[-1] == 85:
         integral = gaze
     else:
-        gaze_padded = th.nn.functional.pad(gaze, (1, 0, 1, 0)) # Pad left and top
-        integral = gaze_padded.cumsum(dim=1).cumsum(dim=2)
-    
-    # Gather values at corners using batch indices
-    # We need to index (b, y, x)
-    b_idx = th.arange(batch_size, device=device)
-    
-    # x1, y1, x2, y2 are definitely in [0, 84] range, valid for indexing [0, 85] size
-    
-    # Bottom-Right (y2, x2)
+        padded   = th.nn.functional.pad(gaze, (1, 0, 1, 0))
+        integral = padded.cumsum(dim=1).cumsum(dim=2)
+
+    b_idx = th.arange(B, device=device)
+
+    # Four-corner lookup
     val_br = integral[b_idx, y2, x2]
-    # Top-Left (y1, x1)
     val_tl = integral[b_idx, y1, x1]
-    # Top-Right (y1, x2)
     val_tr = integral[b_idx, y1, x2]
-    # Bottom-Left (y2, x1)
     val_bl = integral[b_idx, y2, x1]
-    
-    total_val = val_br - val_tr - val_bl + val_tl
-    
-    avg_val = total_val / area
-    
-    # The heatmap is softmax-normalized: all 84*84=7056 pixels sum to 1.0.
-    # So uniform density = 1/7056 per pixel. Raw avg_val is always ~0.0001,
-    # which would zero out every visible object if used directly.
-    #
-    # Solution: compute an attention_ratio = (object density) / (uniform density).
-    # - ratio == 1  ->  object gets exactly its fair share of gaze  ->  keep ~0.99
-    # - ratio >> 1  ->  object is actively gazed at                 ->  keep 0.99
-    # - ratio << 1  ->  object is not being looked at               ->  suppress
-    uniform_density = 1.0 / (84.0 * 84.0)  # ~0.000142
-    attention_ratio = avg_val / uniform_density  # dimensionless, ~1.0 for uniform gaze
-    
-    # Scale to [0.01, 0.99] probability range
-    gaze_prob = th.clamp(0.99 * attention_ratio, 0.5, 0.99)
-    
-    # Mask out invisible objects (vis <= 0.5)
-    vis_mask = (obj[:, 0] > 0.5).float()
-    
-    return gaze_prob * vis_mask
+
+    raw_sum = (val_br - val_tr - val_bl + val_tl).clamp(min=0.0)
+
+    # Zero out absent objects
+    present = (obj[:, 0] > 0.5).float()
+    return raw_sum * present
+
+
+def gaze_object_attention_normalized(
+    obj: th.Tensor,
+    gaze: th.Tensor,
+    all_objects: th.Tensor,
+) -> th.Tensor:
+    """
+    Compute the gaze-attention probability for `obj`, normalized over all present
+    objects in `all_objects`.
+
+    The normalization ensures probabilities sum to 1 across all objects on screen,
+    then each individual value is clipped to [GAZE_LOWER_BOUND, 1.0] so that even
+    unattended objects remain 'seen' with at least GAZE_LOWER_BOUND probability.
+
+    Args:
+        obj:         (B, N_FEATURES)   — the specific object to compute visibility for.
+        gaze:        (B, 84, 84)       — normalized gaze heatmap.
+        all_objects: (B, N_OBJ, N_FEATURES) — full logic state for all objects in the scene.
+
+    Returns:
+        attention: (B,)  in [GAZE_LOWER_BOUND, 1.0]
+    """
+    B, N, _ = all_objects.shape
+    device = obj.device
+
+    # Precompute the integral image once for the whole batch
+    if gaze.shape[-1] == 85:
+        integral = gaze
+    else:
+        padded   = th.nn.functional.pad(gaze, (1, 0, 1, 0))
+        integral = padded.cumsum(dim=1).cumsum(dim=2)
+
+    # Sum gaze over every object slot — shape (B, N)
+    # Flatten all_objects to (B*N, features), compute sums, reshape back
+    flat_objs = all_objects.view(B * N, -1)                    # (B*N, F)
+    flat_gaze = integral.unsqueeze(1).expand(-1, N, -1, -1)    # (B, N, 85, 85)
+    flat_gaze = flat_gaze.reshape(B * N, 85, 85)               # (B*N, 85, 85)
+
+    # We need gaze_bbox_sum to work on (B*N) items with matching integral images
+    # Re-implement the SAT lookup inline to avoid re-padding
+    sx = 84.0 / 160.0
+    sy = 84.0 / 210.0
+
+    cx  = flat_objs[:, 1].float()
+    cy  = flat_objs[:, 2].float()
+    w_f = flat_objs[:, 3].float()
+    h_f = flat_objs[:, 4].float()
+
+    x  = ((cx - w_f / 2) * sx).long()
+    y  = ((cy - h_f / 2) * sy).long()
+    dw = (w_f * sx).long().clamp(min=1)
+    dh = (h_f * sy).long().clamp(min=1)
+
+    x1 = x.clamp(0, 84);  y1 = y.clamp(0, 84)
+    x2 = (x + dw).clamp(0, 84);  y2 = (y + dh).clamp(0, 84)
+
+    bn_idx = th.arange(B * N, device=device)
+    sums = (flat_gaze[bn_idx, y2, x2]
+            - flat_gaze[bn_idx, y1, x2]
+            - flat_gaze[bn_idx, y2, x1]
+            + flat_gaze[bn_idx, y1, x1]).clamp(min=0.0)        # (B*N)
+
+    # Zero out absent objects
+    present_all = (flat_objs[:, 0] > 0.5).float()             # (B*N)
+    sums = sums * present_all
+    sums = sums.view(B, N)                                     # (B, N)
+
+    # Normalize across all objects per frame
+    total = sums.sum(dim=1, keepdim=True).clamp(min=1e-8)     # (B, 1)
+    normalized = sums / total                                  # (B, N) summing to ≤1
+
+    # Find which slot corresponds to `obj` by matching the first feature (present flag)
+    # and coordinates — use sum of bbox features as a fingerprint
+    obj_fp  = obj[:, 1:5].float()                             # (B, 4)  cx,cy,w,h
+    all_fp  = all_objects[:, :, 1:5].float()                  # (B, N, 4)
+    diff    = (all_fp - obj_fp.unsqueeze(1)).abs().sum(dim=-1) # (B, N)
+    slot    = diff.argmin(dim=1)                               # (B,)
+
+    b_idx   = th.arange(B, device=device)
+    obj_attention = normalized[b_idx, slot]                    # (B,)
+
+    # Clip to lower bound so absent objects stay suppressed, but present ones
+    # always get at least GAZE_LOWER_BOUND
+    is_present = (obj[:, 0] > 0.5).float()
+    attention  = th.clamp(obj_attention, min=GAZE_LOWER_BOUND) * is_present + \
+                 bool_to_probs(obj[:, 0] == 1) * (1 - is_present)
+
+    return attention
 
 
 def facing_left(player: th.Tensor) -> th.Tensor:
@@ -187,7 +259,7 @@ def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_y = obj[..., 2]
     result = obj_exists & (player_y > obj_y) & (same_depth_enemy(player, obj) < HIGHER_BOUND)
-    prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
     
     return bool_to_probs(result)
 
@@ -199,7 +271,7 @@ def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_y = obj[..., 2]
   
     result = obj_exists & (player_y > obj_y) & (same_depth_diver(player, obj) < HIGHER_BOUND)
-    prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
 
     return bool_to_probs(result)
 
@@ -213,7 +285,7 @@ def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_y = obj[..., 2]
     result = obj_exists & (player_y < obj_y) & (same_depth_enemy(player, obj) < HIGHER_BOUND)
     
-    prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
 
     # print("Result", result, "Object y", obj_y, "Player y", player_y, "prox", prox)
     return bool_to_probs(result)
@@ -239,7 +311,7 @@ def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # New Logic: Decays with distance
     # Starts high near threshold (11px) and decays as distance increases
     # e.g. at 11px diff -> 1.0, at 51px diff -> 0.0
-    prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
     return bool_to_probs(result)
 
 

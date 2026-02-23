@@ -24,7 +24,7 @@ class NudgeEnv(NudgeBaseEnv):
         super().__init__(mode)
         self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="vision",
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
-        self.n_objects = 48 # Increased from 47 to include Surface
+        self.n_objects = 49 # Increased from 47 to include Surface
         self.n_features = 7  # visible, x-pos, y-pos, width, height, right-facing, type_id
 
         # Compute index offsets. Needed to deal with multiple same-category objects

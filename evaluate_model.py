@@ -77,28 +77,19 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             logic_state_tensor = torch.tensor(logic_state, dtype=torch.float32, device=agent.device).unsqueeze(0)
             
             # Select action index
-            # agent.act passes gaze down to the NSFR model if provided
-            action_idx = agent.act(logic_state_tensor, gaze=gaze_tensor)
-            
-            # Print top atom valuations every valuation_interval steps
-            if valuation_interval > 0 and step_count % valuation_interval == 0 and step_count > 0:
-                if hasattr(agent.model, 'V_0') and agent.model.V_0 is not None:
-                    v0 = agent.model.V_0.squeeze(0).detach().cpu()
-                    atoms = agent.model.atoms
-                    pairs = sorted(zip(atoms, v0.tolist()), key=lambda x: x[1], reverse=True)
-                    visible_pairs = [(a, v) for a, v in pairs if str(a).startswith("visible_") and v > 0.01]
-                    print(f"  --- visible_ Valuations at Step {step_count} ---")
-                    for atom, val in visible_pairs:
-                        print(f"    {val:.3f}  {atom}")
-            
-            # Map action index to predicate name
-            prednames = agent.model.get_prednames()
-            predicate = prednames[action_idx]
+            # agent.act returns the primitive action string (e.g., 'up', 'fire')
+            # after aggregating clause probabilities.
+            predicate = agent.act(logic_state_tensor, gaze=gaze_tensor)
             
             # Step environment
             state, reward, done = env.step(predicate)
             total_reward += reward
             step_count += 1
+            
+            # DEBUG: Print action every 50 steps
+            if step_count % 50 == 0:
+                print(f"  Step {step_count} | Action: {predicate} | CumReward: {total_reward:.1f}")
+
             if log_interval > 0 and step_count % log_interval == 0:
                 print(f"  Episode {i+1} | Step {step_count} | Cumulative Reward: {total_reward:.1f}")
             
