@@ -6,22 +6,29 @@ class ImitationAgent(nn.Module):
     def __init__(self, env_name, rules, device, lr=0.001, gaze_threshold=None):
         super().__init__()
         self.device = device
+        print(f"Initializing NSFR model for {env_name}...", flush=True)
         self.model = get_nsfr_model(env_name, rules, device=device, train=True, gaze_threshold=gaze_threshold)
+        print("NSFR model initialized.", flush=True)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.loss_fn = nn.NLLLoss()
 
-    def update(self, states, actions, gazes=None):
+    def update(self, states, actions, gazes=None, vT=None):
         """
         Update the model using a batch of states and actions.
         Args:
             states: Tensor of logic states (batch_size, num_atoms)
             actions: Tensor of action indices (batch_size)
             gazes: Tensor of gaze centers (batch_size, 2) or None
+            vT: Pre-computed intermediate valuation tensor (batch_size, num_atoms) or None
         """
         from scripts.data_utils import PRIMITIVE_ACTION_MAP
         
-        # Forward pass
-        probs = self.model(states, gazes)
+        if vT is not None:
+            # Skip the forward pass and use pre-computed valuations
+            probs = self.model.get_predictions(vT.to(self.device), prednames=self.model.prednames)
+        else:
+            # Forward pass (perception + reasoning)
+            probs = self.model(states, gazes)
         
         # Apply softmax across all rules to make them compete
         probs = torch.softmax(probs, dim=1)

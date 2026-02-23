@@ -114,6 +114,7 @@ def main():
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
     parser.add_argument("--num_episodes", type=int, default=None, help="Number of episodes to load from .pt dataset")
     parser.add_argument("--sort_by", type=str, default=None, choices=['length', 'reward_per_step'], help="How to sort episodes before selection")
+    parser.add_argument("--valuation_path", type=str, default="models/nsfr/seaquest/_no_gaze/valuation.pt", help="Path to pre-computed valuation.pt")
     args = parser.parse_args()
 
     if args.use_gazemap:
@@ -205,11 +206,18 @@ def main():
         experiment_str = f"{args.env}_{args.rules}_il_lr_{args.lr}_num_ep_{num_iters}"
 
         # Initialize PER, Early Stopping and Best Model tracking
-        replay_buffer = PrioritizedReplayBuffer(capacity=50000)
+        # BEST Model and Valuation tracking
         best_mean_reward = -float('inf')
         patience = 5
         patience_counter = 0
-        replay_steps = 10 
+        
+        # Load pre-computed valuations if they exist
+        valuations = None
+        # if os.path.exists(args.valuation_path):
+            # print(f"Loading pre-computed valuations from {args.valuation_path}...")
+            # valuations = torch.load(args.valuation_path, map_location=device)
+        # else:
+            # print(f"No pre-computed valuations found at {args.valuation_path}. Training from logic states.")
 
         for epoch in range(args.epochs):
             print(f"\n--- Epoch {epoch+1}/{args.epochs} ---")
@@ -217,13 +225,22 @@ def main():
 
             total_loss, n_batches = 0.0, 0
             pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}")
-            for states, actions, gazes in pbar:
+            for states, actions, gazes, ep_nums, step_idxs in pbar:
                 states  = states.to(device)
                 actions = actions.to(device)
                 gazes   = gazes.to(device)
 
+                # Look up pre-computed valuations if available
+                vT_batch = None
+                if valuations is not None:
+                    # Construct batch from pre-computed V_T
+                    vT_list = []
+                    for ep_id, step_idx in zip(ep_nums, step_idxs):
+                        vT_list.append(valuations[ep_id.item()][step_idx.item()])
+                    vT_batch = torch.stack(vT_list).to(device)
+
                 # Perform update using the agent's unified method
-                loss_val = agent.update(states, actions, gazes if args.use_gaze else None)
+                loss_val = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch)
                 
                 total_loss += loss_val
                 n_batches  += 1
@@ -250,9 +267,19 @@ def main():
                 agent.model.eval()
                 val_loss, val_n = 0.0, 0
                 with torch.no_grad():
-                    for states, actions, gazes in val_loader:
+                    for states, actions, gazes, ep_nums, step_idxs in val_loader:
                         states, actions, gazes = states.to(device), actions.to(device), gazes.to(device)
-                        probs = agent.model(states, gazes if args.use_gaze else None)
+                        
+                        # Use pre-computed valuations for validation if available
+                        if valuations is not None:
+                            vT_list = []
+                            for ep_id, step_idx in zip(ep_nums, step_idxs):
+                                vT_list.append(valuations[ep_id.item()][step_idx.item()])
+                            vT_batch = torch.stack(vT_list).to(device)
+                            probs = agent.model.get_predictions(vT_batch, prednames=agent.model.prednames)
+                        else:
+                            probs = agent.model(states, gazes if args.use_gaze else None)
+                        
                         B = probs.size(0)
                         act_p = torch.zeros(B, 6, device=device)
                         for i, pred in enumerate(agent.model.get_prednames()):

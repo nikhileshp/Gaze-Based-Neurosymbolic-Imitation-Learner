@@ -127,6 +127,15 @@ class PtDataset(Dataset):
         self.actions = self.actions[mask]
         self.gaze    = self.gaze[mask]
         if self.ep_nums is not None: self.ep_nums = self.ep_nums[mask]
+        
+        # Compute step index within each episode for valuation lookup
+        if self.ep_nums is not None:
+            self.step_in_ep_idx = torch.zeros_like(self.ep_nums)
+            for ep_id in torch.unique(self.ep_nums):
+                ep_mask = (self.ep_nums == ep_id)
+                self.step_in_ep_idx[ep_mask] = torch.arange(ep_mask.sum())
+        else:
+            self.step_in_ep_idx = None
 
         print(f"  PtDataset: {len(self.logic)} samples | "
               f"logic {tuple(self.logic.shape[1:])} | "
@@ -136,7 +145,12 @@ class PtDataset(Dataset):
         return len(self.logic)
 
     def __getitem__(self, idx):
-        return self.logic[idx], self.actions[idx], self.gaze[idx]
+        logic = self.logic[idx]
+        action = self.actions[idx]
+        gaze = self.gaze[idx]
+        ep_num = self.ep_nums[idx] if self.ep_nums is not None else -1
+        step_idx = self.step_in_ep_idx[idx] if self.step_in_ep_idx is not None else -1
+        return logic, action, gaze, ep_num, step_idx
 
 
 # ===========================================================================
