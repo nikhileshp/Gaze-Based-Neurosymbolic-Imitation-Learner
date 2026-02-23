@@ -31,33 +31,51 @@ class ImitationAgent(nn.Module):
             probs = self.model(states, gazes)
         
         # Apply softmax across all rules to make them compete
-        probs = torch.softmax(probs, dim=1)
-        
-        # Aggregate rule probabilities into primitive actions (average, not sum)
-        # Averaging prevents actions with more rules from dominating by sheer count.
         B = probs.size(0)
-        action_probs = torch.zeros(B, 6, device=self.device)
+        # 1. Aggregate rules into Actions using Mean (fixes Rule-Count Bias)
+        # The user wants "divide it only by up actions", implying we normalize by rule count per action class.
+        action_scores = torch.zeros(B, 6, device=self.device)
         action_rule_counts = torch.zeros(6, device=self.device)
+        
         for i, pred in enumerate(self.model.get_prednames()):
             prefix = pred.split('_')[0]
             if prefix in PRIMITIVE_ACTION_MAP:
                 idx = PRIMITIVE_ACTION_MAP[prefix]
-                action_probs[:, idx] += probs[:, i]
+                action_scores[:, idx] += probs[:, i]
                 action_rule_counts[idx] += 1
-        # Normalize by rule count (avoid divide-by-zero for actions with no rules)
-        action_rule_counts = action_rule_counts.clamp(min=1)
-        action_probs = action_probs / action_rule_counts.unsqueeze(0)
                 
-        # Compute loss (NLL on log probabilities)
-        log_probs = torch.log(action_probs + 1e-10)
-        loss = self.loss_fn(log_probs, actions)
+        # Handle actions with no rules (clamp to 1 to avoid /0)
+        action_rule_counts = action_rule_counts.clamp(min=1)
+        action_averages = action_scores / action_rule_counts.unsqueeze(0)
+        
+        # 2. Convert to Action Probability Distribution
+        # We normalize the averages so they sum to 1.0 across all 6 actions.
+        # This allows P(UP) to reach 1.0 if its rules are firing, even if it has many rules.
+        action_probs = action_averages / (action_averages.sum(dim=1, keepdim=True) + 1e-10)
+        
+        # 3. Compute NLL losses
+        eps = 1e-10
+        log_action_probs = torch.log(action_probs + eps)
+        sample_losses = nn.NLLLoss(reduction='none')(log_action_probs, actions)
+        
+        # 4. Class-Balanced Batch Loss
+        # Normalizes the gradient signal such that each action class in the batch has equal weight.
+        batch_loss = 0.0
+        unique_batch_actions = torch.unique(actions)
+        for action_idx in unique_batch_actions:
+            mask = (actions == action_idx)
+            count = mask.sum().float()
+            class_loss = sample_losses[mask].sum() / count
+            batch_loss += class_loss
+            
+        loss = batch_loss / len(unique_batch_actions)
         
         # Backward pass
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
         
-        return loss.item()
+        return loss.item(), sample_losses.detach().cpu().numpy()
 
     def act(self, state, gaze=None):
         """
