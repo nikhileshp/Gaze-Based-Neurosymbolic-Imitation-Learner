@@ -26,3 +26,5 @@ above_water:1:oplayer
 below_water:1:oplayer
 above_surface:2:oplayer,osurface
 below_surface:2:oplayer,osurface
+not_close_by_enemy:2:oplayer,oenemy
+not_close_by_missile:2:oplayer,omissile
