@@ -12,7 +12,7 @@ from nudge.env import NudgeBaseEnv
 from nudge.utils import make_deterministic
 from tqdm import tqdm
 from collections import Counter
-
+from evaluate_model import evaluate
 # Configuration from train_per_action.py
 CSV_FILE = "data/seaquest/train.csv"
 BASE_IMAGE_DIR = "data/seaquest/trajectories"
@@ -262,28 +262,28 @@ class ExpertDataset(Dataset):
         return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), gaze_center
 
 
-def evaluate(agent, env, num_episodes=5, seed=42):
-    agent.model.eval()
-    rewards = []
-    for i in range(num_episodes):
-        state = env.reset(i+seed)
-        done = False
-        episode_reward = 0
-        while not done:
-            logic_state, _ = state
-            logic_state_tensor = torch.tensor(logic_state, dtype=torch.float32, device=agent.device).unsqueeze(0)
+# def evaluate(agent, env, num_episodes=5, seed=42):
+#     agent.model.eval()
+#     rewards = []
+#     for i in range(num_episodes):
+#         state = env.reset(i+seed)
+#         done = False
+#         episode_reward = 0
+#         while not done:
+#             logic_state, _ = state
+#             logic_state_tensor = torch.tensor(logic_state, dtype=torch.float32, device=agent.device).unsqueeze(0)
             
-            action = agent.act(logic_state_tensor)
+#             action = agent.act(logic_state_tensor)
             
-            prednames = agent.model.get_prednames()
-            predicate = prednames[action]
+#             prednames = agent.model.get_prednames()
+#             predicate = prednames[action]
             
-            state, reward, done = env.step(predicate)
-            episode_reward += reward
-        rewards.append(episode_reward)
-        print(f"Episode {i+1} Reward: {episode_reward}")
-    agent.model.train()
-    return rewards
+#             state, reward, done = env.step(predicate)
+#             episode_reward += reward
+#         rewards.append(episode_reward)
+#         print(f"Episode {i+1} Reward: {episode_reward}")
+#     agent.model.train()
+#     return rewards
 
 
 
@@ -292,7 +292,7 @@ def main():
     parser.add_argument("--env", type=str, default="seaquest", help="Environment name")
     parser.add_argument("--rules", type=str, default="new", help="Ruleset name")
     parser.add_argument("--data_path", type=str, default=None, help="Path to expert data")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
+    parser.add_argument("--epochs", type=int, default=16, help="Number of epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -301,11 +301,16 @@ def main():
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Threshold for gaze-based valuation scaling")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", action="store_true", help="Use full gaze map for valuation")
+    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
     args = parser.parse_args()
 
     if args.use_gazemap:
         args.use_gaze = True
-
+        from scripts.gaze_predictor import Human_Gaze_Predictor
+        print(f"Initializing Gaze Predictor from {args.gaze_model_path}...")
+        gaze_predictor = Human_Gaze_Predictor(args.env)
+        gaze_predictor.init_model(args.gaze_model_path)
+        gaze_predictor.model.eval()
     # Prioritize use_gazemap over use_gaze if both set? Or allow both?
     # Agent expects `use_gaze` for logic. Let's set args.use_gaze = True if use_gazemap is True
     if args.use_gazemap:
@@ -403,7 +408,10 @@ def main():
         print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
         
         # Evaluation
-        rewards = evaluate(agent, env, num_episodes=5, seed=args.seed)
+        if args.use_gazemap:
+            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=gaze_predictor)
+        else:
+            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=None)
         mean_reward = np.mean(rewards)
         std_reward = np.std(rewards)
         print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
@@ -420,7 +428,7 @@ def main():
         os.makedirs("out/imitation", exist_ok=True)
         gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
         gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-        save_path = f"out/imitation/{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+        save_path = f"out/imitation/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
         agent.save(save_path)
         print(f"Model saved to {save_path}")
 

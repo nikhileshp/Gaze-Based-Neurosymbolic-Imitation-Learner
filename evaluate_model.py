@@ -21,18 +21,22 @@ def preprocess_frame(frame):
     resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
     return resized / 255.0
 
-def evaluate(agent, env, num_episodes=5, gaze_predictor=None, log_interval=100, valuation_interval=50):
+def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_interval=100, valuation_interval=50):
     """
     Evaluates the agent in the environment for a set number of episodes.
     Returns the list of total rewards for each episode.
     """
     agent.model.eval()
     episode_rewards = []
-
+    if seed is not None:
+        make_deterministic(seed)
         
     for i in range(num_episodes):
         try:
-            state = env.reset(seed=i + 42)
+            if seed is not None:
+                state = env.reset(seed=seed + i)
+            else:
+                state = env.reset()
         except TypeError:
             print("Warning: env.reset() does not accept seed. Results may vary.")
             state = env.reset()
@@ -117,8 +121,8 @@ def main():
     parser.add_argument("--episodes", type=int, default=10, help="Number of evaluation episodes")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
-    parser.add_argument("--log_interval", type=int, default=100, help="Print cumulative reward every N steps (0 to disable)")
-    parser.add_argument("--valuation_interval", type=int, default=50, help="Print top atom valuations every N steps (0 to disable)")
+    parser.add_argument("--log_interval", type=int, default=0, help="Print cumulative reward every N steps (0 to disable)")
+    parser.add_argument("--valuation_interval", type=int, default=0, help="Print top atom valuations every N steps (0 to disable)")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data logic in model")
     parser.add_argument("--gaze_threshold", type=float, default=20.0, help="Gaze threshold if use_gaze is set")
     parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
@@ -166,7 +170,7 @@ def main():
 
     # Run Evaluation
     print(f"Starting evaluation for {args.episodes} episodes...")
-    rewards = evaluate(agent, env, num_episodes=args.episodes, gaze_predictor=gaze_predictor,
+    rewards = evaluate(agent, env, num_episodes=args.episodes, gaze_predictor=gaze_predictor, seed=args.seed,
                        log_interval=args.log_interval, valuation_interval=args.valuation_interval)
 
     # Calculate Statistics
