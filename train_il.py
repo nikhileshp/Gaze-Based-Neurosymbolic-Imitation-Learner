@@ -449,9 +449,9 @@ def main():
         
         # Evaluation
         if args.use_gazemap:
-            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=gaze_predictor)
+            rewards = evaluate(agent, env, num_episodes=10, seed=args.seed, gaze_predictor=gaze_predictor)
         else:
-            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=None)
+            rewards = evaluate(agent, env, num_episodes=10, seed=args.seed, gaze_predictor=None)
         mean_reward = np.mean(rewards)
         std_reward = np.std(rewards)
         print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
