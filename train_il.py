@@ -248,18 +248,47 @@ class ExpertDataset(Dataset):
             else:
                 # Should not happen if indices are aligned
                 return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), torch.zeros((84, 84))
-        
-        if self.use_gazemap and self.gaze_masks is not None:
-             # Use original index from dataframe to access tensor
-             original_idx = row.name 
-             if original_idx < len(self.gaze_masks):
-                 # Return mask (84, 84). The model forward expects it as 'gaze' arg.
-                 return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), self.gaze_masks[original_idx]
-             else:
-                 # Should not happen if indices are aligned
-                 return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), torch.zeros((84, 84))
-                 
         return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), gaze_center
+
+
+class PtDataset(Dataset):
+    def __init__(self, data_dict, episode, use_gazemap=False):
+        valid_actions = set(PRIMITIVE_ACTION_MAP.values())
+        self.indices = [i for i, ep in enumerate(data_dict['episode_number']) if ep == episode and int(data_dict['actions'][i]) in valid_actions]
+        self.logic_states = data_dict['logic_state']
+        self.actions = data_dict['actions']
+        self.use_gazemap = use_gazemap
+        if use_gazemap and 'gaze_image' in data_dict:
+            self.gaze_data = data_dict['gaze_image']
+        elif 'gaze_information' in data_dict:
+            self.gaze_data = data_dict['gaze_information']
+        else:
+            self.gaze_data = None
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        real_idx = self.indices[idx]
+        l = self.logic_states[real_idx]
+        a = self.actions[real_idx]
+        
+        if not isinstance(l, torch.Tensor):
+            l = torch.tensor(l, dtype=torch.float32)
+        if not isinstance(a, torch.Tensor):
+            a = torch.tensor(a, dtype=torch.long)
+            
+        if self.gaze_data is not None:
+            g = self.gaze_data[real_idx]
+            if not isinstance(g, torch.Tensor):
+                g = torch.tensor(g, dtype=torch.float32)
+        else:
+            if self.use_gazemap:
+                g = torch.zeros((84, 84), dtype=torch.float32)
+            else:
+                g = torch.zeros(2, dtype=torch.float32)
+                
+        return l, a, g
 
 
 # def evaluate(agent, env, num_episodes=5, seed=42):
@@ -298,6 +327,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
+    parser.add_argument("--dataset", type=str, default=None, help="Path to pt dataset")
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Threshold for gaze-based valuation scaling")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", action="store_true", help="Use full gaze map for valuation")
@@ -334,19 +364,26 @@ def main():
     agent = ImitationAgent(args.env, args.rules, device, lr=args.lr, gaze_threshold=agent_gaze_threshold)
 
     # Determine trajectories to iterate over
-    # We look at train.csv to find all trajectory numbers
-    data_path = args.data_path or CSV_FILE
-    if os.path.exists(data_path):
-        full_df = pd.read_csv(data_path)
-        if 'trajectory_number' in full_df.columns:
-            trajectories = sorted(full_df['trajectory_number'].unique())
-            print(f"Found {len(trajectories)} trajectories: {trajectories}")
-        else:
-            print("Warning: 'trajectory_number' column not found in CSV. Using single trajectory [1].")
-            trajectories = [1]
+    pt_data = None
+    if args.dataset and os.path.exists(args.dataset):
+        print(f"Loading PT dataset from {args.dataset}...")
+        pt_data = torch.load(args.dataset, weights_only=False)
+        trajectories = sorted(list(set([int(e) for e in pt_data['episode_number']])))
+        print(f"Found {len(trajectories)} episodes: {trajectories}")
     else:
-        print(f"Warning: Data path {data_path} not found for trajectory analysis. Using default [1].")
-        trajectories = [1]
+        # We look at train.csv to find all trajectory numbers
+        data_path = args.data_path or CSV_FILE
+        if os.path.exists(data_path):
+            full_df = pd.read_csv(data_path)
+            if 'trajectory_number' in full_df.columns:
+                trajectories = sorted(full_df['trajectory_number'].unique())
+                print(f"Found {len(trajectories)} trajectories: {trajectories}")
+            else:
+                print("Warning: 'trajectory_number' column not found in CSV. Using single trajectory [1].")
+                trajectories = [1]
+        else:
+            print(f"Warning: Data path {data_path} not found for trajectory analysis. Using default [1].")
+            trajectories = [1]
 
     # Training Loop
     print("Starting iterative training by trajectory...")
@@ -360,7 +397,10 @@ def main():
         print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
         
         # Load Data for this specific trajectory
-        dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
+        if pt_data is not None:
+            dataset = PtDataset(pt_data, traj_num, use_gazemap=args.use_gazemap)
+        else:
+            dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
         
         if len(dataset) == 0:
             print(f"Skipping empty trajectory {traj_num}")
