@@ -30,13 +30,12 @@ class ImitationAgent(nn.Module):
             # Forward pass (perception + reasoning)
             probs = self.model(states, gazes)
         
-        # Apply softmax across all rules to make them compete
-        B = probs.size(0)
         # 1. Aggregate rules into Actions using Max (Argmax Aggregation)
-        # This makes the action probability dependent on its single best rule.
-        # We use a list to collect results for each action to avoid in-place ops.
+        # We find the best rule valuation for each action class.
         action_rule_probs = {idx: [] for idx in range(6)}
-        for i, pred in enumerate(self.model.get_prednames()):
+        prednames = self.model.get_prednames()
+
+        for i, pred in enumerate(prednames):
             prefix = pred.split('_')[0]
             if prefix in PRIMITIVE_ACTION_MAP:
                 idx = PRIMITIVE_ACTION_MAP[prefix]
@@ -45,9 +44,7 @@ class ImitationAgent(nn.Module):
         action_scores_list = []
         for idx in range(6):
             if action_rule_probs[idx]:
-                # Stack rules for this action: (B, num_rules)
                 stacked = torch.stack(action_rule_probs[idx], dim=1)
-                # Max across rules: (B,)
                 m, _ = torch.max(stacked, dim=1)
                 action_scores_list.append(m)
             else:
@@ -55,27 +52,15 @@ class ImitationAgent(nn.Module):
         
         action_scores = torch.stack(action_scores_list, dim=1) # (B, 6)
         
-        # 2. Convert to Action Probability Distribution
-        # We normalize the scores so they sum to 1.0 across all 6 actions.
-        # This allows P(UP) to reach 1.0 if its rules are firing, even if it has many rules.
-        action_probs = action_scores / (action_scores.sum(dim=1, keepdim=True) + 1e-10)
-        
-        # 3. Compute NLL losses
+        # 2. Compute NLL loss on independent action probabilities (No Softmax)
+        # This matches the "yesterday" behavior where actions don't compete.
+        # Rule valuations are [0, 1], so we can take the log directly.
         eps = 1e-10
-        log_action_probs = torch.log(action_probs + eps)
-        sample_losses = nn.NLLLoss(reduction='none')(log_action_probs, actions)
+        log_action_probs = torch.log(action_scores + eps)
         
-        # 4. Class-Balanced Batch Loss
-        # Normalizes the gradient signal such that each action class in the batch has equal weight.
-        batch_loss = 0.0
-        unique_batch_actions = torch.unique(actions)
-        for action_idx in unique_batch_actions:
-            mask = (actions == action_idx)
-            count = mask.sum().float()
-            class_loss = sample_losses[mask].sum() / count
-            batch_loss += class_loss
-            
-        loss = batch_loss / len(unique_batch_actions)
+        # We use reduction='none' to get per-sample losses for the Prioritized Replay Buffer.
+        sample_losses = nn.NLLLoss(reduction='none')(log_action_probs, actions)
+        loss = sample_losses.mean()
         
         # Backward pass
         self.optimizer.zero_grad()
