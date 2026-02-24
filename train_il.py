@@ -468,7 +468,8 @@ def main():
         os.makedirs("out/imitation", exist_ok=True)
         gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
         gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-        save_path = f"out/imitation/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+        gaze_path = "with_gaze" if args.use_gaze else "no_gaze"
+        save_path = f"out/imitation/{gaze_path}/lr_{args.lr}/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
         agent.save(save_path)
         print(f"Model saved to {save_path}")
 
@@ -484,7 +485,8 @@ def main():
     # Save results to CSV
 
     results_df = pd.DataFrame(results_log)
-    results_csv_path = os.path.join("out/imitation", f"{args.env}_{args.rules}_lr_{args.lr}_results.csv")
+    gaze_path = "with_gaze" if args.use_gaze else "no_gaze"
+    results_csv_path = os.path.join(f"out/imitation/{gaze_path}/lr_{args.lr}", f"{args.env}_{args.rules}_lr_{args.lr}_results.csv")
     #If results_csv_path exists, append to file
     if os.path.exists(results_csv_path):
         results_df.to_csv(results_csv_path, mode='a', header=False, index=False)
