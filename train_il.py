@@ -332,10 +332,6 @@ def main():
                             probs = agent.model(states, gazes if args.use_gaze else None)
                         
                         # Ensure model is in same mode as trainer's update for aggregation
-                        # Apply softmax across all rules to make them compete
-                        probs = torch.softmax(probs, dim=1)
-                        
-                        # Aggregate rules into Actions using Max (Argmax Aggregation)
                         # Match the logic in agent.update
                         action_rule_probs = {idx: [] for idx in range(6)}
                         for i, pred in enumerate(agent.model.get_prednames()):
@@ -353,15 +349,14 @@ def main():
                             else:
                                 action_scores_list.append(torch.zeros(B, device=device))
                         
-                        action_scores = torch.stack(action_scores_list, dim=1)
-                        
-                        # Normalize to action distribution
-                        action_probs = action_scores / (action_scores.sum(dim=1, keepdim=True) + 1e-10)
-                        
+                        action_scores = torch.stack(action_scores_list, dim=1) # (B, 6)
+                            
+                        # Independent Log-Probabilities (No Softmax, matching ImitationAgent.update)
                         eps = 1e-10
-                        log_p = torch.log(action_probs + eps)
-                        batch_loss = agent.loss_fn(log_p, actions)
-                        val_loss += batch_loss.item()
+                        log_action_probs = torch.log(action_scores + eps)
+                        
+                        loss = nn.NLLLoss()(log_action_probs, actions) # mean loss
+                        val_loss += loss.item()
                         val_n += 1
                 print(f"Epoch {epoch+1} Val Loss:   {val_loss / max(val_n, 1):.4f}")
             # Evaluation in environment
