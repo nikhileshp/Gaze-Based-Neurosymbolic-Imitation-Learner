@@ -1,0 +1,41 @@
+nohup: ignoring input
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+Using device: cuda
+Initializing ImitationAgent for seaquest with rules new...
+Initializing NSFR model for seaquest...
+image:img
+oplayer:obj0
+odiver:obj25,obj26,obj27,obj28
+oenemy:obj1,obj2,obj3,obj4,obj5,obj6,obj7,obj8,obj9,obj10,obj11,obj12,obj13,obj14,obj15,obj16,obj17,obj18,obj19,obj20,obj21,obj22,obj23,obj24,obj37
+osurfacesub:obj37
+ocollecteddiver:obj40,obj41,obj42,obj43,obj44,obj45
+osixthdiver:obj45
+omissile:obj29,obj30,obj31,obj32,obj33,obj34
+ooxygenbar:obj39
+NSFR model initialized.
+Loading .pt dataset from data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt ...
+  Filtering to top 28 episodes by reward_per_step
+  PtDataset: 211373 samples | logic (49, 7) | episodes: 28
+Train: 211373 samples (no validation split)
+Found 28 unique episodes in training set.
+Starting epoch-based training over full dataset...
+No pre-computed valuations found at models/nsfr/seaquest/_no_gaze/valuation.pt. Training from logic states.
+
+--- Epoch 1/28 ---
+Epoch 1 -> Training on Episode ID: 0
+Epoch 1:   0%|          | 0/101 [00:00<?, ?it/s]Epoch 1:   0%|          | 0/101 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/train_il.py", line 525, in <module>
+    main()
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/train_il.py", line 281, in main
+    loss_val, ind_losses = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch)
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/nudge/agents/imitation_agent.py", line 70, in update
+    loss.backward()
+  File "/home/nxp190053/.conda/envs/nesy-il/lib/python3.9/site-packages/torch/_tensor.py", line 647, in backward
+    torch.autograd.backward(
+  File "/home/nxp190053/.conda/envs/nesy-il/lib/python3.9/site-packages/torch/autograd/__init__.py", line 354, in backward
+    _engine_run_backward(
+  File "/home/nxp190053/.conda/envs/nesy-il/lib/python3.9/site-packages/torch/autograd/graph.py", line 829, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation: [torch.cuda.FloatTensor [64]], which is output 0 of AsStridedBackward0, is at version 16; expected version 15 instead. Hint: enable anomaly detection to find the operation that failed to compute its gradient, with torch.autograd.set_detect_anomaly(True).

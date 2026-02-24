@@ -56,13 +56,14 @@ class ValuationModule(nn.Module, ABC):
         # Cache for term grounding (term.name -> index or onehot)
         self.term_cache = {}
 
-    def forward(self, zs: torch.Tensor, atom: Atom, gaze: torch.Tensor = None):
+    def forward(self, zs: torch.Tensor, atom: Atom, gaze: torch.Tensor = None, all_objects: torch.Tensor = None):
         """Convert the object-centric representation to a valuation tensor.
 
             Args:
                 zs (tensor): The object-centric representation (the output of the YOLO model).
                 atom (atom): The target atom to compute its probability.
                 gaze (tensor): The gaze center (batch_size, 2). Optional.
+                all_objects (tensor): The full logic state. Optional.
 
             Returns:
                 A batch of the probabilities of the target atom.
@@ -70,9 +71,9 @@ class ValuationModule(nn.Module, ABC):
         # term: logical term
         # args: the vectorized input evaluated by the value function
         args = [self.ground_to_tensor(term, zs) for term in atom.terms]
-        return self._call_val_fn(atom.pred.name, args, gaze)
+        return self._call_val_fn(atom.pred.name, args, gaze, all_objects)
 
-    def batch_forward(self, zs: torch.Tensor, pred_name: str, atoms: Sequence[Atom], gaze: torch.Tensor = None):
+    def batch_forward(self, zs: torch.Tensor, pred_name: str, atoms: Sequence[Atom], gaze: torch.Tensor = None, all_objects: torch.Tensor = None):
         """Convert object-centric representation to valuation tensors for a batch of atoms of the same predicate.
         
         Args:
@@ -80,6 +81,7 @@ class ValuationModule(nn.Module, ABC):
             pred_name: str
             atoms: List of Atom objects (length N)
             gaze: (Batch, H, W)
+            all_objects: (Batch, N_OBJ, Features)
             
         Returns:
             (Batch, N) tensor of valuations
@@ -123,28 +125,36 @@ class ValuationModule(nn.Module, ABC):
              gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1)
              flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, -1)
 
-        # 3. Call Valuation Function
+        # 3. Expand all_objects if needed
+        flat_all_objects = None
+        if all_objects is not None and all_objects.dim() == 3:
+            ao_expanded = all_objects.unsqueeze(1).expand(-1, num_atoms, -1, -1)
+            flat_all_objects = ao_expanded.reshape(batch_size * num_atoms, all_objects.size(1), all_objects.size(2))
+
+        # 4. Call Valuation Function
         # Result will be (Batch*N, ) or (Batch*N, 1)
-        val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze)
+        val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze, flat_all_objects)
         
-        # 4. Reshape back
+        # 5. Reshape back
         val = val_flat.view(batch_size, num_atoms)
         return val
 
-    def _call_val_fn(self, pred_name, args, gaze):
+    def _call_val_fn(self, pred_name, args, gaze, all_objects=None):
         try:
             val_fn = self.val_fns[pred_name]
         except KeyError as e:
             raise NotImplementedError(f"Missing implementation for valuation function '{pred_name}'.")
 
+        sig = inspect.signature(val_fn)
+        accepts_gaze = 'gaze' in sig.parameters
+        accepts_all_objects = 'all_objects' in sig.parameters
+
         # Try to pass gaze map if available and function accepts it
         if gaze is not None and len(gaze.shape) > 2:
             try:
-                # Check signature or just try calling
-                # Inspecting is safer but slower? 
-                # Let's inspect once and cache? Or just inspect now.
-                sig = inspect.signature(val_fn)
-                if 'gaze' in sig.parameters:
+                if accepts_gaze and accepts_all_objects and all_objects is not None:
+                    val = val_fn(*args, gaze=gaze, all_objects=all_objects)
+                elif accepts_gaze:
                     val = val_fn(*args, gaze=gaze)
                 else:
                     val = val_fn(*args)
@@ -156,10 +166,7 @@ class ValuationModule(nn.Module, ABC):
             val = val_fn(*args)
 
         # Gaze-based valuation scaling (Old Logic for points)
-        # If gaze is provided and threshold is set, and predicate starts with "visible_"
-        # Only do this if gaze is POINT (len shape == 2 and size is 2 in last dim)
         if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and gaze.shape[1] == 2 and pred_name.startswith("visible_"):
-             # Assume args[0] is the object
              if len(args) > 0:
                 obj_tensor = args[0]
                 if obj_tensor.shape[0] == gaze.shape[0]:
