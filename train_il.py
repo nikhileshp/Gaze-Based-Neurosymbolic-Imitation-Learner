@@ -16,7 +16,7 @@ from evaluate_model import evaluate
 # Configuration from train_per_action.py
 CSV_FILE = "data/seaquest/train.csv"
 BASE_IMAGE_DIR = "data/seaquest/trajectories"
-
+ 
 # Mapping from Predicate Name to ALE Action Index
 # 0: noop, 1: fire, 2: up, 3: right, 4: left, 5: down
 PRIMITIVE_ACTION_MAP = {
@@ -27,13 +27,29 @@ PRIMITIVE_ACTION_MAP = {
     'left': 4,
     'down': 5
 }
-
-
  
-
+# Mapping for joint actions (6-17) to their primitive components (0-5)
+JOINT_ACTION_MAP = {
+    6: [2, 3],   # UPRIGHT
+    7: [2, 4],   # UPLEFT
+    8: [5, 3],   # DOWNRIGHT
+    9: [5, 4],   # DOWNLEFT
+    10: [2, 1],  # UPFIRE
+    11: [3, 1],  # RIGHTFIRE
+    12: [4, 1],  # LEFTFIRE
+    13: [5, 1],  # DOWNFIRE
+    14: [2, 3, 1], # UPRIGHTFIRE
+    15: [2, 4, 1], # UPLEFTFIRE
+    16: [5, 3, 1], # DOWNRIGHTFIRE
+    17: [5, 4, 1], # DOWNLEFTFIRE
+}
+ 
+ 
+ 
+ 
 class ExpertDataset(Dataset):
     def __init__(self, env_name, agent_prednames, data_path=None, nudge_env=None, limit=None, use_gazemap=False, trajectory=None):
-
+ 
         self.env_name = env_name
         self.agent_prednames = agent_prednames
         self.nudge_env = nudge_env
@@ -43,9 +59,9 @@ class ExpertDataset(Dataset):
         self.gaze_masks = None
         
         # Check if use_gazemap is passed via kwargs or modify init signature
-        # Since I can't easily change init signature without updating main call, I'll rely on a new argument 'use_gazemap' 
+        # Since I can't easily change init signature without updating main call, I'll rely on a new argument 'use_gazemap'
         # But wait, I AM updating main call. So I can change signature.
-
+ 
         
         # Initialize OCAtari for object detection
         # We use the game name from env_name (e.g. seaquest -> Seaquest)
@@ -71,7 +87,7 @@ class ExpertDataset(Dataset):
             else:
                 print("Default CSV not found. Using dummy data.")
                 self.df = None
-
+ 
         self.use_gazemap = use_gazemap
         if self.use_gazemap:
             mask_path = 'data/seaquest/gaze_masks.pt'
@@ -82,11 +98,11 @@ class ExpertDataset(Dataset):
             else:
                 print(f"Warning: Gaze masks not found at {mask_path}. Falling back to default.")
                 self.use_gazemap = False
-
+ 
         if self.df is not None and limit:
             print(f"Limiting dataset to {limit} samples.")
             self.df = self.df.head(limit)
-
+ 
         # Filter out NOOP (0) and actions not in our map target values
         if self.df is not None:
              initial_len = len(self.df)
@@ -109,20 +125,33 @@ class ExpertDataset(Dataset):
                      if isinstance(item, dict):
                         item['original_index'] = i
              
-             # Filter supported actions
-             supported_actions = set(PRIMITIVE_ACTION_MAP.values())
+             # Filter supported actions or expand joint actions
              initial_len = len(self.data)
-             self.data = [d for d in self.data if d.get('action') in supported_actions]
-             print(f"Filtered pre-computed data to supported actions: {initial_len} -> {len(self.data)} samples")
+             new_data = []
+             for d in self.data:
+                 act = d.get('action')
+                 if act in supported_actions:
+                     new_data.append(d)
+                 elif act in JOINT_ACTION_MAP:
+                     # For joint actions, we can either duplicate or pick one.
+                     # Picking the first one for now to keep it simple, or duplicating.
+                     # Let's duplicate to give more signal.
+                     for component in JOINT_ACTION_MAP[act]:
+                         new_item = d.copy()
+                         new_item['action'] = component
+                         new_data.append(new_item)
+             
+             self.data = new_data
+             print(f"Expanded supported actions: {initial_len} -> {len(self.data)} samples")
              
              # Filter by trajectory
              if trajectory is not None:
                  print(f"Filtering pre-computed data for trajectory {trajectory}...")
                  self.data = [d for d in self.data if d.get('trajectory_number') == trajectory]
-
+ 
              if limit:
                  self.data = self.data[:limit]
-
+ 
         # Action mapping logic omitted as in original
         
         if self.df is None and self.data is None:
@@ -135,18 +164,18 @@ class ExpertDataset(Dataset):
             for _ in range(100):
                 state = torch.rand(self.state_shape)
                 action = torch.randint(0, len(agent_prednames), (1,)).item()
-                gaze = torch.rand(2) * 160 
+                gaze = torch.rand(2) * 160
                 self.data.append((state, action, gaze))
         elif self.df is None and self.data is not None:
             pass # Data already loaded
         else:
             self.data = None # Use df
-
+ 
     def __len__(self):
         if self.df is not None:
             return len(self.df)
         return len(self.data)
-
+ 
     def __getitem__(self, idx):
         if self.df is None:
             item = self.data[idx]
@@ -181,7 +210,7 @@ class ExpertDataset(Dataset):
             if len(parts) < 3:
                 continue
             traj_folder_map[parts[1] + "_" + parts[2]] = folder
-
+ 
         traj_folder = traj_folder_map[row['frame_id'].split('_')[0]+"_"+row['frame_id'].split('_')[1]]
         img_name = f"{row['frame_id'].split('_')[2]}.png"
         img_name = row['frame_id'].split('_')[0]+"_"+row['frame_id'].split('_')[1]+'_'+img_name
@@ -237,26 +266,57 @@ class ExpertDataset(Dataset):
                     mean_gaze = np.mean(gaze_vals, axis=0)
                     gaze_center = torch.tensor(mean_gaze, dtype=torch.float32)
             except ValueError:
-                pass 
-
+                pass
+ 
         if self.use_gazemap and self.gaze_masks is not None:
             # Use original index from dataframe to access tensor
-            original_idx = row.name 
-            if original_idx < len(self.gaze_masks):
-                # Return mask (84, 84). The model forward expects it as 'gaze' arg.
-                return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), self.gaze_masks[original_idx]
-            else:
-                # Should not happen if indices are aligned
-                return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), torch.zeros((84, 84))
+            original_idx = row.name
+            return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), self.gaze_masks[original_idx]
+        else:
+            # Should not happen if indices are aligned
+            return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), torch.zeros((84, 84))
         return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), gaze_center
-
-
+ 
+    def get_action_weights(self):
+        """Calculate weights for each sample to balance the dataset."""
+        if self.df is not None:
+            actions = self.df['action'].values
+        elif self.data is not None:
+            actions = np.array([d.get('action') for d in self.data])
+        else:
+            return None
+        
+        counts = np.bincount(actions.astype(int), minlength=6)
+        # Avoid division by zero
+        counts = np.maximum(counts, 1)
+        weights = 1.0 / counts
+        sample_weights = weights[actions.astype(int)]
+        return torch.DoubleTensor(sample_weights), torch.FloatTensor(weights)
+ 
+ 
 class PtDataset(Dataset):
-    def __init__(self, data_dict, episode, use_gazemap=False):
+    def __init__(self, data_dict, episode=None, use_gazemap=False, limit=None):
         valid_actions = set(PRIMITIVE_ACTION_MAP.values())
-        self.indices = [i for i, ep in enumerate(data_dict['episode_number']) if ep == episode and int(data_dict['actions'][i]) in valid_actions]
+        # self.indices = [i for i, ep in enumerate(data_dict['episode_number']) if ep == episode and int(data_dict['actions'][i]) in valid_actions]
+        self.indices = []
+        self.expanded_actions = []
+        for i, ep in enumerate(data_dict['episode_number']):
+            if episode is None or ep == episode:
+                act = int(data_dict['actions'][i])
+                if act in valid_actions:
+                    self.indices.append(i)
+                    self.expanded_actions.append(act)
+                elif act in JOINT_ACTION_MAP:
+                    for component in JOINT_ACTION_MAP[act]:
+                        self.indices.append(i)
+                        self.expanded_actions.append(component)
+        
+        if limit:
+            self.indices = self.indices[:limit]
+            self.expanded_actions = self.expanded_actions[:limit]
+ 
         self.logic_states = data_dict['logic_state']
-        self.actions = data_dict['actions']
+        self.actions = data_dict['actions'] # This is original actions
         self.use_gazemap = use_gazemap
         if use_gazemap and 'gaze_image' in data_dict:
             self.gaze_data = data_dict['gaze_image']
@@ -264,14 +324,22 @@ class PtDataset(Dataset):
             self.gaze_data = data_dict['gaze_information']
         else:
             self.gaze_data = None
-
+ 
+    def get_action_weights(self):
+        actions = np.array(self.expanded_actions)
+        counts = np.bincount(actions, minlength=6)
+        counts = np.maximum(counts, 1)
+        weights = 1.0 / counts
+        sample_weights = weights[actions]
+        return torch.DoubleTensor(sample_weights), torch.FloatTensor(weights)
+ 
     def __len__(self):
         return len(self.indices)
-
+ 
     def __getitem__(self, idx):
         real_idx = self.indices[idx]
         l = self.logic_states[real_idx]
-        a = self.actions[real_idx]
+        a = self.expanded_actions[idx] # Use expanded action
         
         if not isinstance(l, torch.Tensor):
             l = torch.tensor(l, dtype=torch.float32)
@@ -289,8 +357,8 @@ class PtDataset(Dataset):
                 g = torch.zeros(2, dtype=torch.float32)
                 
         return l, a, g
-
-
+ 
+ 
 # def evaluate(agent, env, num_episodes=5, seed=42):
 #     agent.model.eval()
 #     rewards = []
@@ -313,15 +381,15 @@ class PtDataset(Dataset):
 #         print(f"Episode {i+1} Reward: {episode_reward}")
 #     agent.model.train()
 #     return rewards
-
-
-
+ 
+ 
+ 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, default="seaquest", help="Environment name")
     parser.add_argument("--rules", type=str, default="new", help="Ruleset name")
     parser.add_argument("--data_path", type=str, default=None, help="Path to expert data")
-    parser.add_argument("--epochs", type=int, default=16, help="Number of epochs")
+    parser.add_argument("--runs", type=int, default=1, help="Number of epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -332,8 +400,16 @@ def main():
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", action="store_true", help="Use full gaze map for valuation")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
+    parser.add_argument("--scheduler", type=str, default="none", choices=["none", "plateau", "step"], help="LR scheduler type")
+    parser.add_argument("--lr_factor", type=float, default=0.5, help="LR reduction factor")
+    parser.add_argument("--lr_patience", type=int, default=3, help="LR patience for plateau")
+    parser.add_argument("--lr_step_size", type=int, default=3, help="LR step size for StepLR")
+    parser.add_argument("--early_stopping_patience", type=int, default=3, help="Epochs to wait for reward improvement")
+    parser.add_argument("--combined", action="store_true", help="Train on all trajectories combined in each epoch")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of data loader workers")
+    parser.add_argument("--num_episodes", type=int, default=28, help="Number of episodes to train on")
     args = parser.parse_args()
-
+ 
     if args.use_gazemap:
         args.use_gaze = True
         from scripts.gaze_predictor import Human_Gaze_Predictor
@@ -345,24 +421,33 @@ def main():
     # Agent expects `use_gaze` for logic. Let's set args.use_gaze = True if use_gazemap is True
     if args.use_gazemap:
         args.use_gaze = True
-
-
+ 
+ 
     make_deterministic(args.seed)
     device_name = "cuda" if torch.cuda.is_available() else "cpu"
     if args.device != "cpu":
         device_name = args.device
     device = torch.device(device_name)
     print(f"Using device: {device}")
-
+ 
     # Initialize Environment (for evaluation and model init)
     # mode='logic' is required to get logic states
     env = NudgeBaseEnv.from_name(args.env, mode='logic')
-
+ 
     # Initialize Agent
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
     agent_gaze_threshold = args.gaze_threshold if args.use_gaze else None
     agent = ImitationAgent(args.env, args.rules, device, lr=args.lr, gaze_threshold=agent_gaze_threshold)
-
+ 
+    # Initialize Scheduler
+    scheduler = None
+    if args.scheduler == "plateau":
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(agent.optimizer, mode='max', factor=args.lr_factor, patience=args.lr_patience)
+        print(f"Initialized ReduceLROnPlateau scheduler (factor={args.lr_factor}, patience={args.lr_patience})")
+    elif args.scheduler == "step":
+        scheduler = torch.optim.lr_scheduler.StepLR(agent.optimizer, step_size=args.lr_step_size, gamma=args.lr_factor)
+        print(f"Initialized StepLR scheduler (step_size={args.lr_step_size}, factor={args.lr_factor})")
+ 
     # Determine trajectories to iterate over
     pt_data = None
     if args.dataset and os.path.exists(args.dataset):
@@ -384,102 +469,244 @@ def main():
         else:
             print(f"Warning: Data path {data_path} not found for trajectory analysis. Using default [1].")
             trajectories = [1]
-
+ 
     # Training Loop
-    print("Starting iterative training by trajectory...")
+    # Early Stopping Variables
+    best_mean_reward = -np.inf
+    early_stopping_counter = 0
+ 
     results_log = []
     
-    # Use args.epochs as the number of trajectories to process if it's less than total trajectories
-    num_iters = min(args.epochs, len(trajectories))
-    
-    for epoch in range(num_iters):
-        traj_num = trajectories[epoch]
-        print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
-        
-        # Load Data for this specific trajectory
+    if args.combined:
+        print("\n--- COMBINED TRAINING MODE ENABLED ---")
+        # Load all data once
         if pt_data is not None:
-            dataset = PtDataset(pt_data, traj_num, use_gazemap=args.use_gazemap)
+            dataset = PtDataset(pt_data, episode=None, use_gazemap=args.use_gazemap, limit=args.limit)
         else:
-            dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
+            dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=None)
         
-        if len(dataset) == 0:
-            print(f"Skipping empty trajectory {traj_num}")
-            continue
-
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
-
-        total_loss = 0
-        pbar = tqdm(dataloader, desc=f"Training Traj {traj_num}")
-        for states, actions, gazes in pbar:
-            states = states.to(device)
-            actions = actions.to(device)
-            gazes = gazes.to(device)
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        print(f"Total Combined Samples: {len(dataset)}")
+        epoch = 0
+        for run in range(args.runs):
+            print(f"\n--- Run {run+1}/{args.runs} ---")
+            total_loss = 0
+            pbar = tqdm(dataloader, desc=f"Training Run {run+1}")
+            for batch_idx, (states, actions, gazes) in enumerate(pbar):
+                states = states.to(device)
+                actions = actions.to(device)
+                gazes = gazes.to(device)
+                
+                # Forward pass
+                if args.use_gaze:
+                    probs = agent.model(states, gazes)
+                else:
+                    probs = agent.model(states, None)
+                
+                # ... same loss/update logic ...
+                action_probs = torch.zeros(states.size(0), 6, device=device)
+                prednames = agent.model.prednames
+                for i, pred in enumerate(prednames):
+                    prefix = pred.split('_')[0]
+                    if prefix in PRIMITIVE_ACTION_MAP:
+                        act_idx = PRIMITIVE_ACTION_MAP[prefix]
+                        action_probs[:, act_idx] += probs[:, i]
+                
+                log_probs = torch.log(action_probs + 1e-10)
+                loss = agent.loss_fn(log_probs, actions)
+ 
+                agent.optimizer.zero_grad()
+                loss.backward()
+                agent.optimizer.step()
+ 
+                loss_val = loss.item()
+                total_loss += loss_val
+                pbar.set_postfix({"loss": f"{loss_val:.4f}"})
+                
+                # Explicit logging for non-interactive terminals
+                if batch_idx % 100 == 0:
+                    print(f"Epoch {epoch+1} | Batch {batch_idx}/{len(dataloader)} | Loss: {loss_val:.4f}")
             
-            # Forward pass
-            if args.use_gaze:
-                probs = agent.model(states, gazes)
+            avg_loss = total_loss / len(dataloader)
+            print(f"Epoch {epoch+1} Average Loss: {avg_loss:.4f}")
+            
+            # Evaluation
+            eval_gaze = gaze_predictor if args.use_gazemap else None
+            rewards = evaluate(agent, env, num_episodes=10, seed=args.seed, valuation_interval=0, gaze_predictor=eval_gaze)
+            mean_reward = np.mean(rewards)
+            std_reward = np.std(rewards)
+            print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
+ 
+            # Step Scheduler
+            if scheduler:
+                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(mean_reward)
+                else:
+                    scheduler.step()
+                current_lr = agent.optimizer.param_groups[0]['lr']
+                print(f"Current Learning Rate: {current_lr}")
+ 
+            # Early Stopping
+            if args.early_stopping_patience > 0:
+                if mean_reward > best_mean_reward:
+                    best_mean_reward = mean_reward
+                    early_stopping_counter = 0
+                else:
+                    early_stopping_counter += 1
+                
+                if early_stopping_counter >= args.early_stopping_patience:
+                    print(f"Early stopping triggered after {args.early_stopping_patience} epochs.")
+                    break
+ 
+            results_log.append({
+                'epoch': epoch + 1,
+                'trajectory': 'all',
+                'mean_reward': mean_reward,
+                'std_reward': std_reward,
+                'gaze': args.use_gaze,
+                'loss': avg_loss
+            })
+            
+            # Save Model
+            os.makedirs("out/imitation", exist_ok=True)
+            gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
+            gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
+            save_path = f"out/imitation/new_{args.env}_combined_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+            agent.save(save_path)
+ 
+    else:
+        epoch =0
+        # Legacy Mode
+        print("Starting iterative training by trajectory...")
+        num_episodes = args.num_episodes if args.num_episodes is not None else len(trajectories)
+        
+        for ep_idx in range(num_episodes):
+            traj_num = trajectories[ep_idx]
+            print(f"\n--- Episode {ep_idx+1}/{num_episodes} (Trajectory {traj_num}) ---")
+            
+            # Load Data for this specific trajectory
+            if pt_data is not None:
+                dataset = PtDataset(pt_data, traj_num, use_gazemap=args.use_gazemap, limit=args.limit)
             else:
-                probs = agent.model(states, None)
+                dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
             
-            # Aggregate probabilities for each action
-            batch_size = probs.size(0)
-            num_actions = 6
-            action_probs = torch.zeros(batch_size, num_actions, device=device)
-            
-            prednames = agent.model.get_prednames()
-            for i, pred in enumerate(prednames):
-                prefix = pred.split('_')[0]
-                if prefix in PRIMITIVE_ACTION_MAP:
-                    act_idx = PRIMITIVE_ACTION_MAP[prefix]
-                    action_probs[:, act_idx] += probs[:, i]
-            
-            log_probs = torch.log(action_probs + 1e-10)
-            loss = agent.loss_fn(log_probs, actions)
-            
-            agent.optimizer.zero_grad()
-            loss.backward()
-            agent.optimizer.step()
-            
-            loss_val = loss.item()
-            total_loss += loss_val
-            pbar.set_postfix({"loss": f"{loss_val:.4f}"})
-            
-        avg_loss = total_loss / len(dataloader)
-        print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
-        
-        # Evaluation
-        if args.use_gazemap:
-            rewards = evaluate(agent, env, num_episodes=10, seed=args.seed, gaze_predictor=gaze_predictor)
-        else:
-            rewards = evaluate(agent, env, num_episodes=10, seed=args.seed, gaze_predictor=None)
-        mean_reward = np.mean(rewards)
-        std_reward = np.std(rewards)
-        print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
-        
-        results_log.append({
-            'epoch': epoch + 1,
-            'trajectory': traj_num,
-            'mean_reward': mean_reward,
-            'std_reward': std_reward,
-            'gaze': args.use_gaze,    
-        })
+            if len(dataset) == 0:
+                print(f"Skipping empty trajectory {traj_num}")
+                continue
 
-        # Save Model
-        os.makedirs("out/imitation", exist_ok=True)
-        gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
-        gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-        gaze_path = "with_gaze" if args.use_gaze else "no_gaze"
-        save_path = f"out/imitation/{gaze_path}/lr_{args.lr}/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
-        agent.save(save_path)
-        print(f"Model saved to {save_path}")
+            dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+
+            avg_loss = 0
+            for run in range(args.runs):
+                print(f"  Run {run+1}/{args.runs}")
+                total_loss = 0
+                pbar = tqdm(dataloader, desc=f"Training Traj {traj_num} Run {run+1}")
+                for batch_idx, (states, actions, gazes) in enumerate(pbar):
+                    states = states.to(device)
+                    actions = actions.to(device)
+                    gazes = gazes.to(device)
+                    
+                    # Forward pass
+                    if args.use_gaze:
+                        probs = agent.model(states, gazes)
+                    else:
+                        probs = agent.model(states, None)
+                    
+                    # Aggregate probabilities for each action
+                    batch_size = probs.size(0)
+                    num_actions = 6
+                    action_probs = torch.zeros(batch_size, num_actions, device=device)
+                    
+                    prednames = agent.model.get_prednames()
+                    for i, pred in enumerate(prednames):
+                        prefix = pred.split('_')[0]
+                        if prefix in PRIMITIVE_ACTION_MAP:
+                            act_idx = PRIMITIVE_ACTION_MAP[prefix]
+                            action_probs[:, act_idx] += probs[:, i]
+                    
+                    log_probs = torch.log(action_probs + 1e-10)
+                    loss = agent.loss_fn(log_probs, actions)
+                    
+                    agent.optimizer.zero_grad()
+                    loss.backward()
+                    agent.optimizer.step()
+                    
+                    loss_val = loss.item()
+                    total_loss += loss_val
+                    pbar.set_postfix({"loss": f"{loss_val:.4f}"})
+                    
+                    # Explicit logging for non-interactive terminals
+                    if batch_idx % 100 == 0:
+                        print(f"Traj {traj_num} | Ep {ep_idx*run+run} | Batch {batch_idx}/{len(dataloader)} | Loss: {loss_val:.4f}")
+                epoch += 1
+                avg_loss = total_loss / len(dataloader)
+                print(f"Episode {ep_idx+1} Run {run+1} | Total Epochs {epoch} | Loss: {avg_loss:.4f}")
+                if scheduler:
+                    if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                        scheduler.step(avg_loss)
+                    else:
+                        scheduler.step()
+                    current_lr = agent.optimizer.param_groups[0]['lr']
+                    print(f"Current Learning Rate: {current_lr}")
+            
+                
+            # Evaluation after all epochs for this episode
+            eval_gaze = gaze_predictor if args.use_gazemap else None
+            rewards = evaluate(agent, env, num_episodes=10, seed=args.seed, gaze_predictor=eval_gaze)
+            mean_reward = np.mean(rewards)
+            std_reward = np.std(rewards)
+            print(f"Episode {ep_idx+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
+            
+            # Step Scheduler
+            
+            
+            # Early Stopping Logic (based on episodes now)
+            if args.early_stopping_patience > 0:
+                if mean_reward > best_mean_reward:
+                    best_mean_reward = mean_reward
+                    early_stopping_counter = 0
+                    print(f"New best mean reward: {best_mean_reward:.2f}. Early stopping counter reset.")
+                else:
+                    early_stopping_counter += 1
+                    print(f"Mean reward did not improve. Early stopping counter: {early_stopping_counter}/{args.early_stopping_patience}")
+                
+                if early_stopping_counter >= args.early_stopping_patience:
+                    print(f"Early stopping triggered after {args.early_stopping_patience} episodes without improvement.")
+                    # Save results before breaking
+                    results_log.append({
+                        'episode': ep_idx + 1,
+                        'trajectory': traj_num,
+                        'mean_reward': mean_reward,
+                        'std_reward': std_reward,
+                        'gaze': args.use_gaze,    
+                    })
+                    break
+            
+            results_log.append({
+                'episode': ep_idx + 1,
+                'trajectory': traj_num,
+                'mean_reward': mean_reward,
+                'std_reward': std_reward,
+                'gaze': args.use_gaze,
+                'loss': avg_loss
+            })
+
+            #Save Model after each episode
+            os.makedirs("out/imitation", exist_ok=True)
+            gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
+            gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
+            gaze_path = "with_gaze" if args.use_gaze else "no_gaze"
+            save_path = f"out/imitation/{gaze_path}/lr_{args.lr}/new_{args.env}_{args.rules}_il_ep_{ep_idx+1}_lr_{args.lr}{gaze_str}.pth"
+            agent.save(save_path)
+            print(f"Model saved to {save_path}")
 
     # Print and Save final learning curve log
     print("\n" + "="*30)
     print("LEARNING CURVE LOG")
     print("="*30)
-    print("Epoch | Trajectory | Mean Score | Std Dev")
+    print("Episode | Trajectory | Mean Score | Std Dev")
     for res in results_log:
-        print(f"{res['epoch']:5d} | {res['trajectory']:10d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f}")
+        print(f"{res.get('episode', 0):7d} | {res['trajectory']:10d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f}")
     print("="*30)
 
     # Save results to CSV
