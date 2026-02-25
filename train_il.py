@@ -28,6 +28,22 @@ PRIMITIVE_ACTION_MAP = {
     'down': 5
 }
 
+# Mapping for joint actions (6-17) to their primitive components (0-5)
+JOINT_ACTION_MAP = {
+    6: [2, 3],   # UPRIGHT
+    7: [2, 4],   # UPLEFT
+    8: [5, 3],   # DOWNRIGHT
+    9: [5, 4],   # DOWNLEFT
+    10: [2, 1],  # UPFIRE
+    11: [3, 1],  # RIGHTFIRE
+    12: [4, 1],  # LEFTFIRE
+    13: [5, 1],  # DOWNFIRE
+    14: [2, 3, 1], # UPRIGHTFIRE
+    15: [2, 4, 1], # UPLEFTFIRE
+    16: [5, 3, 1], # DOWNRIGHTFIRE
+    17: [5, 4, 1], # DOWNLEFTFIRE
+}
+
 
  
 
@@ -109,11 +125,24 @@ class ExpertDataset(Dataset):
                      if isinstance(item, dict):
                         item['original_index'] = i
              
-             # Filter supported actions
-             supported_actions = set(PRIMITIVE_ACTION_MAP.values())
+             # Filter supported actions or expand joint actions
              initial_len = len(self.data)
-             self.data = [d for d in self.data if d.get('action') in supported_actions]
-             print(f"Filtered pre-computed data to supported actions: {initial_len} -> {len(self.data)} samples")
+             new_data = []
+             for d in self.data:
+                 act = d.get('action')
+                 if act in supported_actions:
+                     new_data.append(d)
+                 elif act in JOINT_ACTION_MAP:
+                     # For joint actions, we can either duplicate or pick one.
+                     # Picking the first one for now to keep it simple, or duplicating.
+                     # Let's duplicate to give more signal.
+                     for component in JOINT_ACTION_MAP[act]:
+                         new_item = d.copy()
+                         new_item['action'] = component
+                         new_data.append(new_item)
+             
+             self.data = new_data
+             print(f"Expanded supported actions: {initial_len} -> {len(self.data)} samples")
              
              # Filter by trajectory
              if trajectory is not None:
@@ -242,21 +271,52 @@ class ExpertDataset(Dataset):
         if self.use_gazemap and self.gaze_masks is not None:
             # Use original index from dataframe to access tensor
             original_idx = row.name 
-            if original_idx < len(self.gaze_masks):
-                # Return mask (84, 84). The model forward expects it as 'gaze' arg.
-                return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), self.gaze_masks[original_idx]
-            else:
-                # Should not happen if indices are aligned
-                return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), torch.zeros((84, 84))
+            return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), self.gaze_masks[original_idx]
+        else:
+            # Should not happen if indices are aligned
+            return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), torch.zeros((84, 84))
         return torch.tensor(logic_state, dtype=torch.float32), torch.tensor(action_idx, dtype=torch.long), gaze_center
+
+    def get_action_weights(self):
+        """Calculate weights for each sample to balance the dataset."""
+        if self.df is not None:
+            actions = self.df['action'].values
+        elif self.data is not None:
+            actions = np.array([d.get('action') for d in self.data])
+        else:
+            return None
+        
+        counts = np.bincount(actions.astype(int), minlength=6)
+        # Avoid division by zero
+        counts = np.maximum(counts, 1)
+        weights = 1.0 / counts
+        sample_weights = weights[actions.astype(int)]
+        return torch.DoubleTensor(sample_weights), torch.FloatTensor(weights)
 
 
 class PtDataset(Dataset):
-    def __init__(self, data_dict, episode, use_gazemap=False):
+    def __init__(self, data_dict, episode=None, use_gazemap=False, limit=None):
         valid_actions = set(PRIMITIVE_ACTION_MAP.values())
-        self.indices = [i for i, ep in enumerate(data_dict['episode_number']) if ep == episode and int(data_dict['actions'][i]) in valid_actions]
+        # self.indices = [i for i, ep in enumerate(data_dict['episode_number']) if ep == episode and int(data_dict['actions'][i]) in valid_actions]
+        self.indices = []
+        self.expanded_actions = []
+        for i, ep in enumerate(data_dict['episode_number']):
+            if episode is None or ep == episode:
+                act = int(data_dict['actions'][i])
+                if act in valid_actions:
+                    self.indices.append(i)
+                    self.expanded_actions.append(act)
+                elif act in JOINT_ACTION_MAP:
+                    for component in JOINT_ACTION_MAP[act]:
+                        self.indices.append(i)
+                        self.expanded_actions.append(component)
+        
+        if limit:
+            self.indices = self.indices[:limit]
+            self.expanded_actions = self.expanded_actions[:limit]
+
         self.logic_states = data_dict['logic_state']
-        self.actions = data_dict['actions']
+        self.actions = data_dict['actions'] # This is original actions
         self.use_gazemap = use_gazemap
         if use_gazemap and 'gaze_image' in data_dict:
             self.gaze_data = data_dict['gaze_image']
@@ -265,13 +325,21 @@ class PtDataset(Dataset):
         else:
             self.gaze_data = None
 
+    def get_action_weights(self):
+        actions = np.array(self.expanded_actions)
+        counts = np.bincount(actions, minlength=6)
+        counts = np.maximum(counts, 1)
+        weights = 1.0 / counts
+        sample_weights = weights[actions]
+        return torch.DoubleTensor(sample_weights), torch.FloatTensor(weights)
+
     def __len__(self):
         return len(self.indices)
 
     def __getitem__(self, idx):
         real_idx = self.indices[idx]
         l = self.logic_states[real_idx]
-        a = self.actions[real_idx]
+        a = self.expanded_actions[idx] # Use expanded action
         
         if not isinstance(l, torch.Tensor):
             l = torch.tensor(l, dtype=torch.float32)
@@ -332,6 +400,13 @@ def main():
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", action="store_true", help="Use full gaze map for valuation")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
+    parser.add_argument("--scheduler", type=str, default="none", choices=["none", "plateau", "step"], help="LR scheduler type")
+    parser.add_argument("--lr_factor", type=float, default=0.5, help="LR reduction factor")
+    parser.add_argument("--lr_patience", type=int, default=3, help="LR patience for plateau")
+    parser.add_argument("--lr_step_size", type=int, default=10, help="LR step size for StepLR")
+    parser.add_argument("--early_stopping_patience", type=int, default=5, help="Epochs to wait for reward improvement")
+    parser.add_argument("--combined", action="store_true", help="Train on all trajectories combined in each epoch")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of data loader workers")
     args = parser.parse_args()
 
     if args.use_gazemap:
@@ -363,6 +438,15 @@ def main():
     agent_gaze_threshold = args.gaze_threshold if args.use_gaze else None
     agent = ImitationAgent(args.env, args.rules, device, lr=args.lr, gaze_threshold=agent_gaze_threshold)
 
+    # Initialize Scheduler
+    scheduler = None
+    if args.scheduler == "plateau":
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(agent.optimizer, mode='max', factor=args.lr_factor, patience=args.lr_patience)
+        print(f"Initialized ReduceLROnPlateau scheduler (factor={args.lr_factor}, patience={args.lr_patience})")
+    elif args.scheduler == "step":
+        scheduler = torch.optim.lr_scheduler.StepLR(agent.optimizer, step_size=args.lr_step_size, gamma=args.lr_factor)
+        print(f"Initialized StepLR scheduler (step_size={args.lr_step_size}, factor={args.lr_factor})")
+
     # Determine trajectories to iterate over
     pt_data = None
     if args.dataset and os.path.exists(args.dataset):
@@ -386,91 +470,269 @@ def main():
             trajectories = [1]
 
     # Training Loop
-    print("Starting iterative training by trajectory...")
+    # Early Stopping Variables
+    best_mean_reward = -np.inf
+    early_stopping_counter = 0
+
     results_log = []
     
-    # Use args.epochs as the number of trajectories to process if it's less than total trajectories
-    num_iters = min(args.epochs, len(trajectories))
-    
-    for epoch in range(num_iters):
-        traj_num = trajectories[epoch]
-        print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
-        
-        # Load Data for this specific trajectory
+    if args.combined:
+        print("\n--- COMBINED TRAINING MODE ENABLED ---")
+        # Load all data once
         if pt_data is not None:
-            dataset = PtDataset(pt_data, traj_num, use_gazemap=args.use_gazemap)
+            dataset = PtDataset(pt_data, episode=None, use_gazemap=args.use_gazemap, limit=args.limit)
         else:
-            dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
+            dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=None)
         
-        if len(dataset) == 0:
-            print(f"Skipping empty trajectory {traj_num}")
-            continue
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        print(f"Total Combined Samples: {len(dataset)}")
 
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+        for epoch in range(args.epochs):
+            print(f"\n--- Epoch {epoch+1}/{args.epochs} ---")
+            total_loss = 0
+            pbar = tqdm(dataloader, desc=f"Training Epoch {epoch+1}")
+            for batch_idx, (states, actions, gazes) in enumerate(pbar):
+                states = states.to(device)
+                actions = actions.to(device)
+                gazes = gazes.to(device)
+                
+                # Forward pass
+                if args.use_gaze:
+                    probs = agent.model(states, gazes)
+                else:
+                    probs = agent.model(states, None)
+                
+                # ... same loss/update logic ...
+                action_probs = torch.zeros(states.size(0), 6, device=device)
+                prednames = agent.model.prednames
+                for i, pred in enumerate(prednames):
+                    prefix = pred.split('_')[0]
+                    if prefix in PRIMITIVE_ACTION_MAP:
+                        act_idx = PRIMITIVE_ACTION_MAP[prefix]
+                        action_probs[:, act_idx] += probs[:, i]
+                
+                # Normalize action buckets to form a valid probability distribution
+                action_probs_sum = action_probs.sum(dim=1, keepdim=True)
+                action_probs = action_probs / (action_probs_sum + 1e-12)
+                
+                # Defensive Stabilizer: 0.01 uniform bias ensures log-gradient stays below 100
+                action_probs = 0.99 * action_probs + 0.01 * (1.0 / 6.0)
+                
+                log_probs = torch.log(action_probs + 1e-7)
+                loss = agent.loss_fn(log_probs, actions)
 
-        total_loss = 0
-        pbar = tqdm(dataloader, desc=f"Training Traj {traj_num}")
-        for states, actions, gazes in pbar:
-            states = states.to(device)
-            actions = actions.to(device)
-            gazes = gazes.to(device)
+                if not torch.isfinite(loss):
+                    print(f"Warning: Non-finite loss detected at batch {batch_idx}. Skipping update.")
+                    continue
+
+                agent.optimizer.zero_grad()
+                loss.backward()
+                
+                # Defensive Gradient Sanitizer: Clean NaNs and clip outliers before optimization
+                for p in agent.model.parameters():
+                    if p.grad is not None:
+                        # Replace NaNs with 0, and clip extreme values that bypass clip_grad_norm
+                        p.grad.data.nan_to_num_(nan=0.0, posinf=1.0, neginf=-1.0)
+
+                # Gradient clipping for stability in Symbolic training
+                torch.nn.utils.clip_grad_norm_(agent.model.parameters(), max_norm=1.0)
+                agent.optimizer.step()
+
+                loss_val = loss.item()
+                total_loss += loss_val
+                pbar.set_postfix({"loss": f"{loss_val:.4f}"})
+                
+                # Defensive Memory Management: Clear cache to prevent fragmentation on 4-GPU OOM
+                if batch_idx > 0 and batch_idx % 100 == 0:
+                    torch.cuda.empty_cache()
+                    print(f"Epoch {epoch+1} | Batch {batch_idx}/{len(dataloader)} | Loss: {loss_val:.4f}")
             
-            # Forward pass
-            if args.use_gaze:
-                probs = agent.model(states, gazes)
+            avg_loss = total_loss / len(dataloader)
+            print(f"Epoch {epoch+1} Average Loss: {avg_loss:.4f}")
+            
+            # Evaluation
+            eval_gaze = gaze_predictor if args.use_gazemap else None
+            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, valuation_interval=0, gaze_predictor=eval_gaze)
+            mean_reward = np.mean(rewards)
+            std_reward = np.std(rewards)
+            print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
+
+            # Step Scheduler
+            if scheduler:
+                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(mean_reward)
+                else:
+                    scheduler.step()
+                current_lr = agent.optimizer.param_groups[0]['lr']
+                print(f"Current Learning Rate: {current_lr}")
+
+            # Early Stopping
+            if args.early_stopping_patience > 0:
+                if mean_reward > best_mean_reward:
+                    best_mean_reward = mean_reward
+                    early_stopping_counter = 0
+                else:
+                    early_stopping_counter += 1
+                
+                if early_stopping_counter >= args.early_stopping_patience:
+                    print(f"Early stopping triggered after {args.early_stopping_patience} epochs.")
+                    break
+
+            results_log.append({
+                'epoch': epoch + 1,
+                'trajectory': 'all',
+                'mean_reward': mean_reward,
+                'std_reward': std_reward,
+                'gaze': args.use_gaze,
+                'loss': avg_loss
+            })
+            
+            # Save Model
+            os.makedirs("out/imitation", exist_ok=True)
+            gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
+            gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
+            save_path = f"out/imitation/new_{args.env}_combined_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+            agent.save(save_path)
+
+    else:
+        # Legacy Mode
+        print("Starting iterative training by trajectory...")
+        num_iters = min(args.epochs, len(trajectories))
+        for epoch in range(num_iters):
+            traj_num = trajectories[epoch]
+            print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
+            
+            # Load Data for this specific trajectory
+            if pt_data is not None:
+                dataset = PtDataset(pt_data, traj_num, use_gazemap=args.use_gazemap)
             else:
-                probs = agent.model(states, None)
+                dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
             
-            # Aggregate probabilities for each action
-            batch_size = probs.size(0)
-            num_actions = 6
-            action_probs = torch.zeros(batch_size, num_actions, device=device)
-            
-            prednames = agent.model.get_prednames()
-            for i, pred in enumerate(prednames):
-                prefix = pred.split('_')[0]
-                if prefix in PRIMITIVE_ACTION_MAP:
-                    act_idx = PRIMITIVE_ACTION_MAP[prefix]
-                    action_probs[:, act_idx] += probs[:, i]
-            
-            log_probs = torch.log(action_probs + 1e-10)
-            loss = agent.loss_fn(log_probs, actions)
-            
-            agent.optimizer.zero_grad()
-            loss.backward()
-            agent.optimizer.step()
-            
-            loss_val = loss.item()
-            total_loss += loss_val
-            pbar.set_postfix({"loss": f"{loss_val:.4f}"})
-            
-        avg_loss = total_loss / len(dataloader)
-        print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
-        
-        # Evaluation
-        if args.use_gazemap:
-            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=gaze_predictor)
-        else:
-            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=None)
-        mean_reward = np.mean(rewards)
-        std_reward = np.std(rewards)
-        print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
-        
-        results_log.append({
-            'epoch': epoch + 1,
-            'trajectory': traj_num,
-            'mean_reward': mean_reward,
-            'std_reward': std_reward,
-            'gaze': args.use_gaze,    
-        })
+            if len(dataset) == 0:
+                print(f"Skipping empty trajectory {traj_num}")
+                continue
 
-        # Save Model
-        os.makedirs("out/imitation", exist_ok=True)
-        gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
-        gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-        save_path = f"out/imitation/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
-        agent.save(save_path)
-        print(f"Model saved to {save_path}")
+            dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+
+            total_loss = 0
+            pbar = tqdm(dataloader, desc=f"Training Traj {traj_num}")
+            for batch_idx, (states, actions, gazes) in enumerate(pbar):
+                states = states.to(device)
+                actions = actions.to(device)
+                gazes = gazes.to(device)
+                
+                # Forward pass
+                if args.use_gaze:
+                    probs = agent.model(states, gazes)
+                else:
+                    probs = agent.model(states, None)
+                
+                # Aggregate probabilities for each action
+                batch_size = probs.size(0)
+                num_actions = 6
+                action_probs = torch.zeros(batch_size, num_actions, device=device)
+                
+                prednames = agent.model.get_prednames()
+                for i, pred in enumerate(prednames):
+                    prefix = pred.split('_')[0]
+                    if prefix in PRIMITIVE_ACTION_MAP:
+                        act_idx = PRIMITIVE_ACTION_MAP[prefix]
+                        action_probs[:, act_idx] += probs[:, i]
+                
+                # Normalize action buckets to form a valid probability distribution
+                action_probs_sum = action_probs.sum(dim=1, keepdim=True)
+                action_probs = action_probs / (action_probs_sum + 1e-12)
+                
+                # Defensive Stabilizer: 0.01 uniform bias
+                action_probs = 0.99 * action_probs + 0.01 * (1.0 / 6.0)
+                
+                log_probs = torch.log(action_probs + 1e-7)
+                loss = agent.loss_fn(log_probs, actions)
+
+                if not torch.isfinite(loss):
+                    print(f"Warning: Non-finite loss detected in traj {traj_num}. Skipping.")
+                    continue
+                
+                agent.optimizer.zero_grad()
+                loss.backward()
+                
+                # Defensive Gradient Sanitizer
+                for p in agent.model.parameters():
+                    if p.grad is not None:
+                        p.grad.data.nan_to_num_(nan=0.0, posinf=1.0, neginf=-1.0)
+
+                # Gradient clipping for stability in Symbolic training
+                torch.nn.utils.clip_grad_norm_(agent.model.parameters(), max_norm=1.0)
+                agent.optimizer.step()
+                
+                loss_val = loss.item()
+                total_loss += loss_val
+                pbar.set_postfix({"loss": f"{loss_val:.4f}"})
+
+                if batch_idx > 0 and batch_idx % 50 == 0:
+                    torch.cuda.empty_cache()
+                
+                # Explicit logging for non-interactive terminals
+                if batch_idx % 100 == 0:
+                    print(f"Traj {traj_num} | Batch {batch_idx}/{len(dataloader)} | Loss: {loss_val:.4f}")
+                
+            avg_loss = total_loss / len(dataloader)
+            print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
+            
+            # Evaluation
+            eval_gaze = gaze_predictor if args.use_gazemap else None
+            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=eval_gaze)
+            mean_reward = np.mean(rewards)
+            std_reward = np.std(rewards)
+            print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
+            
+            # Step Scheduler
+            if scheduler:
+                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(mean_reward)
+                else:
+                    scheduler.step()
+                current_lr = agent.optimizer.param_groups[0]['lr']
+                print(f"Current Learning Rate: {current_lr}")
+            
+            # Early Stopping Logic
+            if args.early_stopping_patience > 0:
+                if mean_reward > best_mean_reward:
+                    best_mean_reward = mean_reward
+                    early_stopping_counter = 0
+                    print(f"New best mean reward: {best_mean_reward:.2f}. Early stopping counter reset.")
+                else:
+                    early_stopping_counter += 1
+                    print(f"Mean reward did not improve. Early stopping counter: {early_stopping_counter}/{args.early_stopping_patience}")
+                
+                if early_stopping_counter >= args.early_stopping_patience:
+                    print(f"Early stopping triggered after {args.early_stopping_patience} epochs without improvement.")
+                    # Save results before breaking
+                    results_log.append({
+                        'epoch': epoch + 1,
+                        'trajectory': traj_num,
+                        'mean_reward': mean_reward,
+                        'std_reward': std_reward,
+                        'gaze': args.use_gaze,    
+                    })
+                    break
+            
+            results_log.append({
+                'epoch': epoch + 1,
+                'trajectory': traj_num,
+                'mean_reward': mean_reward,
+                'std_reward': std_reward,
+                'gaze': args.use_gaze,
+                'loss': avg_loss
+            })
+
+            # Save Model
+            os.makedirs("out/imitation", exist_ok=True)
+            gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
+            gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
+            save_path = f"out/imitation/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+            agent.save(save_path)
+            print(f"Model saved to {save_path}")
 
     # Print and Save final learning curve log
     print("\n" + "="*30)
@@ -478,8 +740,8 @@ def main():
     print("="*30)
     print("Epoch | Trajectory | Mean Score | Std Dev")
     for res in results_log:
-        print(f"{res['epoch']:5d} | {res['trajectory']:10d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f}")
-    print("="*30)
+        traj_info = str(res['trajectory'])
+        print(f"{res['epoch']:5d} | {traj_info:>10s} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f} | {res['loss']:7.4f}")
 
     # Save results to CSV
 

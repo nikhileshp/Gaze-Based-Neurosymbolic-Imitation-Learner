@@ -51,10 +51,9 @@ def softor(xs, dim=0, gamma=0.01):
     if not torch.is_tensor(xs):
         xs = torch.stack(xs, dim)
     log_sum_exp = gamma*logsumexp(xs * (1/gamma), dim=dim)
-    if log_sum_exp.max() > 1.0:
-        return log_sum_exp / log_sum_exp.max()
-    else:
-        return log_sum_exp
+    # Replace batch-dependent scaling with batch-independent clamping.
+    # This ensures consistency across GPU replicas in DataParallel mode.
+    return torch.clamp(log_sum_exp, min=0.0, max=1.0)
 
 
 def print_valuation(valuation, atoms, n=40):

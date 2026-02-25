@@ -26,7 +26,7 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
     Evaluates the agent in the environment for a set number of episodes.
     Returns the list of total rewards for each episode.
     """
-    agent.model.eval()
+    agent.eval()
     episode_rewards = []
     if seed is not None:
         make_deterministic(seed)
@@ -82,9 +82,9 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             
             # Print top atom valuations every valuation_interval steps
             if valuation_interval > 0 and step_count % valuation_interval == 0 and step_count > 0:
-                if hasattr(agent.model, 'V_0') and agent.model.V_0 is not None:
-                    v0 = agent.model.V_0.squeeze(0).detach().cpu()
-                    atoms = agent.model.atoms
+                if agent.V_0 is not None:
+                    v0 = agent.V_0.squeeze(0).detach().cpu()
+                    atoms = agent.atoms
                     pairs = sorted(zip(atoms, v0.tolist()), key=lambda x: x[1], reverse=True)
                     visible_pairs = [(a, v) for a, v in pairs if str(a).startswith("visible_") and v > 0.01]
                     print(f"  --- visible_ Valuations at Step {step_count} ---")
@@ -92,7 +92,7 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
                         print(f"    {val:.3f}  {atom}")
             
             # Map action index to predicate name
-            prednames = agent.model.get_prednames()
+            prednames = agent.get_prednames()
             predicate = prednames[action_idx]
             
             # Step environment

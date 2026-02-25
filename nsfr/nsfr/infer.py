@@ -24,7 +24,7 @@ class InferModule(nn.Module):
         member variables.
         """
         super(InferModule, self).__init__()
-        self.I = I
+        self.register_buffer('I', I)
         self.infer_step = infer_step
         # m is num of clauses
         self.m = m
@@ -34,14 +34,14 @@ class InferModule(nn.Module):
         self.device = device
         self.train_ = train
         if not train:
-            self.W = self.init_identity_weights(device)
+            self.register_buffer('W', self.init_identity_weights(device))
         else:
             # to learng the clause weights, initialize W as follows:
             self.W = nn.Parameter(torch.Tensor(
                 np.random.normal(size=(m, I.size(0)))).to(device))
         # clause functions
-        self.cs = [ClauseFunction(i, I, gamma=gamma)
-                   for i in range(self.I.size(0))]
+        self.cs = nn.ModuleList([ClauseFunction(i, self.I, gamma=gamma)
+                    for i in range(self.I.size(0))])
 
         # assert m == self.C, "Invalid m and C: " + \
         #     str(m) + ' and ' + str(self.C)
@@ -99,7 +99,7 @@ class ClauseBodyInferModule(nn.Module):
         member variables.
         """
         super(ClauseBodyInferModule, self).__init__()
-        self.I = I
+        self.register_buffer('I', I)
         self.C = self.I.size(0)
         self.G = self.I.size(1)
         self.gamma = gamma
@@ -109,10 +109,10 @@ class ClauseBodyInferModule(nn.Module):
         # clause functions
         # self.cs_bs = [ClauseBodySumFunction(I[i], I, gamma=gamma)
         #               for i in range(self.I.size(0))]
-        self.cs_bs = [ClauseBodySumFunction(i, I, gamma=gamma)
-                      for i in range(self.I.size(0))]
-        self.cs = [ClauseFunction(i, I, gamma=gamma)
-                   for i in range(self.I.size(0))]
+        self.cs_bs = nn.ModuleList([ClauseBodySumFunction(i, self.I, gamma=gamma)
+                       for i in range(self.I.size(0))])
+        self.cs = nn.ModuleList([ClauseFunction(i, self.I, gamma=gamma)
+                    for i in range(self.I.size(0))])
 
     def init_identity_weights(self, device):
         ones = torch.ones((self.C,), dtype=torch.float32) * 100
@@ -160,8 +160,12 @@ class ClauseInferModule(nn.Module):
         The result is not amalgamated in terms of clauses.
         """
         super(ClauseInferModule, self).__init__()
-        self.I = I
-        self.I_bk = I_bk
+        self.register_buffer('I', I)
+        if I_bk is not None:
+            self.register_buffer('I_bk', I_bk)
+        else:
+            self.I_bk = None
+            
         self.infer_step = infer_step
         self.m = m
         self.C = self.I.size(0)
@@ -170,24 +174,24 @@ class ClauseInferModule(nn.Module):
         self.device = device
         self.train_ = train
         if not train:
-            self.W = init_identity_weights(I, device)
+            self.register_buffer('W', init_identity_weights(self.I, device))
         else:
             # to learng the clause weights, initialize W as follows:
             self.W = nn.Parameter(torch.Tensor(
-                np.random.normal(size=(m, I.size(0)))).to(device))
+                np.random.normal(size=(m, self.I.size(0)))).to(device))
         # clause functions
-        self.cs = [ClauseFunction(I[i], I, gamma=gamma)
-                   for i in range(self.I.size(0))]
+        self.cs = nn.ModuleList([ClauseFunction(self.I[i], self.I, gamma=gamma)
+                    for i in range(self.I.size(0))])
 
-        self.cs_bs = [ClauseBodySumFunction(I[i], I, gamma=gamma)
-                      for i in range(self.I.size(0))]
+        self.cs_bs = nn.ModuleList([ClauseBodySumFunction(self.I[i], self.I, gamma=gamma)
+                       for i in range(self.I.size(0))])
 
         if not self.I_bk is None:
-            self.cs_bk = [ClauseFunction(I_bk[i], I, gamma=gamma)
-                          for i in range(self.I_bk.size(0))]
+            self.cs_bk = nn.ModuleList([ClauseFunction(self.I_bk[i], self.I, gamma=gamma)
+                           for i in range(self.I_bk.size(0))])
 
         if not I_bk is None:
-            self.W_bk = init_identity_weights(I_bk, device)
+            self.register_buffer('W_bk', init_identity_weights(self.I_bk, device))
 
         assert m == self.C, "Invalid m and C: " + \
                             str(m) + ' and ' + str(self.C)
@@ -219,7 +223,7 @@ class ClauseFunction(nn.Module):
     def __init__(self, i, I, gamma=0.01):
         super(ClauseFunction, self).__init__()
         self.i = i  # clause index
-        self.I = I  # index tensor C * S * G, S is the number of possible substituions
+        self.register_buffer('I', I)  # index tensor C * S * G, S is the number of possible substituions
         self.L = I.size(-1)  # number of body atoms
         self.S = I.size(-2)  # max number of possible substitutions
         self.gamma = gamma
@@ -250,7 +254,7 @@ class ClauseBodySumFunction(nn.Module):
     def __init__(self, i, I, gamma=0.01):
         super(ClauseBodySumFunction, self).__init__()
         self.i = i  # clause index
-        self.I = I  # index tensor C * S * G, S is the number of possible substituions
+        self.register_buffer('I', I)  # index tensor C * S * G, S is the number of possible substituions
         self.L = I.size(-1)  # number of body atoms
         self.S = I.size(-2)  # max number of possible substitutions
         self.gamma = gamma
@@ -270,3 +274,5 @@ class ClauseBodySumFunction(nn.Module):
         # B * G
         C = torch.sum(torch.prod(torch.gather(V_tild, 1, I_i_tild), 3), dim=2)
         return C
+
+      
