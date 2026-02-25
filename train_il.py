@@ -511,13 +511,6 @@ def main():
                         act_idx = PRIMITIVE_ACTION_MAP[prefix]
                         action_probs[:, act_idx] += probs[:, i]
                 
-                # Normalize action buckets to form a valid probability distribution
-                action_probs_sum = action_probs.sum(dim=1, keepdim=True)
-                action_probs = action_probs / (action_probs_sum + 1e-12)
-                
-                # Defensive Stabilizer: 0.01 uniform bias ensures log-gradient stays below 100
-                action_probs = 0.99 * action_probs + 0.01 * (1.0 / 6.0)
-                
                 log_probs = torch.log(action_probs + 1e-7)
                 loss = agent.loss_fn(log_probs, actions)
 
@@ -638,13 +631,6 @@ def main():
                     if prefix in PRIMITIVE_ACTION_MAP:
                         act_idx = PRIMITIVE_ACTION_MAP[prefix]
                         action_probs[:, act_idx] += probs[:, i]
-                
-                # Normalize action buckets to form a valid probability distribution
-                action_probs_sum = action_probs.sum(dim=1, keepdim=True)
-                action_probs = action_probs / (action_probs_sum + 1e-12)
-                
-                # Defensive Stabilizer: 0.01 uniform bias
-                action_probs = 0.99 * action_probs + 0.01 * (1.0 / 6.0)
                 
                 log_probs = torch.log(action_probs + 1e-7)
                 loss = agent.loss_fn(log_probs, actions)
