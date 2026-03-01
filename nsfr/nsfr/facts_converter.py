@@ -59,6 +59,7 @@ class FactsConverter(nn.Module):
         # Pre-compute gaze integral image if applicable
         gaze_arg = None
         if gaze is not None:
+             gaze = gaze.to(self.device)
              if gaze.dim() == 3: # (B, H, W) -> Compute integral
                   gaze_padded = torch.nn.functional.pad(gaze, (1, 0, 1, 0))
                   gaze_arg = gaze_padded.cumsum(dim=1).cumsum(dim=2)

@@ -9,11 +9,16 @@ from nudge.agents.imitation_agent import ImitationAgent
 from nudge.env import NudgeBaseEnv
 from nudge.utils import make_deterministic
 
-# Import gaze predictor if available
+# Import gaze predictor and email utility
 try:
     from scripts.gaze_predictor import Human_Gaze_Predictor
 except ImportError:
     Human_Gaze_Predictor = None
+
+try:
+    from scripts.email_me import send_email
+except ImportError:
+    send_email = None
 
 def preprocess_frame(frame):
     """Convert raw 210x160x3 RGB frame to 84x84 grayscale frame."""
@@ -21,7 +26,8 @@ def preprocess_frame(frame):
     resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
     return resized / 255.0
 
-def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_interval=100, valuation_interval=50):
+def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None,
+             log_interval=100, valuation_interval=50, max_steps=2000):
     """
     Evaluates the agent in the environment for a set number of episodes.
     Returns the list of total rewards for each episode.
@@ -55,7 +61,7 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             for _ in range(4):
                 frame_buffer.append(initial_gray)
                 
-        while not done:
+        while not done and step_count < max_steps:
             # Generate the gaze heatmap if predictor is available
             gaze_tensor = None
             if gaze_predictor is not None:
@@ -72,9 +78,8 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
                     
                 gaze_tensor = gaze_pred.squeeze(0) # Reduce to (1, 84, 84) for the Valuation Module
             
-            # state is (logic_state, neural_state)
             logic_state, _ = state
-            logic_state_tensor = torch.tensor(logic_state, dtype=torch.float32, device=agent.device).unsqueeze(0)
+            logic_state_tensor = torch.as_tensor(logic_state, dtype=torch.float32).unsqueeze(0).to(agent.device)
             
             # Select action index
             # agent.act returns the primitive action string (e.g., 'up', 'fire')
@@ -85,10 +90,6 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             total_reward += reward
             step_count += 1
             
-            # DEBUG: Print action every 50 steps
-            if step_count % 50 == 0:
-                print(f"  Step {step_count} | Action: {predicate} | CumReward: {total_reward:.1f}")
-
             if log_interval > 0 and step_count % log_interval == 0:
                 print(f"  Episode {i+1} | Step {step_count} | Cumulative Reward: {total_reward:.1f}")
             
@@ -110,19 +111,19 @@ def main():
     parser.add_argument("--rules", type=str, default="new", help="Ruleset name")
     parser.add_argument("--episodes", type=int, default=10, help="Number of evaluation episodes")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cpu/cuda)")
     parser.add_argument("--log_interval", type=int, default=0, help="Print cumulative reward every N steps (0 to disable)")
     parser.add_argument("--valuation_interval", type=int, default=0, help="Print top atom valuations every N steps (0 to disable)")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data logic in model")
     parser.add_argument("--gaze_threshold", type=float, default=20.0, help="Gaze threshold if use_gaze is set")
     parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
+    parser.add_argument("--send_email", action="store_true", help="Send email with results after evaluation")
     
     args = parser.parse_args()
 
     # Setup device
-    device_name = "cuda" if torch.cuda.is_available() and args.device != "cpu" else "cpu"
-    device = torch.device(device_name)
+    device = torch.device(args.device)
     print(f"Using device: {device}")
     
     # Initialize Gaze Predictor 
@@ -173,6 +174,25 @@ def main():
     print(f"Mean Reward: {mean_reward:.2f}")
     print(f"Std Deviation: {std_reward:.2f}")
     print("="*30)
+
+    # Send email if requested
+    if args.send_email and send_email is not None:
+        subject = f"Evaluation Results: {args.env} - {args.model_path} | N = {args.episodes}"
+        body = f"""
+Evaluation complete for {args.env}.
+Model: {args.model_path}
+Episodes: {args.episodes}
+Mean Reward: {mean_reward:.2f}
+Std Deviation: {std_reward:.2f}
+Seed: {args.seed}
+Rules: {args.rules}
+Gaze used: {args.use_gazemap or args.use_gaze}
+"""
+        try:
+            send_email(subject, body.strip())
+            print("Email notification sent successfully!")
+        except Exception as e:
+            print(f"Failed to send email: {e}")
 
 if __name__ == "__main__":
     main()

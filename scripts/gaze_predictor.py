@@ -4,7 +4,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import os
-from scripts.data_utils import load_gaze_predictor_data
+try:
+    from data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
+except ImportError:
+    from scripts.data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
 
 def my_softmax(x):
     """
@@ -58,15 +61,55 @@ class HumanGazeNet(nn.Module):
         out = my_softmax(self.deconv3(x))
         return out
 
+class FactGazeNet(nn.Module):
+    def __init__(self, num_facts=284, frame_stack=4, dropout=0.0):
+        super(FactGazeNet, self).__init__()
+        input_dim = num_facts * frame_stack
+        
+        # Expand 1D facts to spatial bottleneck (64 channels of 7x7)
+        self.fc = nn.Sequential(
+            nn.Linear(input_dim, 1024),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+            nn.Linear(1024, 64 * 7 * 7),
+            nn.ReLU()
+        )
+        
+        # Upsample 7x7 -> 14x14 -> 28x28 -> 84x84
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(64, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Dropout2d(p=dropout),
+            
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Dropout2d(p=dropout),
+            
+            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=3, padding=0)
+        )
+
+    def forward(self, x):
+        # x shape: (B, input_dim)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        x = x.view(-1, 64, 7, 7)
+        out = self.decoder(x)
+        return my_softmax(out)
+
 class Human_Gaze_Predictor:
     def __init__(self, game_name):
         self.game_name = game_name 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
 
-    def init_model(self, gaze_model_file=None, lr=1.0, rho=0.95, weight_decay=0.0):
+    def init_model(self, gaze_model_file=None, lr=1.0, rho=0.95, weight_decay=0.0, use_facts=False):
         self.k = 4
-        self.model = HumanGazeNet(in_channels=self.k).to(self.device)
+        if use_facts:
+            self.model = FactGazeNet(num_facts=284, frame_stack=self.k).to(self.device)
+        else:
+            self.model = HumanGazeNet(in_channels=self.k).to(self.device)
         self.optimizer = optim.Adadelta(self.model.parameters(), lr=lr, rho=rho, eps=1e-08, weight_decay=weight_decay)
         self.criterion = my_kld
         
@@ -87,11 +130,14 @@ class Human_Gaze_Predictor:
         print(f"Starting training for {epochs} epochs...")
         self.model.train()
         
-        # Convert NHWC -> NCHW for PyTorch
+        # Convert NHWC -> NCHW for PyTorch, or keep 2D if using facts
         if imgs.ndim == 4:
             imgs_tensor = torch.tensor(imgs, dtype=torch.float32).permute(0, 3, 1, 2)
         elif imgs.ndim == 3:
             imgs_tensor = torch.tensor(imgs, dtype=torch.float32).unsqueeze(1)
+        else:
+            # Fact data is 2D (Batch, k * num_atoms)
+            imgs_tensor = imgs if isinstance(imgs, torch.Tensor) else torch.tensor(imgs, dtype=torch.float32)
             
         dataset_len = len(imgs_tensor)
         
@@ -139,7 +185,7 @@ class Human_Gaze_Predictor:
                 df = pd.DataFrame([{'epoch': epoch + 1, 'loss': avg_loss}])
                 df.to_csv(self.log_csv, mode='a', header=False, index=False)
             
-        save_path = f"models/gaze_predictor/{self.game_name}_gaze_predictor_2.pth"
+        save_path = f"models/gaze_predictor/{self.game_name}_{'fact' if hasattr(self.model, 'fc') else 'visual'}_gaze_predictor_limit_2.pth"
         torch.save(self.model.state_dict(), save_path)
         print(f"Model saved to {save_path}")
   
@@ -151,11 +197,13 @@ class Human_Gaze_Predictor:
         print("Predicting results...")
         self.model.eval()
         
-        # Convert NHWC -> NCHW for PyTorch
+        # Convert NHWC -> NCHW for PyTorch, or keep 2D if using facts
         if imgs.ndim == 4:
             imgs_tensor = torch.tensor(imgs, dtype=torch.float32).permute(0, 3, 1, 2)
         elif imgs.ndim == 3:
             imgs_tensor = torch.tensor(imgs, dtype=torch.float32).unsqueeze(1)
+        else:
+            imgs_tensor = imgs if isinstance(imgs, torch.Tensor) else torch.tensor(imgs, dtype=torch.float32)
         
         batch_size = 64
         preds_list = []
@@ -185,6 +233,10 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default=None,
                         help='Path to .pt dataset file (from convert_trajectories_to_pt.py). '
                              'When provided, this takes priority over --trajectories_dir / --labels_csv.')
+    parser.add_argument('--use_facts', action='store_true',
+                        help='If flag is set, Train FactGazeNet instead of HumanGazeNet directly from fact vectors.')
+    parser.add_argument('--facts_dataset', type=str, default=None,
+                        help='Path to .pkl containing atom_probs (only used with --use_facts).')
     parser.add_argument('--frame_stack', type=int, default=4,
                         help='Number of frames to stack as one input sample (default: 4).')
     # ----- legacy CSV-based flow -----
@@ -211,11 +263,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     gp = Human_Gaze_Predictor(args.game_name)
-    gp.init_model(args.model_weights, lr=args.lr, rho=args.rho, weight_decay=args.weight_decay)
+    gp.init_model(args.model_weights, lr=args.lr, rho=args.rho, weight_decay=args.weight_decay, use_facts=args.use_facts)
     gp.log_csv = args.log_csv
 
     # ── .pt dataset flow ─────────────────────────────────────────────────────
-    if args.dataset:
+    if args.use_facts:
+        if not args.facts_dataset:
+            parser.error('--facts_dataset required when using --use_facts')
+        # Here gaze_masks is used as the target labels tensor
+        facts_stacked, gaze_masks, valid_indices = load_fact_gaze_predictor_data(
+            args.facts_dataset, args.gaze_masks, frame_stack=args.frame_stack, device='cpu'
+        )
+        gp.train_model(facts_stacked, gaze_masks, valid_indices,
+                       epochs=args.epochs, batch_size=args.batch_size)
+    elif args.dataset:
         imgs_nhwc, gaze_masks, valid_indices = load_gaze_predictor_data(
             args.dataset, frame_stack=args.frame_stack, device='cpu'
         )

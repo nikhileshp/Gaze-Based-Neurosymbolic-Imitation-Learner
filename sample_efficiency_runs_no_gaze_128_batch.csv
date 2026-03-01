@@ -1,0 +1,5 @@
+num_episodes,gaze,mean_reward,std_reward,model_path
+1,no_gaze,187.40,182.17,models/nsfr/seaquest/no_gaze/1_ep/best.pth
+1,no_gaze,0.00,0.00,models/nsfr/seaquest/no_gaze/1_ep/best.pth
+2,no_gaze,195.20,73.93,models/nsfr/seaquest/no_gaze/2_ep/best.pth
+2,no_gaze,195.20,73.93,models/nsfr/seaquest/no_gaze/2_ep/best.pth

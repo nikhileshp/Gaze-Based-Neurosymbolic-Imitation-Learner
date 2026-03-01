@@ -1,0 +1,13 @@
+num_episodes,gaze_method,mean_reward,std_reward,model_dir
+1,None,120.00,60.00,models/bc/none/1_ep
+2,None,138.00,32.80,models/bc/none/2_ep
+4,None,142.00,32.80,models/bc/none/4_ep
+8,None,162.00,57.58,models/bc/none/8_ep
+16,None,148.00,36.00,models/bc/none/16_ep
+28,None,182.00,44.23,models/bc/none/28_ep
+1,AGIL,234.00,32.31,models/bc/agil/1_ep
+2,AGIL,200.00,66.33,models/bc/agil/2_ep
+4,AGIL,192.00,68.23,models/bc/agil/4_ep
+8,AGIL,234.00,52.19,models/bc/agil/8_ep
+16,AGIL,220.00,74.30,models/bc/agil/16_ep
+28,AGIL,252.00,58.79,models/bc/agil/28_ep
