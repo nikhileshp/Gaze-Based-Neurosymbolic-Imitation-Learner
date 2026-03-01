@@ -384,3 +384,60 @@ def load_gaze_predictor_data(
     print(f"  imgs_nhwc : {imgs_nhwc.shape}")
     print(f"  gaze_masks: {tuple(gaze_masks.shape)}")
     return imgs_nhwc, gaze_masks, valid_indices
+
+# ===========================================================================
+# load_fact_gaze_predictor_data — returns facts and gaze for FactGazeNet
+# ===========================================================================
+
+def load_fact_gaze_predictor_data(
+    facts_pkl: str,
+    gaze_pt: str,
+    frame_stack: int = 4,
+    device: str = "cpu",
+):
+    """
+    Load a .pkl file containing `atom_probs` and merge with `gaze_masks.pt`.
+
+    Returns
+    -------
+    facts_stacked : torch.Tensor  (N, k * num_atoms)  float32
+    gaze_masks    : torch.Tensor  (T, H, W)           float32
+    valid_indices : torch.Tensor  (N,)                long
+    """
+    import pickle
+    
+    print(f"Loading probabilistic facts from {facts_pkl} ...")
+    with open(facts_pkl, 'rb') as f:
+        data = pickle.load(f)
+        
+    atom_probs = data['atom_probs']  # e.g., (T, 284)
+    
+    print(f"Loading gaze masks from {gaze_pt} ...")
+    gaze_masks = torch.load(gaze_pt, map_location=device, weights_only=False)
+    
+    # Align temporal lengths (if there is a slight mismatch)
+    min_len = min(len(atom_probs), len(gaze_masks))
+    atom_probs = atom_probs[:min_len]
+    gaze_masks = gaze_masks[:min_len]
+
+    if not isinstance(atom_probs, torch.Tensor):
+        atom_probs = torch.tensor(atom_probs, dtype=torch.float32)
+    if not isinstance(gaze_masks, torch.Tensor):
+        gaze_masks = torch.tensor(gaze_masks, dtype=torch.float32)
+        
+    T = min_len
+    k = frame_stack
+    N = T - (k - 1)
+    
+    num_atoms = atom_probs.shape[1]
+    facts_stacked = torch.zeros((N, k * num_atoms), dtype=torch.float32)
+    valid_indices = torch.arange(k - 1, T, dtype=torch.long)
+    
+    for i in range(N):
+        t = i + (k - 1)
+        window = atom_probs[t - (k - 1) : t + 1] # shape (k, num_atoms)
+        facts_stacked[i] = window.flatten()
+        
+    print(f"  facts_stacked : {facts_stacked.shape}")
+    print(f"  gaze_masks    : {tuple(gaze_masks.shape)}")
+    return facts_stacked, gaze_masks, valid_indices

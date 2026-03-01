@@ -107,21 +107,25 @@ class ValuationModule(nn.Module, ABC):
             
         # 2. Expand Gaze if needed
         flat_gaze = None
-        if gaze is not None and len(gaze.shape) > 2:
-            # gaze: (Batch, H, W)
-            # expand to (Batch, N, H, W) -> (Batch*N, H, W)
-            gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1, -1)
-            flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, gaze.shape[1], gaze.shape[2])
-        elif gaze is not None:
-             # Point gaze: (Batch, 2)
-             gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1)
-             flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, -1)
+        if gaze is not None:
+            gaze = gaze.to(self.device)
+            if len(gaze.shape) > 2:
+                # gaze: (Batch, H, W)
+                # expand to (Batch, N, H, W) -> (Batch*N, H, W)
+                gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1, -1)
+                flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, gaze.shape[1], gaze.shape[2])
+            else:
+                # Point gaze: (Batch, 2)
+                gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1)
+                flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, -1)
 
         # 3. Expand all_objects if needed: (Batch, N_OBJ, F) -> (Batch*num_atoms, N_OBJ, F)
         flat_all_objects = None
-        if all_objects is not None and all_objects.dim() == 3:
-            ao_expanded = all_objects.unsqueeze(1).expand(-1, num_atoms, -1, -1)  # (B, N, N_OBJ, F)
-            flat_all_objects = ao_expanded.reshape(batch_size * num_atoms, all_objects.size(1), all_objects.size(2))
+        if all_objects is not None:
+            all_objects = all_objects.to(self.device)
+            if all_objects.dim() == 3:
+                ao_expanded = all_objects.unsqueeze(1).expand(-1, num_atoms, -1, -1)  # (B, N, N_OBJ, F)
+                flat_all_objects = ao_expanded.reshape(batch_size * num_atoms, all_objects.size(1), all_objects.size(2))
 
         # 4. Call Valuation Function
         val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze, flat_all_objects)

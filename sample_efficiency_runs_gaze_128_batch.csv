@@ -1,0 +1,3 @@
+num_episodes,gaze,mean_reward,std_reward,model_path
+1,gaze,,,models/nsfr/seaquest/gaze/1_ep/best.pth
+2,gaze,,,models/nsfr/seaquest/gaze/2_ep/best.pth

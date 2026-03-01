@@ -6,3 +6,13 @@ nudge/nudge.egg-info
 /nsfr/nsfr.egg-info
 *__pycache*
 /results/bs_data/
+scripts/email_me.py
+
+# Large Data & Models
+models/
+logs/
+*.log
+*.pkl
+*.pth
+events.out.tfevents*
+eval_every_10_epochs.csv

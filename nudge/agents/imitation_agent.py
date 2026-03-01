@@ -3,14 +3,12 @@ import torch.nn as nn
 from nsfr.common import get_nsfr_model
 
 class ImitationAgent(nn.Module):
-    def __init__(self, env_name, rules, device, lr=0.001, gaze_threshold=None):
+    def __init__(self, env_name, rules, device, gaze_threshold=None):
         super().__init__()
         self.device = device
         print(f"Initializing NSFR model for {env_name}...", flush=True)
         self.model = get_nsfr_model(env_name, rules, device=device, train=True, gaze_threshold=gaze_threshold)
         print("NSFR model initialized.", flush=True)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.loss_fn = nn.NLLLoss()
 
     def update(self, states, actions, gazes=None, vT=None):
         """
@@ -24,8 +22,9 @@ class ImitationAgent(nn.Module):
         from scripts.data_utils import PRIMITIVE_ACTION_MAP
         
         if vT is not None:
-            # Skip the forward pass and use pre-computed valuations
-            probs = self.model.get_predictions(vT.to(self.device), prednames=self.model.prednames)
+            # The model's forward() automatically detects if the input is V_0 (B, num_atoms)
+            # and skips the slow FactsConverter (perception), continuing securely into self.im (reasoning).
+            probs = self.model(vT.to(self.device))
         else:
             # Forward pass (perception + reasoning)
             probs = self.model(states, gazes)
@@ -48,26 +47,27 @@ class ImitationAgent(nn.Module):
                 m, _ = torch.max(stacked, dim=1)
                 action_scores_list.append(m)
             else:
-                action_scores_list.append(torch.zeros(B, device=self.device))
+                # Use the batch size from the first available action prob or 0 if none
+                batch_size = probs.size(0)
+                action_scores_list.append(torch.zeros(batch_size, device=self.device))
         
         action_scores = torch.stack(action_scores_list, dim=1) # (B, 6)
         
-        # 2. Compute NLL loss on independent action probabilities (No Softmax)
-        # This matches the "yesterday" behavior where actions don't compete.
-        # Rule valuations are [0, 1], so we can take the log directly.
-        eps = 1e-10
-        log_action_probs = torch.log(action_scores + eps)
+        # Independent Binary Cross Entropy
+        # We want target action to be 1.0, and ALL other actions to be penalized towards 0.0
+        # This avoids Softmax which breaks logic independence, but still provides false-action penalty.
+        batch_size = action_scores.size(0)
+        target_matrix = torch.zeros(batch_size, 6, device=self.device)
+        target_matrix.scatter_(1, actions.unsqueeze(1), 1.0)
         
-        # We use reduction='none' to get per-sample losses for the Prioritized Replay Buffer.
-        sample_losses = nn.NLLLoss(reduction='none')(log_action_probs, actions)
+        # Compute BCELoss over all actions independently
+        bce_loss = nn.BCELoss(reduction='none')(action_scores, target_matrix)
+        
+        # We can sum the BCE components per sample so it evaluates properly per-experience
+        sample_losses = bce_loss.sum(dim=1)
         loss = sample_losses.mean()
         
-        # Backward pass
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        
-        return loss.item(), sample_losses.detach().cpu().numpy()
+        return loss, sample_losses
 
     def act(self, state, gaze=None):
         """
@@ -80,12 +80,15 @@ class ImitationAgent(nn.Module):
         with torch.no_grad():
             if state.dim() == 1:
                 state = state.unsqueeze(0)
+            
+            # Forward pass to get rule valuations V_T restricted to heads
+            # probs: (1, num_rules)
             probs = self.model(state, gaze)
             
-            # Apply softmax across all rules to make them compete
-            probs = torch.softmax(probs, dim=1)
+            # NOTE: Removed softmax! rule valuations are already in [0, 1].
+            # Softmax on rule valuations squashes the signal and is logically incorrect.
             
-            # Pick the rule with the highest probability directly (argmax over rules)
+            # Pick the rule with the highest valuation directly
             prednames = self.model.get_prednames()
             best_rule_idx = torch.argmax(probs[0]).item()
             best_rule = prednames[best_rule_idx]
@@ -95,9 +98,9 @@ class ImitationAgent(nn.Module):
             if not hasattr(self, '_act_count'): self._act_count = 0
             self._act_count += 1
             if self._act_count % 50 == 0:
-                top_rule_vals, top_rule_idxs = torch.topk(probs[0], 3)
-                top_rules = [f"{prednames[idx]}: {val:.3f}" for val, idx in zip(top_rule_vals, top_rule_idxs)]
-                print(f"  [DEBUG Agent] Top Rules: {', '.join(top_rules)} -> action: {predicate}")
+                top_rule_vals, top_rule_idxs = torch.topk(probs[0], min(3, len(prednames)))
+                top_rules = [f"{prednames[idx]}: {val:.4f}" for val, idx in zip(top_rule_vals, top_rule_idxs)]
+                # print(f"  [DEBUG Agent] Top Rules: {', '.join(top_rules)} -> action: {predicate}")
             
         return predicate
 

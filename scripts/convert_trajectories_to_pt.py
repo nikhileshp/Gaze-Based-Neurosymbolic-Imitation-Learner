@@ -503,7 +503,7 @@ def main():
         'episode_number':  np.array(all_epnum,    dtype=np.int32),    # (N,)
         'actions':         np.array(all_act,      dtype=np.int32),    # (N,)
         'episode-rewards': np.array(all_rew,      dtype=np.float64),  # (N,)
-        'terminateds':     np.array(all_term,     dtype=bool),        # (N,)
+        'terminateds':     np.array(all_term,     dtype=bool),  Gaze-Based-Neurosymbolic-Imitation-Learner/run_bc_incremental_sweep.sh      # (N,)
         'truncateds':      np.array(all_trunc,    dtype=bool),        # (N,) all False
         'steps':           np.array(steps_per_ep, dtype=np.int32),    # (E,)
     }

@@ -1,7 +1,6 @@
 import os
 import argparse
 import torch
-import torch.nn as nn
 import numpy as np
 from pathlib import Path
 import pandas as pd
@@ -15,8 +14,6 @@ from tqdm import tqdm
 from collections import Counter
 from evaluate_model import evaluate
 from scripts.data_utils import PtDataset, ExpertDataset, PRIMITIVE_ACTION_MAP, CSV_FILE, BASE_IMAGE_DIR
-from scripts.email_me import send_email
-import time
 
 # Dataset classes moved to scripts/data_utils.py
 
@@ -104,53 +101,6 @@ class PrioritizedReplayBuffer:
 #     return rewards
 
 
-def format_results_table(results_log):
-    if not results_log:
-        return "No results yet."
-    
-    header = f"{'Epoch':<6} | {'Loss':<10} | {'Mean Reward':<12} | {'Std Reward':<12}"
-    divider = "-" * len(header)
-    rows = []
-    for res in results_log:
-        epoch = res.get('epoch', '-')
-        loss = res.get('train_loss', 0.0)
-        mean_r = res.get('mean_reward', 0.0)
-        std_r = res.get('std_reward', 0.0)
-        # Handle NaN for mean_reward if evaluation didn't happen this epoch
-        mean_r_str = f"{mean_r:<12.2f}" if not np.isnan(mean_r) else f"{'N/A':<12}"
-        std_r_str = f"{std_r:<12.2f}" if not np.isnan(std_r) else f"{'N/A':<12}"
-        rows.append(f"{epoch:<6} | {loss:<10.4f} | {mean_r_str} | {std_r_str}")
-    
-    return "\n".join([header, divider] + rows)
-
-def send_run_update(args, results_log, current_epoch, last_loss, best_loss, last_reward, best_reward, is_final=False):
-    gaze_status = "With Gaze" if args.use_gaze else "Without Gaze"
-    num_ep = args.num_episodes if args.num_episodes is not None else "All"
-    
-    status_prefix = "Final" if is_final else "Periodic"
-    subject = f"Server Run Update: Run {args.env} - NSFR Training - {gaze_status} | {args.rules} Rules | Using {num_ep} episodes"
-    
-    # Format NaN rewards
-    last_reward_str = f"{last_reward:.2f}" if not np.isnan(last_reward) else "N/A"
-    best_reward_str = f"{best_reward:.2f}" if not np.isnan(best_reward) else "N/A"
-
-    body = f"""
-Status: {status_prefix} Update
-Environment: {args.env}
-Ruleset: {args.rules}
-Gaze: {gaze_status}
-Episodes: {num_ep}
-
-Current Epoch: {current_epoch}
-Last Train Loss: {last_loss:.4f}
-Best Train Loss: {best_loss:.4f}
-Last Mean Reward: {last_reward_str}
-Best Mean Reward: {best_reward_str}
-
-Progress Table:
-{format_results_table(results_log)}
-"""
-    send_email(subject, body.strip())
 
 def main():
     parser = argparse.ArgumentParser()
@@ -162,7 +112,7 @@ def main():
     parser.add_argument("--data_path", type=str, default=None, help="Path to expert data (legacy CSV/pkl)")
     parser.add_argument("--epochs", type=int, default=16, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
@@ -171,14 +121,10 @@ def main():
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Threshold for gaze-based valuation scaling")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", default=False, action="store_true", help="Use full gaze map for valuation")
-    parser.add_argument("--gaze_model_path", type=str, default="models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth", help="Path to the .pth gaze predictor weights")
+    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
     parser.add_argument("--num_episodes", type=int, default=None, help="Number of episodes to load from .pt dataset")
     parser.add_argument("--sort_by", type=str, default=None, choices=['length', 'reward_per_step'], help="How to sort episodes before selection")
-    parser.add_argument("--valuation_path", type=str, default=None, help="Path to pre-computed valuation.pt")
-    parser.add_argument("--eval_interval", type=int, default=5, help="Evaluate every N epochs (2 = every other epoch)")
-    parser.add_argument("--eval_max_steps", type=int, default=10000, help="Max game steps per eval episode")
-    parser.add_argument("--send_email", action="store_true", help="Enable periodic email updates")
-    parser.add_argument("--email_interval", type=int, default=30, help="Interval in minutes between email updates")
+    parser.add_argument("--valuation_path", type=str, default="models/nsfr/seaquest/_no_gaze/valuation.pt", help="Path to pre-computed valuation.pt")
     args = parser.parse_args()
 
     if args.use_gazemap:
@@ -188,8 +134,10 @@ def main():
         gaze_predictor = Human_Gaze_Predictor(args.env)
         gaze_predictor.init_model(args.gaze_model_path)
         gaze_predictor.model.eval()
-    
-    # args.use_gaze is now properly synchronized with args.use_gazemap
+    # Prioritize use_gazemap over use_gaze if both set? Or allow both?
+    # Agent expects `use_gaze` for logic. Let's set args.use_gaze = True if use_gazemap is True
+    if args.use_gazemap:
+        args.use_gaze = True
 
 
     make_deterministic(args.seed)
@@ -206,7 +154,7 @@ def main():
     # Initialize Agent
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
     agent_gaze_threshold = args.gaze_threshold if args.use_gaze else None
-    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold)
+    agent = ImitationAgent(args.env, args.rules, device, lr=args.lr, gaze_threshold=agent_gaze_threshold)
 
     # Determine trajectories to iterate over
     # We look at train.csv to find all trajectory numbers
@@ -220,10 +168,6 @@ def main():
             print("Warning: 'trajectory_number' column not found in CSV. Using single trajectory [1].")
             trajectories = [1]
 
-
-    # Best model/loss tracking for both loops
-    best_mean_reward = -float('inf')
-    best_loss = float('inf')
 
     # ── Dataset ──────────────────────────────────────────────────────────────
     if args.dataset:
@@ -264,77 +208,48 @@ def main():
         results_log = []
         os.makedirs(f"models/nsfr/{args.env}", exist_ok=True)
         os.makedirs("out/imitation", exist_ok=True)
-        gaze_str = "gaze" if args.use_gazemap else "no_gaze"
+        gaze_str = "_with_gazemap_values" if args.use_gazemap else (f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze")
+        
+        # Metadata for saving
         num_iters = args.num_episodes if args.num_episodes is not None else "full"
         experiment_str = f"{args.env}_{args.rules}_il_lr_{args.lr}_num_ep_{num_iters}"
 
         # Load pre-computed valuations if they exist
         valuations = None
-        v_path = args.valuation_path
-        if v_path is None:
-            # Auto-detect path
-            if args.use_gazemap:
-                v_path = f"models/nsfr/{args.env}/gaze/valuation.pt"
-            else:
-                v_path = f"models/nsfr/{args.env}/_no_gaze/valuation.pt"
-        
-        if os.path.exists(v_path):
-            print(f"Loading pre-computed valuations from {v_path}...")
-            # Use weights_only=False because valuation.pt involves complex types (list of dicts)
-            valuations_raw = torch.load(v_path, map_location=device, weights_only=False)
-            
-            # Convert list-of-dicts format to ep_id-indexed dict of lists
-            if isinstance(valuations_raw, dict) and 'data' in valuations_raw and isinstance(valuations_raw['data'], list):
-                print("  Reformatting valuations from list of dicts to episode-based lists...")
-                valuations_indexed = {}
-                for item in valuations_raw['data']:
-                    frame_id = item['frame_id'] # 'ep_0_step_0'
-                    try:
-                        parts = frame_id.split('_')
-                        # Format: 'ep' (0), ID (1), 'step' (2), IDX (3)
-                        ep_id = int(parts[1])
-                        step_idx = int(parts[3])
-                        
-                        if ep_id not in valuations_indexed:
-                            valuations_indexed[ep_id] = {}
-                        
-                        atoms = item['atoms']
-                        if not isinstance(atoms, torch.Tensor):
-                            atoms = torch.tensor(atoms, dtype=torch.float32)
-                        valuations_indexed[ep_id][step_idx] = atoms.to(device)
-                    except (IndexError, ValueError):
-                        continue
-                
-                # Convert inner dicts to sorted lists for faster access
-                valuations = {}
-                for ep_id in valuations_indexed:
-                    max_step = max(valuations_indexed[ep_id].keys())
-                    v_list = [torch.zeros(len(agent.model.atoms)).to(device)] * (max_step + 1)
-                    for s_idx, v in valuations_indexed[ep_id].items():
-                        v_list[s_idx] = v
-                    valuations[ep_id] = v_list
-                print(f"  Loaded valuations for {len(valuations)} episodes.")
-            else:
-                valuations = valuations_raw
+        if os.path.exists(args.valuation_path):
+            print(f"Loading pre-computed valuations from {args.valuation_path}...")
+            valuations = torch.load(args.valuation_path, map_location=device)
         else:
-            print(f"No pre-computed valuations found at {v_path}. Training from logic states.")
+            print(f"No pre-computed valuations found at {args.valuation_path}. Training from logic states.")
 
-        # replay_buffer = PrioritizedReplayBuffer(capacity=25000)
+        replay_buffer = PrioritizedReplayBuffer(capacity=25000)
         replay_steps = 1
-        patience = 12
+        best_mean_reward = -float('inf')
+        patience = 5
         patience_counter = 0
 
-        # Use Adam for better stability with scaled logits
-        optimizer = torch.optim.Adam(agent.model.parameters(), lr=args.lr)
-
-        last_email_time = time.time()
         for epoch in range(args.epochs):
+            print(f"\n--- Epoch {epoch+1}/{args.epochs} ---")
             
-            print(f"\n--- Epoch {epoch+1}/{args.epochs} (all {len(unique_eps)} episodes) ---")
-
-            # Option A: train on ALL N episodes every epoch for clean sample efficiency measurement
+            # Select episode for this epoch: Episode i
+            target_ep_id = unique_eps[epoch % len(unique_eps)]
+            print(f"Epoch {epoch+1} -> Training on Episode ID: {target_ep_id.item()}")
+            
+            if isinstance(train_dataset, torch.utils.data.Subset):
+                # subset_ep_nums = train_dataset.dataset.ep_nums[train_dataset.indices]
+                # ep_mask = (subset_ep_nums == target_ep_id)
+                # Correct way for Subset
+                all_indices = torch.tensor(train_dataset.indices)
+                all_ep_nums = train_dataset.dataset.ep_nums[all_indices]
+                ep_mask = (all_ep_nums == target_ep_id)
+                epoch_indices = all_indices[ep_mask].tolist()
+                epoch_dataset = torch.utils.data.Subset(train_dataset.dataset, epoch_indices)
+            else:
+                indices = torch.where(train_dataset.ep_nums == target_ep_id)[0]
+                epoch_dataset = torch.utils.data.Subset(train_dataset, indices)
+            
             epoch_loader = DataLoader(
-                train_dataset,
+                epoch_dataset,
                 batch_size=args.batch_size,
                 shuffle=True,
                 num_workers=args.num_workers,
@@ -363,40 +278,33 @@ def main():
                     vT_batch = torch.stack(vT_list).to(device)
 
                 # ── UPDATE A: Discovery (Fresh Batch) ──
-                loss, ind_losses = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch)
-                
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(agent.model.parameters(), 1.0)
-                optimizer.step()
-                
-                loss_val = loss.item()
+                loss_val, ind_losses = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch)
                 
                 # Add to PER
-                # replay_buffer.add(states, actions, gazes, ind_losses, ep_nums, step_idxs)
+                replay_buffer.add(states, actions, gazes, ind_losses, ep_nums, step_idxs)
                 
                 # ── UPDATE B: Focus (Replay Batch) ──
-                # if len(replay_buffer) >= args.batch_size:
-                #     for _ in range(replay_steps):
-                #         sample = replay_buffer.sample(args.batch_size)
-                #         if sample:
-                #             s_r, a_r, g_r, e_r, st_r, indices = sample
-                #             s_r, a_r, g_r = s_r.to(device), a_r.to(device), g_r.to(device)
+                if len(replay_buffer) >= args.batch_size:
+                    for _ in range(replay_steps):
+                        sample = replay_buffer.sample(args.batch_size)
+                        if sample:
+                            s_r, a_r, g_r, e_r, st_r, indices = sample
+                            s_r, a_r, g_r = s_r.to(device), a_r.to(device), g_r.to(device)
                             
-                #             vT_r = None
-                #             if valuations is not None:
-                #                 vT_r_list = []
-                #                 for ep_id, s_idx in zip(e_r, st_r):
-                #                     ep_id, s_idx = ep_id.item(), s_idx.item()
-                #                     vT_r_list.append(valuations[ep_id][s_idx] if ep_id in valuations else torch.zeros(len(agent.model.atoms)).to(device))
-                #                 vT_r = torch.stack(vT_r_list).to(device)
+                            vT_r = None
+                            if valuations is not None:
+                                vT_r_list = []
+                                for ep_id, s_idx in zip(e_r, st_r):
+                                    ep_id, s_idx = ep_id.item(), s_idx.item()
+                                    vT_r_list.append(valuations[ep_id][s_idx] if ep_id in valuations else torch.zeros(len(agent.model.atoms)).to(device))
+                                vT_r = torch.stack(vT_r_list).to(device)
                             
-                #             l_r, ind_l_r = agent.update(s_r, a_r, g_r if args.use_gaze else None, vT=vT_r)
-                #             replay_buffer.update_priorities(indices, ind_l_r)
+                            l_r, ind_l_r = agent.update(s_r, a_r, g_r if args.use_gaze else None, vT=vT_r)
+                            replay_buffer.update_priorities(indices, ind_l_r)
 
                 total_loss += loss_val
                 n_batches  += 1
-                pbar.set_postfix({"loss": f"{loss_val:.4f}"})
+                pbar.set_postfix({"loss": f"{loss_val:.4f}", "per": f"{len(replay_buffer)}"})
 
             # Optional PER Replay for full dataset (sampling from recent successes/failures)
             # 1. Add some samples to buffer from this epoch
@@ -412,7 +320,6 @@ def main():
                 with torch.no_grad():
                     for states, actions, gazes, ep_nums, step_idxs in val_loader:
                         states, actions, gazes = states.to(device), actions.to(device), gazes.to(device)
-                        B = states.size(0)
                         
                         # Use pre-computed valuations for validation if available
                         if valuations is not None:
@@ -452,55 +359,34 @@ def main():
                         val_loss += loss.item()
                         val_n += 1
                 print(f"Epoch {epoch+1} Val Loss:   {val_loss / max(val_n, 1):.4f}")
-            # Evaluation in environment (every eval_interval epochs)
-            if (epoch + 1) % args.eval_interval == 0:
-                rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, valuation_interval=0, log_interval=0,
-                                   max_steps=args.eval_max_steps,
-                                   gaze_predictor=(gaze_predictor if args.use_gazemap else None))
-                mean_reward, std_reward = np.mean(rewards), np.std(rewards)
-            else:
-                mean_reward, std_reward = float('nan'), float('nan')
+            # Evaluation in environment
+            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, valuation_interval=0, log_interval=0, gaze_predictor=(gaze_predictor if args.use_gazemap else None))
+            mean_reward, std_reward = np.mean(rewards), np.std(rewards)
             print(f"Epoch {epoch+1} Eval Score: Mean={mean_reward:.2f}  Std={std_reward:.2f}")
 
             results_log.append({
                 'epoch': epoch + 1, 'trajectory': 'all',
-                'num_episodes': num_iters,
                 'mean_reward': mean_reward, 'std_reward': std_reward,
                 'train_loss': avg_loss, 'gaze': args.use_gaze,
             })
 
-            run_dir = f"models/nsfr/{args.env}/{gaze_str}/{num_iters}_ep"
-            os.makedirs(run_dir, exist_ok=True)
-            save_path = f"{run_dir}/epoch_{epoch+1}.pth"
+            os.makedirs(f"models/nsfr/{args.env}/{gaze_str}/{experiment_str}", exist_ok=True)
+            save_path = f"models/nsfr/{args.env}/{gaze_str}/{experiment_str}/epoch_{epoch+1}.pth"
             agent.save(save_path)
-            print(f"Saved model to {save_path}")
 
             # Best Model and Early Stopping
             if mean_reward > best_mean_reward:
                 best_mean_reward = mean_reward
                 patience_counter = 0
-                best_model_path = f"{run_dir}/best.pth"
+                best_model_path = f"models/nsfr/{args.env}/{gaze_str}/{experiment_str}/best.pth"
                 agent.save(best_model_path)
                 print(f"--- New Best Model! Reward: {best_mean_reward:.2f}. Saved to {best_model_path} ---")
-            
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                patience_counter = 0
-                print(f"--- New Best Loss! Loss: {best_loss:.4f}. Saved to {save_path} ---")
             else:
                 patience_counter += 1
                 print(f"--- No improvement. Patience: {patience_counter}/{patience} ---")
                 if patience_counter >= patience:
                     print(f"--- Early stopping triggered after {epoch+1} epochs ---")
                     break
-            
-            # Periodic Email Update
-            if args.send_email:
-                current_time = time.time()
-                if (current_time - last_email_time) / 60 >= args.email_interval:
-                    send_run_update(args, results_log, epoch + 1, avg_loss, best_loss, mean_reward, best_mean_reward)
-                    last_email_time = current_time
-            
 
     else:
         # ── Legacy per-trajectory loop ────────────────────────────────────────
@@ -516,16 +402,16 @@ def main():
         results_log = []
         
         # Initialize PER, Early Stopping and Best Model tracking
-        # replay_buffer = PrioritizedReplayBuffer(capacity=20000)
+        replay_buffer = PrioritizedReplayBuffer(capacity=20000)
+        best_mean_reward = -float('inf')
         patience = 5
         patience_counter = 0
         replay_steps = 5 # Number of replay batches per trajectory epoch
         
         # Use args.epochs as the number of trajectories to process if it's less than total trajectories
         num_iters = min(args.epochs, len(trajectories))
-        gaze_str = "gaze" if args.use_gazemap else "no_gaze"
+        gaze_str = "_with_gazemap_values" if args.use_gazemap else (f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze")
         experiment_str = f"{args.env}_{args.rules}_il_lr_{args.lr}_num_ep_{num_iters}"
-        last_email_time = time.time()
         for epoch in range(num_iters):
             traj_num = trajectories[epoch]
             print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
@@ -545,14 +431,8 @@ def main():
                 gazes   = gazes.to(device)
 
                 # Perform update using the agent's unified method
-                loss, _ = agent.update(states, actions, gazes if args.use_gaze else None)
+                loss_val, _ = agent.update(states, actions, gazes if args.use_gaze else None)
                 
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(agent.model.parameters(), 1.0)
-                optimizer.step()
-                
-                loss_val = loss.item()
                 total_loss += loss_val
                 pbar.set_postfix({"loss": f"{loss_val:.4f}"})
                 
@@ -574,27 +454,27 @@ def main():
                     ind_loss = torch.nn.functional.nll_loss(log_p, actions, reduction='none')
                     all_states.append(states.cpu()); all_actions.append(actions.cpu())
                     all_gazes.append(gazes.cpu()); all_losses.append(ind_loss.cpu())
-                # replay_buffer.add(torch.cat(all_states), torch.cat(all_actions), torch.cat(all_gazes), torch.cat(all_losses))
+                replay_buffer.add(torch.cat(all_states), torch.cat(all_actions), torch.cat(all_gazes), torch.cat(all_losses))
 
             # 2. Perform Replay Training
-            # if len(replay_buffer) >= args.batch_size:
-            #     print(f"Performing {replay_steps} replay steps from PER buffer...")
-            #     agent.model.train()
-            #     for _ in range(replay_steps):
-            #         sample = replay_buffer.sample(args.batch_size)
-            #         if not sample: break
-            #         s_b, a_b, g_b, indices = sample
-            #         s_b, a_b, g_b = s_b.to(device), a_b.to(device), g_b.to(device)
-            #         p_b = agent.model(s_b, g_b if args.use_gaze else None)
-            #         act_p_b = torch.zeros(s_b.size(0), 6, device=device)
-            #         for i, pred in enumerate(agent.model.get_prednames()):
-            #             prefix = pred.split('_')[0]
-            #             if prefix in PRIMITIVE_ACTION_MAP:
-            #                 act_p_b[:, PRIMITIVE_ACTION_MAP[prefix]] += p_b[:, i]
-            #         log_p_b = torch.log(act_p_b + 1e-10)
-            #         l_b_ind = torch.nn.functional.nll_loss(log_p_b, a_b, reduction='none')
-            #         l_b_ind_mean, l_b_ind = agent.update(s_b, a_b, g_b if args.use_gaze else None)
-            #         replay_buffer.update_priorities(indices, l_b_ind)
+            if len(replay_buffer) >= args.batch_size:
+                print(f"Performing {replay_steps} replay steps from PER buffer...")
+                agent.model.train()
+                for _ in range(replay_steps):
+                    sample = replay_buffer.sample(args.batch_size)
+                    if not sample: break
+                    s_b, a_b, g_b, indices = sample
+                    s_b, a_b, g_b = s_b.to(device), a_b.to(device), g_b.to(device)
+                    p_b = agent.model(s_b, g_b if args.use_gaze else None)
+                    act_p_b = torch.zeros(s_b.size(0), 6, device=device)
+                    for i, pred in enumerate(agent.model.get_prednames()):
+                        prefix = pred.split('_')[0]
+                        if prefix in PRIMITIVE_ACTION_MAP:
+                            act_p_b[:, PRIMITIVE_ACTION_MAP[prefix]] += p_b[:, i]
+                    log_p_b = torch.log(act_p_b + 1e-10)
+                    l_b_ind = torch.nn.functional.nll_loss(log_p_b, a_b, reduction='none')
+                    l_b_ind_mean, l_b_ind = agent.update(s_b, a_b, g_b if args.use_gaze else None)
+                    replay_buffer.update_priorities(indices, l_b_ind)
 
             avg_loss = total_loss / len(dataloader)
             print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
@@ -607,42 +487,26 @@ def main():
             mean_reward, std_reward = np.mean(rewards), np.std(rewards)
             print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
 
-            results_log.append({'epoch': epoch+1, 'trajectory': traj_num, 'num_episodes': num_iters, 'mean_reward': mean_reward, 'std_reward': std_reward, 'train_loss': avg_loss, 'gaze': args.use_gaze})
+            results_log.append({'epoch': epoch+1, 'trajectory': traj_num, 'mean_reward': mean_reward, 'std_reward': std_reward, 'train_loss': avg_loss, 'gaze': args.use_gaze})
 
-            run_dir = f"models/nsfr/{args.env}/{gaze_str}/{num_iters}_ep"
-            os.makedirs(run_dir, exist_ok=True)
-            save_path = f"{run_dir}/epoch_{epoch+1}.pth"
+            # Save per-epoch model
+            os.makedirs(f"models/nsfr/{args.env}/{gaze_str}/{experiment_str}", exist_ok=True)
+            save_path = f"models/nsfr/{args.env}/{gaze_str}/{experiment_str}/epoch_{epoch+1}.pth"
             agent.save(save_path)
             
-            # Use reward AND loss for early stopping 
-            improved = False
+            # Check for Best Model and Early Stopping
             if mean_reward > best_mean_reward:
                 best_mean_reward = mean_reward
-                improved = True
-                best_model_path = f"{run_dir}/best.pth"
+                patience_counter = 0
+                best_model_path = f"out/imitation/best_{args.env}{gaze_str}.pth"
                 agent.save(best_model_path)
                 print(f"--- New Best Model! Reward: {best_mean_reward:.2f}. Saved to {best_model_path} ---")
-            
-            if avg_loss < best_loss: # Use < for minimizing loss
-                best_loss = avg_loss
-                improved = True
-                print(f"--- New Best Loss: {best_loss:.4f} ---")
-            
-            if improved:
-                patience_counter = 0
             else:
                 patience_counter += 1
-                print(f"--- No improvement in reward/loss. Patience: {patience_counter}/{patience} ---")
+                print(f"--- No improvement. Patience: {patience_counter}/{patience} ---")
                 if patience_counter >= patience:
                     print(f"--- Early stopping triggered after {epoch+1} epochs ---")
                     break
-
-            # Periodic Email Update
-            if args.send_email:
-                current_time = time.time()
-                if (current_time - last_email_time) / 60 >= args.email_interval:
-                    send_run_update(args, results_log, epoch + 1, avg_loss, best_loss, mean_reward, best_mean_reward)
-                    last_email_time = current_time
 
     # Print and save final learning curve
     print("\n" + "="*50)
@@ -655,24 +519,12 @@ def main():
     print("="*50)
 
     results_df = pd.DataFrame(results_log)
-    # Save CSV co-located with the models for this run
-    run_dir = f"models/nsfr/{args.env}/{gaze_str}/{num_iters}_ep"
-    os.makedirs(run_dir, exist_ok=True)
-    results_csv_path = os.path.join(run_dir, f"results_lr_{args.lr}.csv")
-    results_df.to_csv(results_csv_path, index=False)
+    results_csv_path = os.path.join("out/imitation", f"{args.env}_{args.rules}_lr_{args.lr}_results.csv")
+    if os.path.exists(results_csv_path):
+        results_df.to_csv(results_csv_path, mode='a', header=False, index=False)
+    else:
+        results_df.to_csv(results_csv_path, index=False)
     print(f"Results saved to {results_csv_path}")
-
-    # Final Email Update
-    if args.send_email:
-        # Get final values from the last entry in results_log
-        last_res = results_log[-1] if results_log else {}
-        send_run_update(args, results_log, 
-                        last_res.get('epoch', 0), 
-                        last_res.get('train_loss', 0.0), 
-                        best_loss, 
-                        last_res.get('mean_reward', 0.0), 
-                        best_mean_reward,
-                        is_final=True)
 
 if __name__ == "__main__":
     main()

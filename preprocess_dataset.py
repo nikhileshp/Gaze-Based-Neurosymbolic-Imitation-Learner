@@ -12,7 +12,8 @@ from PIL import Image
 
 
 # Import necessary classes from train_il to allow pickling
-from train_il import ExpertDataset, BASE_IMAGE_DIR, CSV_FILE, PREDICATE_TO_ACTION_MAP
+from train_il import BASE_IMAGE_DIR, CSV_FILE
+from scripts.data_utils import PRIMITIVE_ACTION_MAP as PREDICATE_TO_ACTION_MAP, PtDataset
 from nudge.env import NudgeBaseEnv
 
 def process_chunk(chunk_indices, dataset_args):
@@ -79,15 +80,19 @@ def process_chunk(chunk_indices, dataset_args):
     return []
 
 
-def worker_fn(args_tuple, env_name, device):
+def worker_fn(args_tuple, env_name, device, dataset_args):
     worker_id, indices = args_tuple
     
     # Set num threads to 1 to avoid thread contention
     torch.set_num_threads(1)
     
-    # Load DF
-    df = pd.read_csv(CSV_FILE)
-    subset_df = df.iloc[indices]
+    # Init dataset to get the logic states and gaze
+    dataset_path = dataset_args[5]
+    dataset = PtDataset(dataset_path)
+    
+    # We only process the assigned indices
+    # However, indexing into PtDataset returns tensors on CPU/CUDA depending on its device
+    # PtDataset logic and gaze are torch tensors.
     
     # Init Env
     env = NudgeBaseEnv.from_name(env_name, mode='logic')
@@ -96,44 +101,36 @@ def worker_fn(args_tuple, env_name, device):
     from nudge.agents.imitation_agent import ImitationAgent
     rules = "new" 
     try:
-        agent = ImitationAgent(env_name, rules, device)
+        # Pass gaze settings to agent
+        use_gaze = dataset_args[2]
+        gaze_threshold = dataset_args[3]
+        gaze_model_path = dataset_args[4]
+        
+        agent = ImitationAgent(env_name, rules, device, gaze_threshold=gaze_threshold if use_gaze else None)
         model = agent.model
         model.eval()
     except Exception as e:
         print(f"Error initializing agent: {e}")
         return []
 
-    # Init Dataset
-    dataset = ExpertDataset(env_name, [], limit=None, nudge_env=env)
-    dataset.df = subset_df
-    # Ensure trajectory map is built or pass it? 
-    # ExpertDataset will build it again for this process. It's fast (cached).
-    
     results = []
     
-    # We want to save: frameid -> atoms (as list of probs)
-    # The model atoms are fixed. We should save the model.atoms list ONCE in main process too.
-    
     # Use tqdm with position for worker progress
-    # leave=True so it persists (or False to clear)
-    iterator = tqdm(range(len(subset_df)), desc=f"Worker {worker_id}", position=worker_id, leave=True)
+    iterator = tqdm(indices, desc=f"Worker {worker_id}", position=worker_id, leave=True)
     
-    for i in iterator:
+    for idx in iterator:
         try:
-            row = subset_df.iloc[i]
-            fid = row['frame_id']
+            # PtDataset returned logic, action, gaze, ep_num, step_idx
+            logic_state, action, gaze, ep_num, step_idx = dataset[idx]
             
-            # Get logic state tensor (objects) using dataset
-            # We use dataset[i] but it returns converted tensors
-            # We need to be careful about index 'i'. dataset[i] uses iloc[i] on its internal df.
-            # Our dataset.df IS subset_df, so i=0..len(subset_df) works.
+            # We don't have frame_id in PtDataset, we can use idx or a combination of ep/step
+            fid = f"ep_{ep_num}_step_{step_idx}"
             
-            logic_state, action, gaze = dataset[i]
-            
-            # Forward pass through FactsConverter
-            batch_state = logic_state.unsqueeze(0)
+            # Forward pass through FactsConverter with gaze if enabled
+            batch_state = logic_state.unsqueeze(0).to(device)
+            batch_gaze = gaze.unsqueeze(0).to(device) if gaze is not None else None
             with torch.no_grad():
-                atoms_vals = model.fc(batch_state, model.atoms, model.bk)
+                atoms_vals = model.fc(batch_state, model.atoms, model.bk, gaze=batch_gaze)
              
             # Store
             atom_probs = atoms_vals[0].cpu().numpy().tolist()
@@ -154,6 +151,8 @@ def worker_fn(args_tuple, env_name, device):
             current_fid = locals().get('fid', 'unknown')
             # Use tqdm.write to avoid interfering with progress bars
             tqdm.write(f"Error processing frame {current_fid}: {e}")
+            import traceback
+            tqdm.write(traceback.format_exc())
             pass
             
     return results
@@ -164,6 +163,10 @@ def main():
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--output", type=str, default="train_atoms.pkl")
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--dataset_path", type=str, required=True, help="Path to the .pt dataset file")
+    parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for valuation")
+    parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Gaze threshold for valuation scaling")
+    parser.add_argument("--gaze_model_path", type=str, default="models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth", help="Path to gaze predictor weights")
     args = parser.parse_args()
     
     if not os.path.exists(CSV_FILE):
@@ -191,8 +194,9 @@ def main():
     
     ctx = multiprocessing.get_context('spawn')
     
-    # Initialize partial function with env_name fixed
-    worker_partial = partial(worker_fn, env_name=args.env, device=args.device)
+    # Initialize partial function with env_name and gaze settings fixed
+    worker_partial = partial(worker_fn, env_name=args.env, device=args.device, 
+                             dataset_args=(args.env, "new", args.use_gaze, args.gaze_threshold, args.gaze_model_path, args.dataset_path))
 
     with ctx.Pool(args.num_workers) as pool:
         results_nested = []
