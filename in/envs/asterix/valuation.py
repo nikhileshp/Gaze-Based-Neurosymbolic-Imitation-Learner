@@ -1,10 +1,10 @@
 from nsfr.utils.common import bool_to_probs
+import torch as th
 
-
-def obj_type(z, a):
+def type(z, a):
     z_type = z[:, 0:4]  # [1, 0, 0, 0] * [1.0, 0, 0, 0] .sum = 0.0  type(obj1, key):0.0
     prob = (a * z_type).sum(dim=1)
-    return prob
+    return bool_to_probs(prob > 0.5)
 
 
 def closeby(z_1, z_2):
@@ -96,10 +96,10 @@ def at_right(z_1):
     result = bool_to_probs(x > 80)
     return result
 
-def visible(z_1, gaze):
-    result = z_1[..., 0] == 1
+def visible(z_1, gaze=None):
+    result = z_1[:, 0] == 1
     val = bool_to_probs(result)
-    if gaze is not None and len(gaze.shape) >2:
+    if gaze is not None and len(gaze.shape) > 2:
         gaze_val = _get_gaze_value(z_1, gaze)
         val = th.where(result, gaze_val, val)
     return val

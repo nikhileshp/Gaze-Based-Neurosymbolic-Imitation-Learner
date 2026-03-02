@@ -131,7 +131,7 @@ class ValuationModule(nn.Module, ABC):
         val = val_flat.view(batch_size, num_atoms)
         return val
 
-    def _call_val_fn(self, pred_name, args, gaze):
+    def _call_val_fn(self, pred_name, args, gaze=None):
         try:
             val_fn = self.val_fns[pred_name]
         except KeyError as e:

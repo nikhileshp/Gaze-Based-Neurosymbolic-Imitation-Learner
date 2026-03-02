@@ -369,7 +369,7 @@ class ILRenderer(Renderer):
                 
                 val_normalized = min(val, 1.0)
                 if(val_normalized):
-                    print(i, pred_str, val_normalized)
+                    # print(i, pred_str, val_normalized)
                 
                     # Render background
                     color = val_normalized * np.array([40, 200, 100]) + (1 - val_normalized) * CELL_BACKGROUND_DEFAULT
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     print(f"Loading model from {args.agent_path}...")
     # agent.load(args.agent_path)
     print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
-    agent.model.eval() # Set to eval mode
+    # agent.model.eval() # Set to eval mode
     
     # Wrap Agent
     model = AgentWrapper(agent, env, debug=args.debug, gaze_predictor=gaze_predictor)

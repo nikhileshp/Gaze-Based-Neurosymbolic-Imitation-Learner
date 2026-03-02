@@ -11,3 +11,4 @@ at_left:1:object
 at_right:1:object
 at_top:1:object
 at_bottom:1:object
+visible:1:object

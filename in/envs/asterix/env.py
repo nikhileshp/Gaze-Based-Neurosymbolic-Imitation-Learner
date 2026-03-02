@@ -35,11 +35,13 @@ class NudgeEnv(NudgeBaseEnv):
         return self.convert_state(state), reward, done
 
     def extract_logic_state(self, raw_state):
-        n_features = 6
+        n_features = 7
         n_objects = 11
         logic_state = np.zeros((n_objects, n_features))
 
         for i, entity in enumerate(raw_state):
+            if i >= n_objects:
+                break
             if entity.category == "Player":
                 logic_state[i][0] = 1
                 logic_state[i][-2:] = entity.xy
@@ -68,7 +70,7 @@ class NudgeEnv(NudgeBaseEnv):
                 neural_state.append([0, 0, 0, 1] + list(inst.xy))
 
         if len(neural_state) < 11:
-            neural_state.extend([[0] * 6 for _ in range(11 - len(neural_state))])
+            neural_state.extend([[0] * 7 for _ in range(11 - len(neural_state))])
 
         return neural_state
 
