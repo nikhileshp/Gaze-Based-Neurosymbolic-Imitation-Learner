@@ -23,8 +23,23 @@ def closeby(z_1, z_2):
     dis_x = abs(c_1[:, 0] - c_2[:, 0]) / 171
     dis_y = abs(c_1[:, 1] - c_2[:, 1]) / 171
 
-    result = player_mask & obj_mask & (dis_x < 0.1) & (dis_y <= 0.1) # Adjusted threshold
-    return bool_to_probs(result)
+    result = player_mask & obj_mask & (dis_x < 1) & (dis_y <= 1) # Adjusted threshold
+    proximity = _close_by(z_1, z_2)
+    return proximity * bool_to_probs(result)
+
+def notcloseby(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
+    
+    c_1 = z_1[:, -2:]
+    c_2 = z_2[:, -2:]
+
+    dis_x = abs(c_1[:, 0] - c_2[:, 0]) / 171
+    dis_y = abs(c_1[:, 1] - c_2[:, 1]) / 171
+
+    result = player_mask & obj_mask & (dis_x < 1) & (dis_y <= 1) # Adjusted threshold
+    proximity = _close_by(z_1, z_2)
+    return (1-proximity) * bool_to_probs(result)
 
 
 def on_left(z_1, z_2):
@@ -205,3 +220,13 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     vis_mask = (obj[:, 0:4].sum(dim=1) > 0.5).float()
     
     return gaze_prob * vis_mask
+
+def _close_by(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+    player_x = player[..., 1]
+    player_y = player[..., 2]
+    obj_x = obj[..., 1]
+    obj_y = obj[..., 2]
+    result = th.clip((128 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 171, 0, 1)
+    #use a threshold of 15 px and return 1 if the distance is less than 15 px else 0
+    # bool_val = abs(player_x - obj_x) + abs(player_y - obj_y) < 50
+    return result

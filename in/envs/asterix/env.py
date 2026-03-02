@@ -21,8 +21,8 @@ class NudgeEnv(NudgeBaseEnv):
         self.env = OCAtari(env_name="ALE/Asterix-v5", mode="ram",
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
 
-    def reset(self):
-        self.env.reset()
+    def reset(self, seed: int = None, options: dict = None):
+        self.env.reset(seed=seed, options=options)
         state = self.env.objects
         return self.convert_state(state)
 

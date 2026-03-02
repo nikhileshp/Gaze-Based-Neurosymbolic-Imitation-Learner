@@ -14,19 +14,10 @@ from tqdm import tqdm
 from collections import Counter
 from evaluate_model import evaluate
 # Configuration from train_per_action.py
-CSV_FILE = "data/seaquest/train.csv"
-BASE_IMAGE_DIR = "data/seaquest/trajectories"
-
-# Mapping from Predicate Name to ALE Action Index
-# 0: noop, 1: fire, 2: up, 3: right, 4: left, 5: down
-PRIMITIVE_ACTION_MAP = {
-    'noop': 0,
-    'fire': 1,
-    'up': 2,
-    'right': 3,
-    'left': 4,
-    'down': 5
-}
+# Global pointers to be updated in main dynamically based on --env
+CSV_FILE = ""
+BASE_IMAGE_DIR = ""
+PRIMITIVE_ACTION_MAP = {}
 
 
  
@@ -74,7 +65,7 @@ class ExpertDataset(Dataset):
 
         self.use_gazemap = use_gazemap
         if self.use_gazemap:
-            mask_path = 'data/seaquest/gaze_masks.pt'
+            mask_path = f'data/{self.env_name}/gaze_masks.pt'
             if os.path.exists(mask_path):
                 print(f"Loading gaze masks from {mask_path}...")
                 self.gaze_masks = torch.load(mask_path)
@@ -337,8 +328,13 @@ def main():
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Threshold for gaze-based valuation scaling")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", action="store_true", help="Use full gaze map for valuation")
-    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth", help="Path to the .pth gaze predictor weights")
+    parser.add_argument("--gaze_model_path", type=str, default=None, help="Path to the .pth gaze predictor weights")
     args = parser.parse_args()
+
+    if args.gaze_model_path is None:
+        args.gaze_model_path = f"{args.env}_gaze_predictor.pth"
+        if args.env == "seaquest" and not os.path.exists(args.gaze_model_path):
+            args.gaze_model_path = "seaquest_gaze_predictor_2.pth"
 
     if args.use_gazemap:
         args.use_gaze = True
@@ -363,6 +359,12 @@ def main():
     # Initialize Environment (for evaluation and model init)
     # mode='logic' is required to get logic states
     env = NudgeBaseEnv.from_name(args.env, mode='logic')
+
+    global PRIMITIVE_ACTION_MAP, BASE_IMAGE_DIR, CSV_FILE
+    PRIMITIVE_ACTION_MAP = env.pred2action
+    BASE_IMAGE_DIR = f"data/{args.env}/trajectories"
+    CSV_FILE = f"data/{args.env}/train.csv"
+    print(f"Action map for {args.env}: {PRIMITIVE_ACTION_MAP}")
 
     # Initialize Agent
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
@@ -436,7 +438,7 @@ def main():
             
             # Aggregate probabilities for each action
             batch_size = probs.size(0)
-            num_actions = 6
+            num_actions = max(PRIMITIVE_ACTION_MAP.values()) + 1
             action_probs = torch.zeros(batch_size, num_actions, device=device)
             
             prednames = agent.model.get_prednames()
@@ -463,9 +465,9 @@ def main():
         # Evaluation (after each epoch)
         print(f"Evaluating after epoch {epoch+1}...")
         if args.use_gazemap:
-            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=gaze_predictor)
+            rewards = evaluate(agent, env, num_episodes=50, seed=args.seed, gaze_predictor=gaze_predictor)
         else:
-            rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=None)
+            rewards = evaluate(agent, env, num_episodes=50, seed=args.seed, gaze_predictor=None)
         mean_reward = np.mean(rewards)
         std_reward = np.std(rewards)
         print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
@@ -479,33 +481,32 @@ def main():
         })
 
         # Save Model
-        os.makedirs("out/imitation/general_2obj", exist_ok=True)
+        save_dir = f"out/imitation/{args.env}/"
+        os.makedirs(save_dir, exist_ok=True)
         gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
         gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-        save_path = f"out/imitation/general_2obj/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+        save_path = os.path.join(save_dir, f"new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth")
         agent.save(save_path)
         print(f"Model saved to {save_path}")
 
     # # Print and Save final learning curve log
-    # print("\n" + "="*30)
-    # print("LEARNING CURVE LOG")
-    # print("="*30)
-    # print("Epoch | Mean Score | Std Dev | Loss")
-    # for res in results_log:
-    #     print(f"{res['epoch']:5d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f} | {res['loss']:.4f}")
-    # print("="*30)
+    print("\n" + "="*30)
+    print("LEARNING CURVE LOG")
+    print("="*30)
+    print("Epoch | Mean Score | Std Dev | Loss")
+    for res in results_log:
+        print(f"{res['epoch']:5d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f} | {res['loss']:.4f}")
+    print("="*30)
 
     # # Save results to CSV
-
-    # results_df = pd.DataFrame(results_log)
-    # gaze_str = f"_with_gazemap_values" if args.use_gaze else "_no_gaze"
-    # results_csv_path = os.path.join("out/imitation/general_2obj", f"{args.env}_{args.rules}_lr_{args.lr}{gaze_str}_results.csv")
-    # #If results_csv_path exists, append to file
-    # if os.path.exists(results_csv_path):
-    #     results_df.to_csv(results_csv_path, mode='a', header=False, index=False)
-    # else:
-    #     results_df.to_csv(results_csv_path, index=False)
-    # print(f"Results saved to {results_csv_path}")
+    results_df = pd.DataFrame(results_log)
+    results_csv_path = os.path.join(save_dir, f"{args.env}_{args.rules}_lr_{args.lr}{gaze_str}_results.csv")
+    #If results_csv_path exists, append to file
+    if os.path.exists(results_csv_path):
+        results_df.to_csv(results_csv_path, mode='a', header=False, index=False)
+    else:
+        results_df.to_csv(results_csv_path, index=False)
+    print(f"Results saved to {results_csv_path}")
 
 if __name__ == "__main__":
     main()
