@@ -252,9 +252,14 @@ class ExpertDataset(Dataset):
 
 
 class PtDataset(Dataset):
-    def __init__(self, data_dict, episode, use_gazemap=False):
+    def __init__(self, data_dict, episodes=None, use_gazemap=False):
         valid_actions = set(PRIMITIVE_ACTION_MAP.values())
-        self.indices = [i for i, ep in enumerate(data_dict['episode_number']) if ep == episode and int(data_dict['actions'][i]) in valid_actions]
+        if episodes is not None:
+             episodes_set = set([int(e) for e in episodes])
+             self.indices = [i for i, ep in enumerate(data_dict['episode_number']) if int(ep) in episodes_set and int(data_dict['actions'][i]) in valid_actions]
+        else:
+             self.indices = [i for i, act in enumerate(data_dict['actions']) if int(act) in valid_actions]
+
         self.logic_states = data_dict['logic_state']
         self.actions = data_dict['actions']
         self.use_gazemap = use_gazemap
@@ -321,7 +326,8 @@ def main():
     parser.add_argument("--env", type=str, default="seaquest", help="Environment name")
     parser.add_argument("--rules", type=str, default="new", help="Ruleset name")
     parser.add_argument("--data_path", type=str, default=None, help="Path to expert data")
-    parser.add_argument("--epochs", type=int, default=16, help="Number of epochs")
+    parser.add_argument("--epochs", type=int, default=16, help="Number of epochs per episode")
+    parser.add_argument("--num_episodes", type=int, default=None, help="Number of episodes to train on")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -386,30 +392,37 @@ def main():
             trajectories = [1]
 
     # Training Loop
-    print("Starting iterative training by trajectory...")
+    print(f"Starting training on the entire dataset for {args.epochs} epochs...")
     results_log = []
     
-    # Use args.epochs as the number of trajectories to process if it's less than total trajectories
-    num_iters = min(args.epochs, len(trajectories))
+    num_episodes_to_train = len(trajectories)
+    if args.num_episodes is not None:
+        num_episodes_to_train = min(args.num_episodes, len(trajectories))
     
-    for epoch in range(num_iters):
-        traj_num = trajectories[epoch]
-        print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
-        
-        # Load Data for this specific trajectory
-        if pt_data is not None:
-            dataset = PtDataset(pt_data, traj_num, use_gazemap=args.use_gazemap)
-        else:
-            dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
-        
-        if len(dataset) == 0:
-            print(f"Skipping empty trajectory {traj_num}")
-            continue
+    train_trajectories = trajectories[:num_episodes_to_train]
+    print(f"Dataset includes {num_episodes_to_train} episodes: {train_trajectories}")
+    
+    # Load Data
+    if pt_data is not None:
+        dataset = PtDataset(pt_data, train_trajectories, use_gazemap=args.use_gazemap)
+    else:
+        # For ExpertDataset, we don't pass a single trajectory so it loads all according to its logic
+        # But we need to make sure ExpertDataset handles trajectory filtering if we want to limit episodes
+        # For now, if trajectory is None, it uses the whole DF.
+        dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=None)
+        # If we need to filter ExpertDataset by specific trajectory list, we'd need to modify it.
+    
+    if len(dataset) == 0:
+        print("Error: Empty dataset. Exiting.")
+        return
 
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
 
+    for epoch in range(args.epochs):
+        print(f"\n=== Epoch {epoch+1}/{args.epochs} ===")
+        agent.model.train()
         total_loss = 0
-        pbar = tqdm(dataloader, desc=f"Training Traj {traj_num}")
+        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{args.epochs}")
         for states, actions, gazes in pbar:
             states = states.to(device)
             actions = actions.to(device)
@@ -445,9 +458,10 @@ def main():
             pbar.set_postfix({"loss": f"{loss_val:.4f}"})
             
         avg_loss = total_loss / len(dataloader)
-        print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
-        
-        # Evaluation
+        print(f"Epoch {epoch+1}/{args.epochs} Average Loss: {avg_loss:.4f}")
+            
+        # Evaluation (after each epoch)
+        print(f"Evaluating after epoch {epoch+1}...")
         if args.use_gazemap:
             rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=gaze_predictor)
         else:
@@ -458,39 +472,40 @@ def main():
         
         results_log.append({
             'epoch': epoch + 1,
-            'trajectory': traj_num,
             'mean_reward': mean_reward,
             'std_reward': std_reward,
+            'loss': avg_loss,
             'gaze': args.use_gaze,    
         })
 
         # Save Model
-        os.makedirs("out/imitation", exist_ok=True)
+        os.makedirs("out/imitation/general_2obj", exist_ok=True)
         gaze_str = f"_with_gaze_{args.gaze_threshold}" if args.use_gaze else "_no_gaze"
         gaze_str = f"_with_gazemap_values" if args.use_gazemap else gaze_str
-        save_path = f"out/imitation/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
+        save_path = f"out/imitation/general_2obj/new_{args.env}_{args.rules}_il_epoch_{epoch+1}_lr_{args.lr}{gaze_str}.pth"
         agent.save(save_path)
         print(f"Model saved to {save_path}")
 
-    # Print and Save final learning curve log
-    print("\n" + "="*30)
-    print("LEARNING CURVE LOG")
-    print("="*30)
-    print("Epoch | Trajectory | Mean Score | Std Dev")
-    for res in results_log:
-        print(f"{res['epoch']:5d} | {res['trajectory']:10d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f}")
-    print("="*30)
+    # # Print and Save final learning curve log
+    # print("\n" + "="*30)
+    # print("LEARNING CURVE LOG")
+    # print("="*30)
+    # print("Epoch | Mean Score | Std Dev | Loss")
+    # for res in results_log:
+    #     print(f"{res['epoch']:5d} | {res['mean_reward']:10.2f} | {res['std_reward']:7.2f} | {res['loss']:.4f}")
+    # print("="*30)
 
-    # Save results to CSV
+    # # Save results to CSV
 
-    results_df = pd.DataFrame(results_log)
-    results_csv_path = os.path.join("out/imitation", f"{args.env}_{args.rules}_lr_{args.lr}_results.csv")
-    #If results_csv_path exists, append to file
-    if os.path.exists(results_csv_path):
-        results_df.to_csv(results_csv_path, mode='a', header=False, index=False)
-    else:
-        results_df.to_csv(results_csv_path, index=False)
-    print(f"Results saved to {results_csv_path}")
+    # results_df = pd.DataFrame(results_log)
+    # gaze_str = f"_with_gazemap_values" if args.use_gaze else "_no_gaze"
+    # results_csv_path = os.path.join("out/imitation/general_2obj", f"{args.env}_{args.rules}_lr_{args.lr}{gaze_str}_results.csv")
+    # #If results_csv_path exists, append to file
+    # if os.path.exists(results_csv_path):
+    #     results_df.to_csv(results_csv_path, mode='a', header=False, index=False)
+    # else:
+    #     results_df.to_csv(results_csv_path, index=False)
+    # print(f"Results saved to {results_csv_path}")
 
 if __name__ == "__main__":
     main()

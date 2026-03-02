@@ -20,10 +20,12 @@ class NudgeEnv(NudgeBaseEnv):
     }
     pred_names: Sequence
 
-    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False):
+    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False, modifs=None):
         super().__init__(mode)
-        self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="vision",
-                           render_mode=render_mode, render_oc_overlay=render_oc_overlay)
+        kwargs = {"env_name": "ALE/Seaquest-v5", "mode": "vision", "render_mode": render_mode, "render_oc_overlay": render_oc_overlay}
+        if modifs is not None:
+            kwargs["modifs"] = modifs
+        self.env = HackAtari(**kwargs)
         self.n_objects = 48 # Increased from 47 to include Surface
         self.n_features = 7  # visible, x-pos, y-pos, width, height, right-facing, type_id
 
