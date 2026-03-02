@@ -36,43 +36,36 @@ class NudgeEnv(NudgeBaseEnv):
 
     def extract_logic_state(self, raw_state):
         n_features = 7
-        n_objects = 11
+        n_objects = 11 # 0 is unused, 1-10 are for objects
         logic_state = np.zeros((n_objects, n_features))
 
-        for i, entity in enumerate(raw_state):
-            if i >= n_objects:
+        obj_idx = 1 # Start from 1 to match obj1, obj2, ... objN
+        for entity in raw_state:
+            if obj_idx >= n_objects:
                 break
-            if entity.category == "Player":
-                logic_state[i][0] = 1
-                logic_state[i][-2:] = entity.xy
-            elif entity.category == 'Enemy':
-                logic_state[i][1] = 1
-                logic_state[i][-2:] = entity.xy
-            elif "Reward" in entity.category:
-                logic_state[i][2] = 1
-                logic_state[i][-2:] = entity.xy
-            else:
-                logic_state[i][3] = 1
-                logic_state[i][-2:] = entity.xy
+            
+            category = entity.category
+            if category == "NoObject":
+                continue
+            
+            if category == "Player":
+                logic_state[obj_idx][0] = 1
+            elif category == "Enemy":
+                logic_state[obj_idx][1] = 1
+            elif "Bonus" in category or category == "Consumable":
+                logic_state[obj_idx][2] = 1
+            elif "Reward" in category :
+                logic_state[obj_idx][3] = 1
+                
+            logic_state[obj_idx][-2:] = entity.xy
+            obj_idx += 1
 
         return logic_state
 
     def extract_neural_state(self, raw_state):
-        neural_state = []
-        for i, inst in enumerate(raw_state):
-            if inst.category == "Player" and i == 0:
-                neural_state.append([1, 0, 0, 0] + list(inst.xy))
-            elif inst.category == "Enemy":
-                neural_state.append([0, 1, 0, 0] + list(inst.xy))
-            elif "Reward" in inst.category:
-                neural_state.append([0, 0, 1, 0] + list(inst.xy))
-            else:
-                neural_state.append([0, 0, 0, 1] + list(inst.xy))
-
-        if len(neural_state) < 11:
-            neural_state.extend([[0] * 7 for _ in range(11 - len(neural_state))])
-
-        return neural_state
+        # Neural state is just a flattened version of logic state for this agent
+        logic_state = self.extract_logic_state(raw_state)
+        return logic_state.flatten().tolist()
 
     def close(self):
         self.env.close()

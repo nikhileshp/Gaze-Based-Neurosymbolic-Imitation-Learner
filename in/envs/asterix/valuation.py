@@ -7,98 +7,113 @@ def type(z, a):
     return bool_to_probs(prob > 0.5)
 
 
+def is_player(z):
+    return (z[:, 0] > 0.5)
+
+def is_present(z):
+    return (z[:, 0:4].sum(dim=1) > 0.5)
+
 def closeby(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
+    
     c_1 = z_1[:, -2:]
     c_2 = z_2[:, -2:]
 
     dis_x = abs(c_1[:, 0] - c_2[:, 0]) / 171
     dis_y = abs(c_1[:, 1] - c_2[:, 1]) / 171
 
-    result = bool_to_probs((dis_x < 2.5) & (dis_y <= 0.1))
-
-    return result
+    result = player_mask & obj_mask & (dis_x < 0.1) & (dis_y <= 0.1) # Adjusted threshold
+    return bool_to_probs(result)
 
 
 def on_left(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
     c_1 = z_1[:, -2]
     c_2 = z_2[:, -2]
-    diff = c_2 - c_1
-    result = bool_to_probs(diff > 0)
-    return result
+    result = player_mask & obj_mask & (c_1 < c_2)
+    return bool_to_probs(result)
 
 
 def on_right(z_1, z_2):
+    player_mask = is_player(z_1)
     c_1 = z_1[:, -2]
     c_2 = z_2[:, -2]
-    diff = c_2 - c_1
-    result = bool_to_probs(diff < 0)
-    return result
+    result = player_mask & (c_1 > c_2)
+    return bool_to_probs(result)
 
 
 def same_row(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
     c_1 = z_1[:, -1]
     c_2 = z_2[:, -1]
     diff = abs(c_2 - c_1)
-    result = bool_to_probs(diff < 6)
-    return result
+    result = player_mask & obj_mask & (diff < 6)
+    return bool_to_probs(result)
 
 
 def above_row(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
     c_1 = z_1[:, -1]
     c_2 = z_2[:, -1]
-    diff = c_1 - c_2
-    result1 = bool_to_probs(diff < 23)
-    result2 = bool_to_probs(diff > 4)
-    return result1 * result2
+    diff = c_2 - c_1 # Player above Object -> Obj.y > Player.y
+    result = player_mask & obj_mask & (diff > 4) & (diff < 23)
+    return bool_to_probs(result)
 
 
 def below_row(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
     c_1 = z_1[:, -1]
     c_2 = z_2[:, -1]
-    diff = c_2 - c_1
-    result1 = bool_to_probs(diff < 23)
-    result2 = bool_to_probs(diff > 4)
-    return result1 * result2
+    diff = c_1 - c_2 # Player below Object -> Player.y > Obj.y
+    result = player_mask & obj_mask & (diff > 4) & (diff < 23)
+    return bool_to_probs(result)
 
 
 def on_even(z_1):
+    obj_mask = is_present(z_1)
     y = z_1[:, -1]
-    result = bool_to_probs((y - 26) % 32 > 10)
-    return result
+    result = obj_mask & ((y - 26) % 32 > 10)
+    return bool_to_probs(result)
 
 
 def on_odd(z_1):
+    obj_mask = is_present(z_1)
     y = z_1[:, -1]
-    result = bool_to_probs((y - 26) % 32 < 10)
-    return result
+    result = obj_mask & ((y - 26) % 32 < 10)
+    return bool_to_probs(result)
 
 
 def at_top(z_1):
+    player_mask = is_player(z_1)
     y = z_1[:, -1]
-    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
-    result = bool_to_probs((y < 50) & is_present)
-    return result
+    result = player_mask & (y < 50)
+    return bool_to_probs(result)
 
 
 def at_bottom(z_1):
+    player_mask = is_player(z_1)
     y = z_1[:, -1]
-    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
-    result = bool_to_probs((y > 160) & is_present)
-    return result
+    result = player_mask & (y > 160)
+    return bool_to_probs(result)
 
 
 def at_left(z_1):
+    player_mask = is_player(z_1)
     x = z_1[:, -2]
-    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
-    result = bool_to_probs((x < 40) & is_present)
-    return result
+    result = player_mask & (x < 40)
+    return bool_to_probs(result)
 
 
 def at_right(z_1):
+    player_mask = is_player(z_1)
     x = z_1[:, -2]
-    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
-    result = bool_to_probs((x > 120) & is_present)
-    return result
+    result = player_mask & (x > 120)
+    return bool_to_probs(result)
 
 def visible(z_1, gaze=None):
     result = z_1[:, 0:4].sum(dim=1) > 0.5
@@ -124,10 +139,11 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     sy = 84.0 / 210.0
     
     # Coordinates (Vectorized)
-    x = (obj[:, 1] * sx).long()
-    y = (obj[:, 2] * sy).long()
-    w = (obj[:, 3] * sx).long()
-    h = (obj[:, 4] * sy).long()
+    # Asterix features: [P, E, B, R, ?, X, Y] -> indices 5, 6
+    x = (obj[:, 5] * sx).long()
+    y = (obj[:, 6] * sy).long()
+    w = (th.ones_like(obj[:, 5]) * 8 * sx).long() # Default width 8
+    h = (th.ones_like(obj[:, 6]) * 11 * sy).long() # Default height 11
     
     # Clip coordinates to valid range [0, 84]
     # We use 0-84 because for integral image, index 84 corresponds to sum of all 0-83
@@ -185,7 +201,7 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     # Scale to [0.01, 0.99] probability range
     gaze_prob = th.clamp(0.99 * attention_ratio, 0.5, 0.99)
     
-    # Mask out invisible objects (vis <= 0.5)
-    vis_mask = (obj[:, 0] > 0.5).float()
+    # Mask out invisible objects (any type bit 0-3 <= 0.5)
+    vis_mask = (obj[:, 0:4].sum(dim=1) > 0.5).float()
     
     return gaze_prob * vis_mask
