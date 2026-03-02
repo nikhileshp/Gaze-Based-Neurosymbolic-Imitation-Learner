@@ -75,29 +75,33 @@ def on_odd(z_1):
 
 def at_top(z_1):
     y = z_1[:, -1]
-    result = bool_to_probs(y > 87)
+    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
+    result = bool_to_probs((y < 50) & is_present)
     return result
 
 
 def at_bottom(z_1):
     y = z_1[:, -1]
-    result = bool_to_probs(y < 87)
+    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
+    result = bool_to_probs((y > 160) & is_present)
     return result
 
 
 def at_left(z_1):
     x = z_1[:, -2]
-    result = bool_to_probs(x < 80)
+    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
+    result = bool_to_probs((x < 40) & is_present)
     return result
 
 
 def at_right(z_1):
     x = z_1[:, -2]
-    result = bool_to_probs(x > 80)
+    is_present = z_1[:, 0:4].sum(dim=1) > 0.5
+    result = bool_to_probs((x > 120) & is_present)
     return result
 
 def visible(z_1, gaze=None):
-    result = z_1[:, 0] == 1
+    result = z_1[:, 0:4].sum(dim=1) > 0.5
     val = bool_to_probs(result)
     if gaze is not None and len(gaze.shape) > 2:
         gaze_val = _get_gaze_value(z_1, gaze)
