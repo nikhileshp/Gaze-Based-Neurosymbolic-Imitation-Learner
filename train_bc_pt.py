@@ -13,8 +13,8 @@ Results are saved to:
   models/bc/{gaze_method}/{N}_ep/  (checkpoints + results CSV)
 
 Usage:
-  python train_bc_pt.py \\
-    --dataset data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt \\
+  python train_bc_pt.py \
+    --dataset data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt \
     --num_episodes 4 --epochs 20 --gaze_method None --seed 42
 """
 
@@ -150,7 +150,7 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
                 img_stack = np.stack(frame_buffer, axis=-1) # (84, 84, 4)
                 input_tensor = torch.tensor(img_stack, dtype=torch.float32, device=gaze_predictor.device).permute(2, 0, 1).unsqueeze(0)
                 with torch.no_grad():
-                    gaze_pred = gaze_predictor.model(input_tensor)
+                    gaze_pred = gaze_predictor.predict_normalized(input_tensor)
                 gg = gaze_pred.to(dev)
 
             with torch.no_grad():
@@ -160,6 +160,8 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
                     xx_in = xx
                 z = encoder(xx_in)
                 if gaze_method == 'AGIL' and encoder_agil is not None:
+                    # For AGIL, we also need to normalize the individual frame's predicted gaze
+                    # to match the training distribution (max=1.0)
                     z = (z + encoder_agil(xx * gg)) / 2
                 logits = actor(pre_actor(z))
                 action_idx = logits.argmax(dim=1).item()
@@ -211,11 +213,15 @@ def get_args():
     # Incremental mode
     parser.add_argument("--incremental", action="store_true", help="Train 1 epoch per episode iteratively for all episodes in dataset.")
     # Evaluation
-    parser.add_argument("--eval_episodes", type=int, default=10)
+    parser.add_argument("--eval_episodes", type=int, default=1, help="Number of episodes to evaluate on")
+    parser.add_argument("--eval_interval", type=int, default=1, help="Evaluate every N epochs in non-incremental mode")
+    parser.add_argument("--patience", type=int, default=5, help="Stop training if val_acc doesn't improve for N epochs (0 to disable)")
+    parser.add_argument("--lr_patience", type=int, default=3, help="Reduce LR if val_acc doesn't improve for N epochs")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
     parser.add_argument("--send_email", action="store_true", help="Send email with results after evaluation")
+    parser.add_argument("--run_dir", type=str, default=None, help="Custom output directory")
     return parser.parse_args()
 
 
@@ -243,14 +249,9 @@ def main():
         # Shuffle + 95/5 train/val split is done inside the loop for conventional mode now
         pass
 
-    # ── Dataset Loading ───────────────────────────────────────────────────────
-    # Peek at dataset to get action dimension dynamically
-    data_peek = torch.load(args.dataset, map_location='cpu', weights_only=False)
-    actions = data_peek['actions']
-    if not isinstance(actions, torch.Tensor): actions = torch.from_numpy(actions)
-    action_dim = int(actions.max().item()) + 1
-    print(f"Inferred action_dim from dataset: {action_dim}")
-    del data_peek # free memory
+    # Hardcode action_dim to 6 for Seaquest (0-5: noop, fire, up, right, left, down)
+    action_dim = 6
+    print(f"Using fixed action_dim: {action_dim}")
 
     encoder_out_dim  = 8 * 8 * args.embedding_dim  # → 4096 for default settings
     
@@ -281,12 +282,15 @@ def main():
         params += list(encoder_agil.parameters())
 
     optimizer = torch.optim.Adam(params, lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=args.lr_patience)
     criterion = nn.CrossEntropyLoss()
 
     # ── Output dirs ───────────────────────────────────────────────────────────
     gaze_tag  = args.gaze_method.lower()
-    base_run_dir = f"models/bc/incremental_{gaze_tag}" if args.incremental else f"models/bc/{gaze_tag}"
+    if args.run_dir:
+        base_run_dir = args.run_dir
+    else:
+        base_run_dir = f"models/bc/incremental_{gaze_tag}_fewer_objs_2" if args.incremental else f"models/bc/{gaze_tag}_fewer_objs_2"
     os.makedirs(base_run_dir, exist_ok=True)
 
     results_log = []
@@ -304,8 +308,8 @@ def main():
         else:
             max_ep = 1
         episodes_to_train = list(range(1, max_ep + 1))
-        epochs_per_episode = 1
-        print(f"Incremental Mode: Training sequentially on {max_ep} episodes (1 epoch each)")
+        epochs_per_episode = args.epochs
+        print(f"Incremental Mode: Training sequentially on {max_ep} episodes ({epochs_per_episode} epoch(s) each)")
         del data_peek
         import gc
         gc.collect()
@@ -342,7 +346,10 @@ def main():
         run_dir = f"{base_run_dir}/{current_ep}_ep"
         os.makedirs(run_dir, exist_ok=True)
         
-        best_mean  = -float('inf')
+        # Patience and Best Model Tracking for the current episode's training cycle
+        best_val_score = -float('inf')
+        patience_counter = 0
+
 
         # ── Training loop ─────────────────────────────────────────────────────────
         for epoch in range(epochs_per_episode):
@@ -379,11 +386,7 @@ def main():
                 total_n       += aa.size(0)
                 pbar.set_postfix(loss=f"{loss.item():.4f}")
 
-            scheduler.step()
-            avg_loss = total_loss / total_n if total_n > 0 else 0
-            train_acc = total_correct / total_n if total_n > 0 else 0
-
-            # Validation accuracy
+            # Validation accuracy for scheduler and early stopping
             encoder.eval(); pre_actor.eval(); actor.eval()
             if encoder_agil is not None: encoder_agil.eval()
             val_correct, val_n = 0, 0
@@ -400,47 +403,77 @@ def main():
                     val_n += aa.size(0)
             val_acc = val_correct / val_n if val_n > 0 else 0
 
+            scheduler.step(val_acc)
+            avg_loss = total_loss / total_n if total_n > 0 else 0
+            train_acc = total_correct / total_n if total_n > 0 else 0
+
             # Save checkpoint for this specific epoch
             epoch_id = epoch + 1 if not args.incremental else current_ep
             torch.save(encoder.state_dict(),   f"{run_dir}/epoch_{epoch_id}_encoder.pth")
             torch.save(pre_actor.state_dict(), f"{run_dir}/epoch_{epoch_id}_pre_actor.pth")
             torch.save(actor.state_dict(),     f"{run_dir}/epoch_{epoch_id}_actor.pth")
 
-        # Environment evaluation after training phases for current_ep complete
-        rewards = evaluate_bc(encoder, pre_actor, actor, env,
-                               num_episodes=args.eval_episodes, seed=args.seed,
-                               gaze_method=args.gaze_method, encoder_agil=encoder_agil,
-                               device=str(device), gaze_predictor=gaze_predictor)
-        mean_r, std_r = np.mean(rewards), np.std(rewards)
-        print(f"\nFinal Eval for N={current_ep} | TrainLoss {avg_loss:.4f} | TrainAcc {train_acc:.3f} | ValAcc {val_acc:.3f} | MeanR {mean_r:.2f} | StdR {std_r:.2f}")
+            # --- Evaluation and Best Model Tracking ---
+            if val_acc > best_val_score:
+                best_val_score = val_acc
+                patience_counter = 0
+                torch.save(encoder.state_dict(),   f"{run_dir}/best_encoder.pth")
+                torch.save(pre_actor.state_dict(), f"{run_dir}/best_pre_actor.pth")
+                torch.save(actor.state_dict(),     f"{run_dir}/best_actor.pth")
+                if encoder_agil is not None:
+                    torch.save(encoder_agil.state_dict(), f"{run_dir}/best_encoder_agil.pth")
+                print(f"  *** New best model saved (ValAcc: {val_acc:.3f})")
+            else:
+                patience_counter += 1
 
-        results_log.append({
-            'num_episodes': current_ep if args.incremental else num_ep,
-            'gaze_method': args.gaze_method,
-            'train_loss': avg_loss,
-            'train_acc': train_acc,
-            'val_acc': val_acc,
-            'mean_reward': mean_r,
-            'std_reward': std_r,
-        })
-
-        if mean_r > best_mean_global:
-            best_mean_global = mean_r
-
-        # Always explicitly save best as the final in incremental
-        torch.save(encoder.state_dict(),   f"{run_dir}/best_encoder.pth")
-        torch.save(pre_actor.state_dict(), f"{run_dir}/best_pre_actor.pth")
-        torch.save(actor.state_dict(),     f"{run_dir}/best_actor.pth")
-        if encoder_agil is not None:
-            torch.save(encoder_agil.state_dict(), f"{run_dir}/best_encoder_agil.pth")
+            do_eval = False
+            if not args.incremental:
+                if (epoch + 1) % args.eval_interval == 0:
+                    do_eval = True
+            else:
+                # In incremental mode, evaluate after the last epoch (or if early stopping happened)
+                if epoch == epochs_per_episode - 1 or (args.patience > 0 and patience_counter >= args.patience):
+                    do_eval = True
             
-        print(f"  *** Checkpoints saved to {run_dir}")
+            if do_eval:
+                rewards = evaluate_bc(encoder, pre_actor, actor, env,
+                                       num_episodes=args.eval_episodes, seed=args.seed,
+                                       gaze_method=args.gaze_method, encoder_agil=encoder_agil,
+                                       device=str(device), gaze_predictor=gaze_predictor)
+                mean_r, std_r = np.mean(rewards), np.std(rewards)
+                print(f"\nEval [Ep {current_ep} Epoch {epoch+1}] | TrainLoss {avg_loss:.4f} | TrainAcc {train_acc:.3f} | ValAcc {val_acc:.3f} | MeanR {mean_r:.2f} | StdR {std_r:.2f}")
+
+                results_log.append({
+                    'num_episodes': current_ep if args.incremental else num_ep,
+                    'epoch': epoch + 1,
+                    'gaze_method': args.gaze_method,
+                    'train_loss': avg_loss,
+                    'train_acc': train_acc,
+                    'val_acc': val_acc,
+                    'mean_reward': mean_r,
+                    'std_reward': std_r,
+                })
+
+                if mean_r > best_mean_global:
+                    best_mean_global = mean_r
+
+            # Check Early Stopping
+            if args.patience > 0 and patience_counter >= args.patience:
+                print(f"  *** Early stopping triggered after {patience_counter} epochs without val_acc improvement.")
+                break
 
     # ── Save results CSV ──────────────────────────────────────────────────────
-    df = pd.DataFrame(results_log)
-    csv_path = f"{base_run_dir}/results_incremental_lr_{args.lr}.csv" if args.incremental else f"{base_run_dir}/{num_ep}_ep/results_lr_{args.lr}.csv"
-    df.to_csv(csv_path, index=False)
-    print(f"\nResults saved to {csv_path}")
+    if len(results_log) > 0:
+        df = pd.DataFrame(results_log)
+        if args.incremental:
+            csv_path = f"{base_run_dir}/results_incremental_lr_{args.lr}.csv"
+        else:
+            ep_tag = num_ep if num_ep is not None else "all"
+            csv_path = f"{base_run_dir}/{ep_tag}_ep/results_lr_{args.lr}.csv"
+        
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        df.to_csv(csv_path, index=False)
+        print(f"\nResults saved to {csv_path}")
     print(f"Best global eval score: {best_mean_global:.2f}")
 
     if args.send_email and send_email is not None:

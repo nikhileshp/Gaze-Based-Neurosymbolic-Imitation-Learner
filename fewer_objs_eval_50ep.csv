@@ -1,0 +1,9 @@
+config_name,run_dir,gaze_method,mean_reward,std_reward
+BC (1-obj),models/bc/none_fewer_objs_1/all_ep,,67.2,24.9
+AGIL (1-obj),models/bc/agil_fewer_objs_1/all_ep,AGIL,176.8,54.46
+BC (2-obj),models/bc/none_fewer_objs_2/all_ep,,98.8,26.05
+AGIL (2-obj),models/bc/agil_fewer_objs_2/all_ep,AGIL,159.6,55.78
+Mask (1-obj),models/bc/bc_mask_fewer_objs_1/all_ep,Mask,79.6,2.8
+Mask (2-obj),models/bc/bc_mask_fewer_objs_2/all_ep,Mask,100.4,24.49
+Mask (1-obj) 50ep,models/bc/bc_mask_fewer_objs_1_max_epoch_50/all_ep,Mask,138.8,36.31
+Mask (2-obj) 50ep,models/bc/bc_mask_fewer_objs_2_max_epoch_50/all_ep,Mask,167.6,52.6
