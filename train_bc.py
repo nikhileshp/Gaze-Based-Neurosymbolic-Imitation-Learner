@@ -322,7 +322,7 @@ def train(args, verbose=False):
                                     frame_skip=args.eval_fs, obs_size=84, noop_max=0,
                                     screen_render_width=720, screen_render_height=450, action_repeat_probability=args.sticky_probability,
                                       start_fire=start_fire)
-    action_dim = int(actions.max().item()) + 1
+    action_dim = 6
 
     if args.incremental:
       

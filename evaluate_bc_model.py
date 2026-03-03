@@ -10,60 +10,48 @@ from baselines.models.linear_models import Encoder
 
 PRIMITIVE_ACTIONS = {0: 'noop', 1: 'fire', 2: 'up', 3: 'right', 4: 'left', 5: 'down'}
 
-def load_bc_model(run_dir, gaze_method="None", device="cuda", ckpt_prefix="best_"):
+def load_bc_model(run_dir, gaze_method="None", device="cuda", ckpt_prefix="best_", stack=4):
     """
-    Loads the BC/AGIL CNN models from a specified directory.
-    
-    Args:
-        run_dir (str): Path containing the encoder.pth, pre_actor.pth, etc.
-        gaze_method (str): "None", "AGIL", or "Mask".
-        device (str): "cuda" or "cpu".
-        ckpt_prefix (str): Prefix of the checkpoints (default: "best_").
-        
-    Returns:
-        tuple: (encoder, pre_actor, actor, encoder_agil)
+    Loads encoder, pre_actor, and actor weights for testing.
+    Also loads encoder_agil if AGIL is the method.
     """
     dev = torch.device(device)
-    
-    # Default model params from train_bc_pt.py
+
+    # Model dimensions
     embedding_dim = 64
     num_hiddens = 128
     num_residual_layers = 2
     num_residual_hiddens = 32
     z_dim = 256
-    action_dim = 18 # Fallback default
-    encoder_out_dim = 8 * 8 * embedding_dim  # 4096
-    
-    actor_ckpt_path = None
+    encoder_out_dim = 8 * 8 * embedding_dim
+    action_dim = 6 # Default, overridden below if possible
 
-    # Determine exact checkpoint prefix and path
-    if run_dir and os.path.isdir(run_dir):
-        if ckpt_prefix == "best_" and not os.path.exists(f"{run_dir}/best_actor.pth"):
-            print(f"Warning: best_actor.pth not found in {run_dir}. Searching for latest epoch...")
-            ep_dirs = [d for d in os.listdir(run_dir) if os.path.isdir(os.path.join(run_dir, d)) and d.startswith("ep")]
-            if ep_dirs:
-                ep_dirs.sort(key=lambda x: int(x[2:]))
-                latest_ep_dir = ep_dirs[-1]
-                print(f"Found latest epoch directory: {latest_ep_dir}")
-                run_dir = os.path.join(run_dir, latest_ep_dir)
-                ckpt_prefix = f"{latest_ep_dir}_"
+    # ── Try to dynamically infer action dimension from saved weights ──
+    actor_ckpt_path = f"{run_dir}/{ckpt_prefix}actor.pth"
+    if not os.path.exists(actor_ckpt_path):
+        # Fallback for checking epoch-specific checkpoint if best_ not found
+        if not ckpt_prefix:
+            epoch_dirs = glob.glob(os.path.join(run_dir, "*_ep"))
+            if epoch_dirs:
+                # Naively check the first one
+                alt_ckpt = f"{epoch_dirs[0]}/best_actor.pth"
+                if os.path.exists(alt_ckpt): actor_ckpt_path = alt_ckpt
             else:
                 print("No epoch subdirectories found either.")
-                
-        actor_ckpt_path = f"{run_dir}/{ckpt_prefix}actor.pth"
-        if os.path.exists(actor_ckpt_path):
-            try:
-                # Peek at the model weights to get the action dimension
-                dummy_ckpt = torch.load(actor_ckpt_path, map_location='cpu', weights_only=False)
-                if '2.bias' in dummy_ckpt:
-                    action_dim = dummy_ckpt['2.bias'].shape[0]
-                    print(f"Inferred action_dim={action_dim} from weights.")
-            except Exception as e:
-                print(f"Error inferring action_dim from weights: {e}")
+
+    if os.path.exists(actor_ckpt_path):
+        try:
+            # Peek at the model weights to get the action dimension
+            dummy_ckpt = torch.load(actor_ckpt_path, map_location='cpu', weights_only=False)
+            if '2.bias' in dummy_ckpt:
+                action_dim = dummy_ckpt['2.bias'].shape[0]
+                print(f"Inferred action_dim={action_dim} from weights.")
+        except Exception as e:
+            print(f"Error inferring action_dim from weights: {e}")
 
     # 1. Initialize Networks
-    encoder = Encoder(4, embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens).to(dev)
-    
+    encoder = Encoder(stack, embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens).to(dev)
+
     pre_actor = nn.Sequential(
         nn.Flatten(start_dim=1),
         nn.Linear(encoder_out_dim, z_dim),
@@ -77,7 +65,7 @@ def load_bc_model(run_dir, gaze_method="None", device="cuda", ckpt_prefix="best_
 
     encoder_agil = None
     if gaze_method == "AGIL":
-        encoder_agil = Encoder(4, embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens).to(dev)
+        encoder_agil = Encoder(stack, embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens).to(dev)
 
     # 2. Load Weights if directory provided
     if actor_ckpt_path and os.path.exists(actor_ckpt_path):
@@ -104,7 +92,7 @@ def load_bc_model(run_dir, gaze_method="None", device="cuda", ckpt_prefix="best_
     return encoder, pre_actor, actor, encoder_agil
 
 
-def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42, device="cuda", use_gazemap=False, gaze_model_path="seaquest_gaze_predictor_2.pth", ckpt_prefix="best_"):
+def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42, device="cuda", use_gazemap=False, gaze_model_path="seaquest_gaze_predictor_2.pth", ckpt_prefix="best_", stack=4):
     """
     Loads a pretrained BC/AGIL baseline and runs it in the provided environment.
     
@@ -118,12 +106,13 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
         use_gazemap (bool): If True, instantiate live Human_Gaze_Predictor to supply heatmaps.
         gaze_model_path (str): Path to the gaze predictor model.
         ckpt_prefix (str): Prefix of the checkpoints (default: "best_").
+        stack (int): Number of frames for the encoder stack.
         
     Returns:
         list: Total rewards for each episode.
     """
     dev = torch.device(device)
-    encoder, pre_actor, actor, encoder_agil = load_bc_model(run_dir, gaze_method, device, ckpt_prefix=ckpt_prefix)
+    encoder, pre_actor, actor, encoder_agil = load_bc_model(run_dir, gaze_method, device, ckpt_prefix=ckpt_prefix, stack=stack)
     
     gaze_predictor = None
     if (use_gazemap or gaze_method in ['ViSaRL', 'Mask', 'AGIL']) and gaze_method != "None":
@@ -140,7 +129,8 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
     rewards = []
     
     # Map for nudge env from atari base actions (0-17)
-    valid_actions = {0: 'noop', 1: 'fire', 2: 'up', 3: 'right', 4: 'left', 5: 'down', 6: 'upright', 7: 'upleft', 8: 'downright', 9: 'downleft', 10: 'upfire', 11: 'rightfire', 12: 'leftfire', 13: 'downfire', 14: 'uprightfire', 15: 'upleftfire', 16: 'downrightfire', 17: 'downleftfire'}
+    # This line is now redundant as it's defined inside the loop based on env.pred2action
+    # valid_actions = {0: 'noop', 1: 'fire', 2: 'up', 3: 'right', 4: 'left', 5: 'down', 6: 'upright', 7: 'upleft', 8: 'downright', 9: 'downleft', 10: 'upfire', 11: 'rightfire', 12: 'leftfire', 13: 'downfire', 14: 'uprightfire', 15: 'upleftfire', 16: 'downrightfire', 17: 'downleftfire'}
     
     for i in range(num_episodes):
         try:
@@ -151,7 +141,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
         done = False
         total_r = 0.0
         
-        # Initialize Gaze temporal buffer AND frame buffer
+        # Initialize Gaze temporal buffer (always 4 for the Gaze Predictor)
         frame_buffer = deque(maxlen=4)
         raw_frame = env.get_rgb_frame() if hasattr(env, 'get_rgb_frame') else (env.render() if hasattr(env, 'render') else state)
         gray = cv2.cvtColor(raw_frame, cv2.COLOR_RGB2GRAY)
@@ -161,9 +151,10 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
         from tqdm import tqdm
         pbar = tqdm(desc=f"Episode {i+1}")
         step_count = 0
+        valid_actions = env.pred2action if hasattr(env, 'pred2action') else {0:'noop', 1:'fire', 2:'up', 3:'right', 4:'left', 5:'down'}
         action_counts = {}
         
-        while not done and step_count < 10000:
+        while not done and step_count < 2500:
             step_count += 1
             # We need the raw RGB frame for the CNN
             if hasattr(env, 'get_rgb_frame'):
@@ -175,16 +166,24 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
             gray = cv2.cvtColor(raw_frame, cv2.COLOR_RGB2GRAY)
             gray = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA) / 255.0
             
-            img_stack = np.stack(frame_buffer, axis=-1) # (84, 84, 4)
-            xx = torch.tensor(img_stack, dtype=torch.float32, device=dev).permute(2, 0, 1).unsqueeze(0) # (1, 4, 84, 84)
+            img_stack_4 = np.stack(frame_buffer, axis=-1) # (84, 84, 4)
+            
+            if stack == 1:
+                xx = torch.tensor(gray, dtype=torch.float32, device=dev).unsqueeze(0).unsqueeze(0) # (1, 1, 84, 84)
+            else:
+                # For the agent's encoder, stack the last 'stack' frames from the buffer
+                img_stack_agent = np.stack(list(frame_buffer)[-stack:], axis=-1)
+                xx = torch.tensor(img_stack_agent, dtype=torch.float32, device=dev).permute(2, 0, 1).unsqueeze(0) # (1, stack, 84, 84)
             
             gg = torch.zeros(1, 1, 84, 84, device=dev)
             if gaze_predictor is not None:
                 # Gaze predictor still takes the (1, 4, 84, 84) stack
-                input_tensor = torch.tensor(img_stack, dtype=torch.float32, device=gaze_predictor.device)
+                input_tensor = torch.tensor(img_stack_4, dtype=torch.float32, device=gaze_predictor.device)
                 input_tensor = input_tensor.permute(2, 0, 1).unsqueeze(0) # (1, 4, 84, 84)
                 with torch.no_grad():
-                    gaze_pred = gaze_predictor.model(input_tensor)
+                    # Spatial softmax output is too small for Mask/AGIL models trained on max=1.0 maps.
+                    # We use predict_normalized to rescale the heatmap.
+                    gaze_pred = gaze_predictor.predict_normalized(input_tensor)
                 gg = gaze_pred.to(dev) # Output is (1, 1, 84, 84)
             
             with torch.no_grad():
@@ -215,7 +214,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
             total_r += reward
             
             # Update frame buffer for gaze with the new environment state
-            if gaze_predictor is not None and not done:
+            if not done:
                 next_raw = env.get_rgb_frame() if hasattr(env, 'get_rgb_frame') else (env.render() if hasattr(env, 'render') else state)
                 next_gray = cv2.cvtColor(next_raw, cv2.COLOR_RGB2GRAY)
                 next_gray = cv2.resize(next_gray, (84, 84), interpolation=cv2.INTER_AREA) / 255.0
@@ -244,6 +243,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
     parser.add_argument("--ckpt_prefix", type=str, default="best_")
+    parser.add_argument("--stack", type=int, default=1, help="Number of frames stacked for the agent's input")
     args = parser.parse_args()
     
     print(f"Initializing Nudge Seaquest environment for {args.episodes} episodes...")
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     eval_rewards = evaluate_bc_model(test_env, args.run_dir, gaze_method=args.gaze_method, 
                                      num_episodes=args.episodes, seed=args.seed, device=args.device,
                                      use_gazemap=args.use_gazemap, gaze_model_path=args.gaze_model_path,
-                                     ckpt_prefix=args.ckpt_prefix)
+                                     ckpt_prefix=args.ckpt_prefix, stack=args.stack)
     
     print(f"\\nFinal Evaluation over {args.episodes} episodes:")
     print(f"Mean Reward: {np.mean(eval_rewards):.2f} ± {np.std(eval_rewards):.2f}")

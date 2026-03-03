@@ -189,6 +189,24 @@ class Human_Gaze_Predictor:
         torch.save(self.model.state_dict(), save_path)
         print(f"Model saved to {save_path}")
   
+    def predict_normalized(self, input_tensor):
+        """
+        Runs inference and normalizes the spatial output so max value is 1.0.
+        input_tensor: torch.Tensor (B, 4, 84, 84)
+        Returns: torch.Tensor (B, 1, 84, 84)
+        """
+        self.model.eval()
+        with torch.no_grad():
+            out = self.model(input_tensor)
+            # Spatial normalization to [0, 1] based on max value in the frame
+            # (Matches the training data normalization in convert_trajectories_to_pt.py)
+            B, C, H, W = out.shape
+            for b in range(B):
+                m = out[b].max()
+                if m > 0:
+                    out[b] = out[b] / m
+        return out
+
     def predict_and_save(self, imgs):
         """
         imgs: Numpy array of shape (Batch, Height, Width, Channels) (NHWC)

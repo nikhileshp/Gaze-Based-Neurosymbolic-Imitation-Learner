@@ -74,7 +74,7 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None,
                 input_tensor = input_tensor.permute(2, 0, 1).unsqueeze(0) # (1, 4, H, W)
                 
                 with torch.no_grad():
-                    gaze_pred = gaze_predictor.model(input_tensor) # Outputs (1, 1, 84, 84) spatial softmax
+                    gaze_pred = gaze_predictor.predict_normalized(input_tensor) # Outputs (1, 1, 84, 84) normalized to max=1.0
                     
                 gaze_tensor = gaze_pred.squeeze(0) # Reduce to (1, 84, 84) for the Valuation Module
             
