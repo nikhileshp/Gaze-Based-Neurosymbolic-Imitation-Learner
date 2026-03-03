@@ -13,3 +13,4 @@ at_top:1:object
 at_bottom:1:object
 visible:1:object
 notcloseby:2:object,object
+closest:2:object,object

@@ -13,19 +13,29 @@ def is_player(z):
 def is_present(z):
     return (z[:, 0:4].sum(dim=1) > 0.5)
 
-def closeby(z_1, z_2):
+def closest(z_1, z_2):
+    """Returns bool_to_probs(True) iff z_2 is the closest present object to z_1 (player).
+
+    Computes L1 distance between the player (z_1) and the candidate object (z_2).
+    Finds the global minimum distance among all present objects in the batch,
+    then returns True only for the pair whose distance equals that minimum.
+    """
     player_mask = is_player(z_1)
     obj_mask = is_present(z_2)
-    
-    c_1 = z_1[:, -2:]
-    c_2 = z_2[:, -2:]
 
-    dis_x = abs(c_1[:, 0] - c_2[:, 0]) / 171
-    dis_y = abs(c_1[:, 1] - c_2[:, 1]) / 171
+    c_1 = z_1[:, -2:]   # player coords  (batch, 2)
+    c_2 = z_2[:, -2:]   # candidate coords (batch, 2)
 
-    result = player_mask & obj_mask & (dis_x < 1) & (dis_y <= 1) # Adjusted threshold
-    proximity = _close_by(z_1, z_2)
-    return proximity * bool_to_probs(result)
+    dist = (c_1 - c_2).abs().sum(dim=1)   # L1 distance per pair
+
+    # Replace non-present objects with inf so they don't win
+    inf_dist = th.full_like(dist, float('inf'))
+    present_dists = th.where(obj_mask, dist, inf_dist)
+    min_dist = present_dists.min()
+
+    # True iff this pair is the (unique or tied) nearest present object
+    is_closest = player_mask & obj_mask & (dist <= min_dist + 0.5)
+    return bool_to_probs(is_closest)
 
 def notcloseby(z_1, z_2):
     player_mask = is_player(z_1)
@@ -40,6 +50,20 @@ def notcloseby(z_1, z_2):
     result = player_mask & obj_mask & (dis_x < 1) & (dis_y <= 1) # Adjusted threshold
     proximity = _close_by(z_1, z_2)
     return (1-proximity) * bool_to_probs(result)
+
+def closeby(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
+    
+    c_1 = z_1[:, -2:]
+    c_2 = z_2[:, -2:]
+
+    dis_x = abs(c_1[:, 0] - c_2[:, 0]) / 171
+    dis_y = abs(c_1[:, 1] - c_2[:, 1]) / 171
+
+    result = player_mask & obj_mask & (dis_x < 1) & (dis_y <= 1) # Adjusted threshold
+    proximity = _close_by(z_1, z_2)
+    return proximity * bool_to_probs(result)
 
 
 def on_left(z_1, z_2):
@@ -106,14 +130,14 @@ def on_odd(z_1):
 def at_top(z_1):
     player_mask = is_player(z_1)
     y = z_1[:, -1]
-    result = player_mask & (y < 50)
+    result = player_mask & (y < 90)
     return bool_to_probs(result)
 
 
 def at_bottom(z_1):
     player_mask = is_player(z_1)
     y = z_1[:, -1]
-    result = player_mask & (y > 160)
+    result = player_mask & (y > 90)
     return bool_to_probs(result)
 
 
