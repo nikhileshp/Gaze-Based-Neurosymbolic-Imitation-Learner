@@ -7,7 +7,7 @@ from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
 
 DATASET_PATH = 'data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt'
-OUTPUT_PATH = 'trained_models/nsfr/seaquest/_no_gaze/valuation.pt'
+OUTPUT_PATH = 'trained_models/seaquest/nsfr/valuation.pt'
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def main():

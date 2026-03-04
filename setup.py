@@ -60,7 +60,6 @@ setup(
             'grail-eval-bc        = scripts.evaluation.evaluate_bc_model:main',
             # Preprocessing
             'grail-convert        = scripts.preprocess.convert_trajectories_to_pt:main',
-            'grail-preprocess     = scripts.preprocess.preprocess_dataset:main',
             'grail-precompute     = scripts.preprocess.precompute_valuations:main',
             'grail-gen-atoms      = scripts.preprocess.generate_valuation_atoms:main',
             # Play / visualisation

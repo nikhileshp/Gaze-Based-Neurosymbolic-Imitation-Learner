@@ -148,8 +148,10 @@ def main():
         # ── Epoch-based training loop ─────────────────────────────────────────
         print("Starting epoch-based training over full dataset...")
         results_log = []
-        os.makedirs(f"trained_models/nsfr/{args.env}", exist_ok=True)
-        os.makedirs("out/imitation", exist_ok=True)
+        if args.use_gazemap:
+            os.makedirs(f"trained_models/{args.env}/grail", exist_ok=True)
+        else:
+            os.makedirs(f"trained_models/{args.env}/nsfr",  exist_ok=True)
         
         num_iters = args.num_episodes if args.num_episodes is not None else "full"
         experiment_str = f"{args.env}_{args.rules}_il_lr_{args.lr}_num_ep_{num_iters}"
@@ -162,7 +164,7 @@ def main():
             if args.use_gazemap:
                 v_path = f"trained_models/{args.env}/grail/valuation.pt"
             else:
-                v_path = f"trained_models/{args.env}/nsfr//valuation.pt"
+                v_path = f"trained_models/{args.env}/nsfr/valuation.pt"
         
         if os.path.exists(v_path):
             print(f"Loading pre-computed valuations from {v_path}...")

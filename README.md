@@ -27,7 +27,7 @@ cd Gaze-Based-Neurosymbolic-Imitation-Learner
 git checkout refactor   # Moved to mai later
 
 conda create -n grail -python=3.9
-pip install -r requirements.txt
+pip install -r requireme
 pip install -e .        # installs all deps + registers grail-* CLI commands
 ```
 
@@ -61,7 +61,6 @@ After `pip install -e .`, the following commands are available in your shell:
 | `grail-eval` | `scripts/evaluation/evaluate_model.py` |
 | `grail-eval-bc` | `scripts/evaluation/evaluate_bc_model.py` |
 | `grail-convert` | `scripts/preprocess/convert_trajectories_to_pt.py` |
-| `grail-preprocess` | `scripts/preprocess/preprocess_dataset.py` |
 | `grail-precompute` | `scripts/preprocess/precompute_valuations.py` |
 | `grail-gen-atoms` | `scripts/preprocess/generate_valuation_atoms.py` |
 | `grail-play` | `scripts/play/play_il_gui.py` |
