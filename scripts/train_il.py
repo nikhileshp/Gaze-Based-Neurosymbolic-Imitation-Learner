@@ -20,65 +20,6 @@ import time
 
 # Dataset classes moved to scripts/data_utils.py
 
-class PrioritizedReplayBuffer:
-    def __init__(self, capacity=10000, alpha=0.6):
-        self.capacity = capacity
-        self.alpha = alpha
-        self.buffer = []
-        self.priorities = []
-        self.position = 0
-
-    def add(self, states, actions, gazes, losses, ep_nums=None, step_idxs=None):
-        """Add a batch of experiences with their associated losses as priorities."""
-        if torch.is_tensor(states): states = states.cpu()
-        if torch.is_tensor(actions): actions = actions.cpu()
-        if torch.is_tensor(gazes): gazes = gazes.cpu()
-        if torch.is_tensor(ep_nums): ep_nums = ep_nums.cpu()
-        if torch.is_tensor(step_idxs): step_idxs = step_idxs.cpu()
-        
-        for i in range(len(states)):
-            experience = (
-                states[i], 
-                actions[i], 
-                gazes[i], 
-                ep_nums[i] if ep_nums is not None else -1, 
-                step_idxs[i] if step_idxs is not None else -1
-            )
-            priority = (abs(losses[i]) + 1e-6) ** self.alpha
-            
-            if len(self.buffer) < self.capacity:
-                self.buffer.append(experience)
-                self.priorities.append(priority)
-            else:
-                self.buffer[self.position] = experience
-                self.priorities[self.position] = priority
-            self.position = (self.position + 1) % self.capacity
-
-    def sample(self, batch_size, beta=0.4):
-        if len(self.buffer) < batch_size:
-            return None
-        
-        priorities = np.array(self.priorities)
-        probs = priorities / priorities.sum()
-        
-        indices = np.random.choice(len(self.buffer), batch_size, p=probs)
-        samples = [self.buffer[idx] for idx in indices]
-        
-        states = torch.stack([s[0] for s in samples])
-        actions = torch.stack([s[1] for s in samples])
-        gazes = torch.stack([s[2] for s in samples])
-        ep_nums = torch.stack([torch.tensor(s[3]) for s in samples])
-        step_idxs = torch.stack([torch.tensor(s[4]) for s in samples])
-        
-        return states, actions, gazes, ep_nums, step_idxs, indices
-
-    def update_priorities(self, indices, losses):
-        for idx, loss in zip(indices, losses):
-            self.priorities[idx] = (abs(loss) + 1e-6) ** self.alpha
-
-    def __len__(self):
-        return len(self.buffer)
-
 
 # def evaluate(agent, env, num_episodes=5, seed=42):
 #     agent.model.eval()
@@ -161,6 +102,8 @@ def main():
     # Legacy CSV path
     parser.add_argument("--data_path", type=str, default=None, help="Path to expert data (legacy CSV/pkl)")
     parser.add_argument("--epochs", type=int, default=16, help="Number of training epochs")
+    parser.add_argument("--loss", type=str, default="nll", choices=["nll", "bce"],
+                        help="Loss function for imitation: 'nll' (NLLLoss on aggregated scores) or 'bce' (BCELoss, action-independent)")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -319,8 +262,6 @@ def main():
         else:
             print(f"No pre-computed valuations found at {v_path}. Training from logic states.")
 
-        # replay_buffer = PrioritizedReplayBuffer(capacity=25000)
-        replay_steps = 1
         patience = 12
         patience_counter = 0
 
@@ -362,8 +303,8 @@ def main():
                             vT_list.append(torch.zeros(len(agent.model.atoms)).to(device))
                     vT_batch = torch.stack(vT_list).to(device)
 
-                # ── UPDATE A: Discovery (Fresh Batch) ──
-                loss, ind_losses = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch)
+                # ── Forward + Loss ──
+                loss = agent.update(states, actions, gazes if args.use_gaze else None, vT=vT_batch, loss_type=args.loss)
                 
                 optimizer.zero_grad()
                 loss.backward()
@@ -371,28 +312,6 @@ def main():
                 optimizer.step()
                 
                 loss_val = loss.item()
-                
-                # Add to PER
-                # replay_buffer.add(states, actions, gazes, ind_losses, ep_nums, step_idxs)
-                
-                # ── UPDATE B: Focus (Replay Batch) ──
-                # if len(replay_buffer) >= args.batch_size:
-                #     for _ in range(replay_steps):
-                #         sample = replay_buffer.sample(args.batch_size)
-                #         if sample:
-                #             s_r, a_r, g_r, e_r, st_r, indices = sample
-                #             s_r, a_r, g_r = s_r.to(device), a_r.to(device), g_r.to(device)
-                            
-                #             vT_r = None
-                #             if valuations is not None:
-                #                 vT_r_list = []
-                #                 for ep_id, s_idx in zip(e_r, st_r):
-                #                     ep_id, s_idx = ep_id.item(), s_idx.item()
-                #                     vT_r_list.append(valuations[ep_id][s_idx] if ep_id in valuations else torch.zeros(len(agent.model.atoms)).to(device))
-                #                 vT_r = torch.stack(vT_r_list).to(device)
-                            
-                #             l_r, ind_l_r = agent.update(s_r, a_r, g_r if args.use_gaze else None, vT=vT_r)
-                #             replay_buffer.update_priorities(indices, ind_l_r)
 
                 total_loss += loss_val
                 n_batches  += 1
@@ -515,11 +434,9 @@ def main():
         print("Starting iterative training by trajectory...")
         results_log = []
         
-        # Initialize PER, Early Stopping and Best Model tracking
-        # replay_buffer = PrioritizedReplayBuffer(capacity=20000)
+        # Initialize Early Stopping and Best Model tracking
         patience = 5
         patience_counter = 0
-        replay_steps = 5 # Number of replay batches per trajectory epoch
         
         # Use args.epochs as the number of trajectories to process if it's less than total trajectories
         num_iters = min(args.epochs, len(trajectories))
@@ -545,7 +462,7 @@ def main():
                 gazes   = gazes.to(device)
 
                 # Perform update using the agent's unified method
-                loss, _ = agent.update(states, actions, gazes if args.use_gaze else None)
+                loss = agent.update(states, actions, gazes if args.use_gaze else None, loss_type=args.loss)
                 
                 optimizer.zero_grad()
                 loss.backward()
@@ -556,46 +473,6 @@ def main():
                 total_loss += loss_val
                 pbar.set_postfix({"loss": f"{loss_val:.4f}"})
                 
-            # 1. Add this trajectory's data to the Replay Buffer
-            print(f"Adding trajectory {traj_num} data to PER buffer...")
-            agent.model.eval()
-            with torch.no_grad():
-                all_states, all_actions, all_gazes, all_losses = [], [], [], []
-                for states, actions, gazes in DataLoader(dataset, batch_size=args.batch_size):
-                    states, actions, gazes = states.to(device), actions.to(device), gazes.to(device)
-                    probs = agent.model(states, gazes if args.use_gaze else None)
-                    B = probs.size(0)
-                    act_p = torch.zeros(B, 6, device=device)
-                    for i, pred in enumerate(agent.model.get_prednames()):
-                        prefix = pred.split('_')[0]
-                        if prefix in PRIMITIVE_ACTION_MAP:
-                            act_p[:, PRIMITIVE_ACTION_MAP[prefix]] += probs[:, i]
-                    log_p = torch.log(act_p + 1e-10)
-                    ind_loss = torch.nn.functional.nll_loss(log_p, actions, reduction='none')
-                    all_states.append(states.cpu()); all_actions.append(actions.cpu())
-                    all_gazes.append(gazes.cpu()); all_losses.append(ind_loss.cpu())
-                # replay_buffer.add(torch.cat(all_states), torch.cat(all_actions), torch.cat(all_gazes), torch.cat(all_losses))
-
-            # 2. Perform Replay Training
-            # if len(replay_buffer) >= args.batch_size:
-            #     print(f"Performing {replay_steps} replay steps from PER buffer...")
-            #     agent.model.train()
-            #     for _ in range(replay_steps):
-            #         sample = replay_buffer.sample(args.batch_size)
-            #         if not sample: break
-            #         s_b, a_b, g_b, indices = sample
-            #         s_b, a_b, g_b = s_b.to(device), a_b.to(device), g_b.to(device)
-            #         p_b = agent.model(s_b, g_b if args.use_gaze else None)
-            #         act_p_b = torch.zeros(s_b.size(0), 6, device=device)
-            #         for i, pred in enumerate(agent.model.get_prednames()):
-            #             prefix = pred.split('_')[0]
-            #             if prefix in PRIMITIVE_ACTION_MAP:
-            #                 act_p_b[:, PRIMITIVE_ACTION_MAP[prefix]] += p_b[:, i]
-            #         log_p_b = torch.log(act_p_b + 1e-10)
-            #         l_b_ind = torch.nn.functional.nll_loss(log_p_b, a_b, reduction='none')
-            #         l_b_ind_mean, l_b_ind = agent.update(s_b, a_b, g_b if args.use_gaze else None)
-            #         replay_buffer.update_priorities(indices, l_b_ind)
-
             avg_loss = total_loss / len(dataloader)
             print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
 

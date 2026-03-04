@@ -10,7 +10,7 @@ class ImitationAgent(nn.Module):
         self.model = get_nsfr_model(env_name, rules, device=device, train=True, gaze_threshold=gaze_threshold)
         print("NSFR model initialized.", flush=True)
 
-    def update(self, states, actions, gazes=None, vT=None):
+    def update(self, states, actions, gazes=None, vT=None, loss_type='nll'):
         """
         Update the model using a batch of states and actions.
         Args:
@@ -53,21 +53,20 @@ class ImitationAgent(nn.Module):
         
         action_scores = torch.stack(action_scores_list, dim=1) # (B, 6)
         
-        # Independent Binary Cross Entropy
-        # We want target action to be 1.0, and ALL other actions to be penalized towards 0.0
-        # This avoids Softmax which breaks logic independence, but still provides false-action penalty.
         batch_size = action_scores.size(0)
-        target_matrix = torch.zeros(batch_size, 6, device=self.device)
-        target_matrix.scatter_(1, actions.unsqueeze(1), 1.0)
-        
-        # Compute BCELoss over all actions independently
-        bce_loss = nn.BCELoss(reduction='none')(action_scores, target_matrix)
-        
-        # We can sum the BCE components per sample so it evaluates properly per-experience
-        sample_losses = bce_loss.sum(dim=1)
-        loss = sample_losses.mean()
-        
-        return loss, sample_losses
+        eps = 1e-10
+        if loss_type == 'bce':
+            # Binary Cross Entropy: target action → 1.0, all others → 0.0
+            # Respects logical independence of rules (no softmax compression)
+            target_matrix = torch.zeros(batch_size, 6, device=self.device)
+            target_matrix.scatter_(1, actions.unsqueeze(1), 1.0)
+            loss = nn.BCELoss()(action_scores, target_matrix)
+        else:  # 'nll'
+            # NLL: log of aggregated action scores, NLLLoss over 6 classes
+            log_action_scores = torch.log(action_scores + eps)
+            loss = nn.NLLLoss()(log_action_scores, actions)
+
+        return loss
 
     def act(self, state, gaze=None):
         """
