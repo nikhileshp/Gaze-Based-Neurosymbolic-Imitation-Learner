@@ -5,6 +5,7 @@ import torch.nn as nn
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
+from core.utils.utils import get_primitive_action_map
 from core.utils.utils import PtDataset
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
 from nsfr.agents.imitation_agent import ImitationAgent
@@ -85,7 +86,7 @@ def main():
     
     # args.use_gaze is now properly synchronized with args.use_gazemap
 
-
+    PRIMITIVE_ACTION_MAP = get_primitive_action_map(args.env)
     make_deterministic(args.seed)
     device_name = "cuda" if torch.cuda.is_available() else "cpu"
     if args.device != "cpu":

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from tqdm import tqdm
-
+from core.utils.utils import get_primitive_action_map
 from core.utils.linear_models import Encoder, weight_init
 
 def get_args():
