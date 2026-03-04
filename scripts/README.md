@@ -35,7 +35,7 @@ python -m scripts.training.train_il --env seaquest ...
 
 ---
 
-## 🧠 training/
+## training/
 
 Training scripts for the neurosymbolic IL pipeline and neural baselines.
 
@@ -59,7 +59,7 @@ python scripts/training/train_il.py \
 
 ---
 
-## 📊 evaluation/
+## evaluation/
 
 Scripts for evaluating and comparing trained models.
 
@@ -73,7 +73,7 @@ Scripts for evaluating and comparing trained models.
 
 ---
 
-## 💾 preprocess/
+## preprocess/
 
 Data collection, format conversion and preprocessing utilities.
 
@@ -87,7 +87,7 @@ Data collection, format conversion and preprocessing utilities.
 
 ---
 
-## 👁️ gaze/
+## gaze/
 
 Everything related to gaze data processing, prediction, and analysis.
 
@@ -112,7 +112,7 @@ python scripts/gaze/gaze_predictor.py \
 
 ---
 
-## 🎥 visualization/
+## visualization/
 
 Scripts for visualizing game trajectories, gaze data, and model behaviour.
 
@@ -125,7 +125,7 @@ Scripts for visualizing game trajectories, gaze data, and model behaviour.
 
 ---
 
-## 🎮 play/
+## play/
 
 Interactive play scripts and environment wrappers.
 
@@ -138,7 +138,7 @@ Interactive play scripts and environment wrappers.
 
 ---
 
-## 🔍 search/
+## search/
 
 Symbolic rule and clause search algorithms.
 
@@ -149,7 +149,7 @@ Symbolic rule and clause search algorithms.
 
 ---
 
-## 📐 baselines/
+## baselines/
 
 Neural baseline model implementations by other repositories
 
@@ -159,7 +159,7 @@ Neural baseline model implementations by other repositories
 
 ---
 
-## 🐚 shell/
+## shell/
 
 Bash scripts for batch experiments and sweeps.
 
