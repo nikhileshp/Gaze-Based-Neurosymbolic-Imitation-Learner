@@ -5,10 +5,10 @@ import numpy as np
 import cv2
 from collections import deque
 
-from nudge.agents.imitation_agent import ImitationAgent
-from nudge.env import NudgeBaseEnv
+from nsfr.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
 from scripts.gaze_predictor import Human_Gaze_Predictor
-from nudge.utils import make_deterministic
+from nsfr.utils import make_deterministic
 
 def preprocess_frame(frame):
     """Convert raw 210x160x3 RGB frame to 84x84 grayscale frame."""
@@ -25,7 +25,7 @@ def run_comparison():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print(f"Initializing Environment: seaquest...")
-    env = NudgeBaseEnv.from_name("seaquest", mode="logic", render_oc_overlay=False)
+    env = NSFRBaseEnv.from_name("seaquest", mode="logic", render_oc_overlay=False)
     make_deterministic(42)
 
     print(f"Initializing Human_Gaze_Predictor from {args.gaze_model_path}...")

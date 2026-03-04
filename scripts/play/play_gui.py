@@ -1,4 +1,4 @@
-from nudge.renderer import Renderer
+from nsfr.renderer import Renderer
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path

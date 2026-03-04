@@ -7,11 +7,11 @@ from pathlib import Path
 
 from nsfr.utils.common import load_module
 from torch.distributions import Categorical
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, env: NudgeBaseEnv, rng=None, device=None):
+    def __init__(self, env: NSFRBaseEnv, rng=None, device=None):
         super(ActorCritic, self).__init__()
 
         self.device = device
@@ -57,7 +57,7 @@ class ActorCritic(nn.Module):
 
 
 class NeuralPPO:
-    def __init__(self, env: NudgeBaseEnv, lr_actor, lr_critic, optimizer, gamma,
+    def __init__(self, env: NSFRBaseEnv, lr_actor, lr_critic, optimizer, gamma,
                  epochs, eps_clip, device=None):
 
         self.device = device

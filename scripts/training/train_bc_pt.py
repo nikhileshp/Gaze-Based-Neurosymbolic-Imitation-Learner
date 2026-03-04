@@ -36,7 +36,7 @@ from core.utils.utils import (
     evaluate, set_seed_everywhere, format_results_table, 
     send_run_update, load_pt_dataset
 )
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 from core.utils.linear_models import Encoder, weight_init
 
 
@@ -81,7 +81,7 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
             for _ in range(4): frame_buffer.append(gray)
 
         while not done:
-            # NudgeBaseEnv returns (logic_state, neural_state) in 'logic' mode
+            # NSFRBaseEnv returns (logic_state, neural_state) in 'logic' mode
             # We want the raw frame for pixel-based BC.
             raw_frame = env.get_rgb_frame()  # (H, W, 3) RGB uint8
 
@@ -241,7 +241,7 @@ def main():
 
     results_log = []
     # ── Environment for evaluation ────────────────────────────────────────────
-    env = NudgeBaseEnv.from_name(args.env, mode='logic')
+    env = NSFRBaseEnv.from_name(args.env, mode='logic')
 
     # Determine episodes to loop over
     if args.incremental:

@@ -3,8 +3,8 @@ import argparse
 import numpy as np
 import sys
 sys.path.insert(0,'../')
-from nudge.utils import make_deterministic
-from nudge.environments.procgen.procgen import ProcgenGym3Env
+from nsfr.utils import make_deterministic
+from nsfr.environments.procgen.procgen import ProcgenGym3Env
 from nsfr.utils.common import get_predictions
 from nsfr.common import get_nsfr_model
 from envs.threefish.state_extraction import extract_logic_state as extract_logic_state_threefish

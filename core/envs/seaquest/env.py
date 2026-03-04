@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 # from ocatari.core import OCAtari
 import numpy as np
 import torch as th
@@ -8,7 +8,7 @@ from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_ESSENTIAL_OBJECTS
 from hackatari import HackAtari
 
 
-class NudgeEnv(NudgeBaseEnv):
+class NSFREnv(NSFRBaseEnv):
     name = "seaquest"
     pred2action = {
         'noop': 0,

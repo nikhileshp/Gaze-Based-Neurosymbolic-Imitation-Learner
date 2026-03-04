@@ -6,12 +6,12 @@ import sys
 
 # TODO
 sys.path.insert(0, '../')
-from nudge.utils import make_deterministic
-from nudge.environments.getout.getout.imageviewer import ImageViewer
-from nudge.environments.getout.getout.getout.helpers import create_getout_instance
+from nsfr.utils import make_deterministic
+from nsfr.environments.getout.getout.imageviewer import ImageViewer
+from nsfr.environments.getout.getout.getout.helpers import create_getout_instance
 from nsfr.utils import get_predictions
 from nsfr.common import get_nsfr_model
-from nudge.agents.utils_getout import extract_logic_state_getout
+from nsfr.agents.utils_getout import extract_logic_state_getout
 
 KEY_SPACE = 32
 KEY_w = 119

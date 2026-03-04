@@ -32,7 +32,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
     # Also set deterministic flag if available
     try:
-        from nudge.utils import make_deterministic
+        from nsfr.utils import make_deterministic
         make_deterministic(seed)
     except ImportError:
         pass

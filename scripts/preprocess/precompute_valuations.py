@@ -9,8 +9,8 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from scripts.data.data_utils import PtDataset
-from nudge.agents.imitation_agent import ImitationAgent
-from nudge.env import NudgeBaseEnv
+from nsfr.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
 
 DATASET_PATH = 'data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt'
 OUTPUT_PATH = 'trained_models/nsfr/seaquest/_no_gaze/valuation.pt'
@@ -23,7 +23,7 @@ def main():
     dataloader = DataLoader(dataset, batch_size=256, shuffle=False)
 
     print("Initializing logic model...")
-    env = NudgeBaseEnv.from_name('seaquest', mode='logic')
+    env = NSFRBaseEnv.from_name('seaquest', mode='logic')
     agent = ImitationAgent('seaquest', 'new', device=DEVICE)
     agent.model.eval()
 

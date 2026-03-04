@@ -5,7 +5,7 @@ import os
 # Add nsfr to path
 sys.path.append(os.path.join(os.getcwd(), 'nsfr'))
 
-from nudge.agents.imitation_agent import ImitationAgent
+from nsfr.agents.imitation_agent import ImitationAgent
 
 def reproduce():
     if not torch.cuda.is_available():

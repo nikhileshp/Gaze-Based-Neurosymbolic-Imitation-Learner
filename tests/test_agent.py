@@ -1,5 +1,5 @@
 import torch
-from nudge.agents.imitation_agent import ImitationAgent
+from nsfr.agents.imitation_agent import ImitationAgent
 print("Starting agent test...")
 try:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

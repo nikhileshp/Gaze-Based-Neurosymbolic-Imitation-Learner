@@ -5,9 +5,9 @@ import numpy as np
 from collections import deque
 import cv2
 
-from nudge.agents.imitation_agent import ImitationAgent
-from nudge.env import NudgeBaseEnv
-from nudge.utils import make_deterministic
+from nsfr.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
+from nsfr.utils import make_deterministic
 
 # Import gaze predictor and email utility
 try:
@@ -140,7 +140,7 @@ def main():
 
     # Initialize Environment
     print(f"Initializing Environment: {args.env}...")
-    env = NudgeBaseEnv.from_name(args.env, mode='logic')
+    env = NSFRBaseEnv.from_name(args.env, mode='logic')
 
     # Initialize Agent
     print(f"Initializing Agent for rules: {args.rules}...")

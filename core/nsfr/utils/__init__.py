@@ -7,9 +7,9 @@ from pathlib import Path
 import os
 import re
 
-from .agents.logic_agent import NsfrActorCritic
-from .agents.neural_agent import ActorCritic
-from nudge.env import NudgeBaseEnv
+from nsfr.agents.logic_agent import NsfrActorCritic
+from nsfr.agents.neural_agent import ActorCritic
+from nsfr.env import NSFRBaseEnv
 
 from nsfr.utils.torch import softor
 
@@ -72,7 +72,7 @@ def load_model(model_dir,
     env_kwargs.update(env_kwargs_override)
 
     # Setup the environment
-    env = NudgeBaseEnv.from_name(environment, mode=algorithm, **env_kwargs)
+    env = NSFRBaseEnv.from_name(environment, mode=algorithm, **env_kwargs)
 
     rules = config["rules"]
 

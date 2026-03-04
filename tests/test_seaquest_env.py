@@ -1,9 +1,9 @@
 import torch
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 print("Starting environment test...")
 try:
     print("Initializing environment Seaquest...")
-    env = NudgeBaseEnv.from_name("seaquest", mode='logic')
+    env = NSFRBaseEnv.from_name("seaquest", mode='logic')
     print("Environment initialized.")
     
     print("Resetting environment...")

@@ -97,7 +97,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
     Loads a pretrained BC/AGIL baseline and runs it in the provided environment.
     
     Args:
-        env (gym.Env / NudgeBaseEnv): The environment instance to step through.
+        env (gym.Env / NSFRBaseEnv): The environment instance to step through.
         run_dir (str): Path containing the pretrained .pth files.
         gaze_method (str): Method used ("None", "AGIL", "Mask").
         num_episodes (int): Number of episodes to evaluate.
@@ -230,7 +230,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
 # Example Usage Block (can be executed directly)
 if __name__ == "__main__":
     import argparse
-    from nudge.env import NudgeBaseEnv
+    from nsfr.env import NSFRBaseEnv
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_dir", type=str, required=True, help="Path to folder containing BC checkpoints")
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     print(f"Initializing Nudge Seaquest environment for {args.episodes} episodes...")
-    test_env = NudgeBaseEnv.from_name("seaquest", mode='logic')
+    test_env = NSFRBaseEnv.from_name("seaquest", mode='logic')
     
     print(f"Loading {args.gaze_method} BC Model from: {args.run_dir} with prefix {args.ckpt_prefix}")
     eval_rewards = evaluate_bc_model(test_env, args.run_dir, gaze_method=args.gaze_method, 

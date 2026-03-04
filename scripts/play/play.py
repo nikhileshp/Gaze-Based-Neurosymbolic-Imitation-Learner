@@ -10,11 +10,11 @@ import os
 from env_src.render_atari import render_atari
 from env_src.procgen.render import render_loot, render_ecoinrun, render_threefish
 from env_src.getout.getout.render import render_getout
-from nudge.agents.neural_agent import NeuralPlayer
-from nudge.agents.logic_agent import LogicPlayer
-from nudge.agents.random_agent import RandomPlayer
-from nudge.utils import make_deterministic
-from nudge.utils import load_model
+from nsfr.agents.neural_agent import NeuralPlayer
+from nsfr.agents.logic_agent import LogicPlayer
+from nsfr.agents.random_agent import RandomPlayer
+from nsfr.utils import make_deterministic
+from nsfr.utils import load_model
 
 
 def main():

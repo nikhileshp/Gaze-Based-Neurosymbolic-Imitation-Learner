@@ -11,8 +11,8 @@ from tqdm import tqdm
 import pickle
 import numpy as np
 
-from nudge.env import NudgeBaseEnv
-from nudge.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
+from nsfr.agents.imitation_agent import ImitationAgent
 
 def get_args():
     parser = argparse.ArgumentParser(description="Generate Ground Truth Valuation Atoms")

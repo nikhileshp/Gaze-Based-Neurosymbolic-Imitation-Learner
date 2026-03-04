@@ -1,12 +1,12 @@
 from typing import Sequence
 
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 import numpy as np
 from env_src.procgen.procgen import ProcgenGym3Env
 import torch
 
 
-class NudgeEnv(NudgeBaseEnv):
+class NSFREnv(NSFRBaseEnv):
     name = "threefish"
     pred2action = {
         'left': 1,

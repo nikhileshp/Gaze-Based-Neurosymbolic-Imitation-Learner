@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 from ocatari.core import OCAtari
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 
 # Configuration
 CSV_FILE = "/home/nikhilesh/Projects/NeSY-Imitation-Learning/train.csv"
@@ -23,7 +23,7 @@ def main():
     
     # Initialize Environment and OCAtari
     print(f"Initializing {ENV_NAME} environment...")
-    env = NudgeBaseEnv.from_name(ENV_NAME, mode='logic')
+    env = NSFRBaseEnv.from_name(ENV_NAME, mode='logic')
     game_name = ENV_NAME.capitalize()
     oc = OCAtari(game_name, mode="vision", render_mode="rgb_array")
     

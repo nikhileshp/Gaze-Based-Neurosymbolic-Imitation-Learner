@@ -1,6 +1,6 @@
 import torch
-from nudge.env import NudgeBaseEnv
-from nudge.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
+from nsfr.agents.imitation_agent import ImitationAgent
 import time
 
 print("Starting isolated evaluation loop test...")
@@ -12,7 +12,7 @@ try:
     agent.load("trained_models/nsfr/seaquest/no_gaze/1_ep/best.pth")
     agent.model.eval()
     
-    env = NudgeBaseEnv.from_name("seaquest", mode='logic')
+    env = NSFRBaseEnv.from_name("seaquest", mode='logic')
     state = env.reset(seed=42)
     
     print("Agent and Env initialized. Starting loop...")

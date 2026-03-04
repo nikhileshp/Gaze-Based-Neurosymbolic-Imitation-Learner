@@ -4,7 +4,7 @@ from nsfr.utils.common import load_module
 import torch
 
 
-class NudgeBaseEnv(ABC):
+class NSFRBaseEnv(ABC):
     name: str
     pred2action: Dict[str, int]  # predicate name to action index
     env: object  # the wrapped environment
@@ -56,7 +56,7 @@ class NudgeBaseEnv(ABC):
     def from_name(name: str, **kwargs):
         env_path = f"core/envs/{name}/env.py"
         env_module = load_module(env_path)
-        return env_module.NudgeEnv(**kwargs)
+        return env_module.NSFREnv(**kwargs)
 
     def close(self):
         pass

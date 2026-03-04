@@ -9,11 +9,11 @@ from torch.distributions import Categorical
 
 from nsfr.common import get_nsfr_model
 from nsfr.utils.common import load_module
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 
 
 class NsfrActorCritic(nn.Module):
-    def __init__(self, env: NudgeBaseEnv, rules: str, device, rng=None):
+    def __init__(self, env: NSFRBaseEnv, rules: str, device, rng=None):
         super(NsfrActorCritic, self).__init__()
         self.device =device
         self.rng = random.Random() if rng is None else rng
@@ -65,7 +65,7 @@ class NsfrActorCritic(nn.Module):
 
 
 class LogicPPO:
-    def __init__(self, env: NudgeBaseEnv, rules: str, lr_actor, lr_critic, optimizer,
+    def __init__(self, env: NSFRBaseEnv, rules: str, lr_actor, lr_critic, optimizer,
                  gamma, epochs, eps_clip, device=None):
         self.device = device
         self.gamma = gamma

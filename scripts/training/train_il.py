@@ -1,7 +1,7 @@
 import sys, os as _os
 _scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root, _os.path.join(_project_root, "core", "ocatari")]:
+for _p in [_scripts_dir, _project_root, _os.path.join(_project_root, "core")]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 import os
@@ -14,8 +14,8 @@ import pandas as pd
 from PIL import Image
 from ocatari.core import OCAtari
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
-from nudge.agents.imitation_agent import ImitationAgent
-from nudge.env import NudgeBaseEnv
+from nsfr.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
 from core.utils.utils import (
     set_seed_everywhere, format_results_table, 
     send_run_update, load_pt_dataset
@@ -103,7 +103,7 @@ def main():
 
     # Initialize Environment (for evaluation and model init)
     # mode='logic' is required to get logic states
-    env = NudgeBaseEnv.from_name(args.env, mode='logic')
+    env = NSFRBaseEnv.from_name(args.env, mode='logic')
 
     # Initialize Agent
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")

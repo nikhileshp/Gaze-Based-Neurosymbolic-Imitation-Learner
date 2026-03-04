@@ -22,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nsfr'))
 
 from nsfr.utils.common import load_module
-from nudge.agents.neural_agent import ActorCritic
+from nsfr.agents.neural_agent import ActorCritic
 from ocatari.vision.game_objects import GameObject, NoObject
 
 
@@ -111,15 +111,15 @@ class TrajectoryVisualizer:
         device = "cpu"
         
         try:
-            from nudge.agents.imitation_agent import ImitationAgent
+            from nsfr.agents.imitation_agent import ImitationAgent
             
             # Init agent with the specified environment and rules
             agent = ImitationAgent(self.env_name, self.rules, device)
             agent.load(self.agent_path)
             
             # We also need the env wrapper for state extraction logic
-            from nudge.env import NudgeBaseEnv
-            self.env_wrapper = NudgeBaseEnv.from_name(self.env_name, mode="logic")
+            from nsfr.env import NSFRBaseEnv
+            self.env_wrapper = NSFRBaseEnv.from_name(self.env_name, mode="logic")
             
             return agent
             
@@ -208,8 +208,8 @@ class TrajectoryVisualizer:
         # Referencing `in/envs/seaquest/env.py`: extract_logic_state
         
         # We need to map the Ocatari objects (which are now updated in `self.objects`) 
-        # to the `raw_state` list expected by `NudgeEnv.extract_logic_state`.
-        # `NudgeEnv.extract_logic_state` iterates over `raw_state` (list of objects) and checks `obj.category`.
+        # to the `raw_state` list expected by `NSFREnv.extract_logic_state`.
+        # `NSFREnv.extract_logic_state` iterates over `raw_state` (list of objects) and checks `obj.category`.
         
         # Ocatari Vision objects have `category` attribute derived from class name usually.
         # e.g. wih `class Player(GameObject):` -> category is "Player" (or "player"? need to check)

@@ -1,8 +1,8 @@
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 import torch
 
 try:
-    env = NudgeBaseEnv.from_name('seaquest', mode='logic')
+    env = NSFRBaseEnv.from_name('seaquest', mode='logic')
     print('pred2action:', env.pred2action)
     print('action_space:', env.action_space)
 except Exception as e:

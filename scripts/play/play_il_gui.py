@@ -4,14 +4,14 @@ _project_root = _os.path.dirname(_scripts_dir)
 for _p in [_scripts_dir, _project_root]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
-from nudge.renderer import Renderer, yellow, print_program, PREDICATE_PROBS_COL_WIDTH, CELL_BACKGROUND_DEFAULT, CELL_BACKGROUND_HIGHLIGHT, CELL_BACKGROUND_SELECTED
+from nsfr.renderer import Renderer, yellow, print_program, PREDICATE_PROBS_COL_WIDTH, CELL_BACKGROUND_DEFAULT, CELL_BACKGROUND_HIGHLIGHT, CELL_BACKGROUND_SELECTED
 from argparse import ArgumentParser
 from pathlib import Path
 import torch
 import pygame
 import numpy as np
-from nudge.agents.imitation_agent import ImitationAgent
-from nudge.env import NudgeBaseEnv
+from nsfr.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
 from hackatari.core import HackAtari
 
 
@@ -406,8 +406,8 @@ if __name__ == "__main__":
     # Initialize Environment
     # We need to pass render_mode="human" or similar? 
     # Renderer uses env.env.render() which usually returns an array.
-    # NudgeBaseEnv defaults: render_mode="rgb_array"
-    env = NudgeBaseEnv.from_name(args.game, mode="logic", render_oc_overlay=True)
+    # NSFRBaseEnv defaults: render_mode="rgb_array"
+    env = NSFRBaseEnv.from_name(args.game, mode="logic", render_oc_overlay=True)
     
     # Initialize Gaze Predictor if requested
     gaze_predictor = None

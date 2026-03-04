@@ -1,11 +1,11 @@
 from typing import Sequence
 
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 from ocatari.core import OCAtari
 import numpy as np
 
 
-class NudgeEnv(NudgeBaseEnv):
+class NSFREnv(NSFRBaseEnv):
     name = "asterix"
     pred2action = {
         'noop': 0,

@@ -5,11 +5,11 @@ import sys
 
 sys.path.insert(0, '../')
 
-from nudge.utils import make_deterministic
-from nudge.environments.procgen.procgen import ProcgenGym3Env
+from nsfr.utils import make_deterministic
+from nsfr.environments.procgen.procgen import ProcgenGym3Env
 from nsfr.utils import get_predictions
 from nsfr.common import get_nsfr_model
-from nudge.agents.utils_loot import extract_logic_state_loot
+from nsfr.agents.utils_loot import extract_logic_state_loot
 
 
 def explaining_to_action(explaining):

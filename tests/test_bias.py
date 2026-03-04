@@ -19,9 +19,9 @@ if args.limit:
     dataset = torch.utils.data.Subset(dataset, range(min(args.limit, len(dataset))))
 dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
 
-from nudge.agents.imitation_agent import ImitationAgent
-from nudge.env import NudgeBaseEnv
-env = NudgeBaseEnv.from_name(args.env, mode='logic')
+from nsfr.agents.imitation_agent import ImitationAgent
+from nsfr.env import NSFRBaseEnv
+env = NSFRBaseEnv.from_name(args.env, mode='logic')
 agent = ImitationAgent(args.env, args.rules, device=args.device)
 agent.to(args.device)
 

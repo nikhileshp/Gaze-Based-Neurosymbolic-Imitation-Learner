@@ -10,10 +10,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import os
-try:
-    from scripts.data.data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
-except ImportError:
-    from scripts.data.data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
+from scripts.preprocess.data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
 
 def my_softmax(x):
     """

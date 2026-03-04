@@ -20,7 +20,7 @@ from PIL import Image
 # Import necessary classes from train_il to allow pickling
 from train_il import BASE_IMAGE_DIR, CSV_FILE
 from scripts.data.data_utils import PRIMITIVE_ACTION_MAP as PREDICATE_TO_ACTION_MAP, PtDataset
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 
 def process_chunk(chunk_indices, dataset_args):
     """
@@ -77,7 +77,7 @@ def process_chunk(chunk_indices, dataset_args):
     # Let's initialize the dataset in the worker
     # We need to filter the df to just the chunk
     
-    env = NudgeBaseEnv.from_name(env_name, mode='logic')
+    env = NSFRBaseEnv.from_name(env_name, mode='logic')
     # We assume rules are needed for atom generation if we go that far
     
     # We can't easily pass the huge DF, so we just pass indices and let worker load/subset?
@@ -101,10 +101,10 @@ def worker_fn(args_tuple, env_name, device, dataset_args):
     # PtDataset logic and gaze are torch tensors.
     
     # Init Env
-    env = NudgeBaseEnv.from_name(env_name, mode='logic')
+    env = NSFRBaseEnv.from_name(env_name, mode='logic')
     
     # Init Agent
-    from nudge.agents.imitation_agent import ImitationAgent
+    from nsfr.agents.imitation_agent import ImitationAgent
     rules = "new" 
     try:
         # Pass gaze settings to agent
@@ -186,7 +186,7 @@ def main():
     # Save atom names first?
     # We can invoke agent once to get atom names and save metadata
     print("Extracting atom names...")
-    from nudge.agents.imitation_agent import ImitationAgent
+    from nsfr.agents.imitation_agent import ImitationAgent
     dummy_agent = ImitationAgent(args.env, "new", args.device)
     atom_names = [str(a) for a in dummy_agent.model.atoms]
     print(f"Model has {len(atom_names)} atoms.")

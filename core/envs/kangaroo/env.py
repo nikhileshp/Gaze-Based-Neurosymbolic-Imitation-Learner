@@ -1,6 +1,6 @@
 from typing import Sequence
 import torch
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 from ocatari.core import OCAtari
 from hackatari.core import HackAtari
 import numpy as np
@@ -37,7 +37,7 @@ def make_env(env):
     return env
 
 
-class NudgeEnv(NudgeBaseEnv):
+class NSFREnv(NSFRBaseEnv):
     name = "kangaroo"
     pred2action = {
         'noop': 0,

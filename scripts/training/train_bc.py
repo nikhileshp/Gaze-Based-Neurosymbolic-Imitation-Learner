@@ -21,7 +21,7 @@ import datetime
 import pandas as pd
 from collections import deque
 import time
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 from core.utils.utils import (
     evaluate, set_seed_everywhere, format_results_table, 
     send_run_update, load_pt_dataset

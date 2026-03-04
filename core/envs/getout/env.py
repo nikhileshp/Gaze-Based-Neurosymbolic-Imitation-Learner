@@ -1,16 +1,16 @@
 from enum import Enum
 from typing import Sequence
 
-from nudge.env import NudgeBaseEnv
+from nsfr.env import NSFRBaseEnv
 import numpy as np
 import gymnasium
 import gym3
 from gymnasium.envs.registration import register
-from nudge.utils import simulate_prob
+from nsfr.utils import simulate_prob
 import torch
 
 
-class NudgeEnv(NudgeBaseEnv):
+class NSFREnv(NSFRBaseEnv):
     name = "getout"
     pred2action = {
         'stay': 0,

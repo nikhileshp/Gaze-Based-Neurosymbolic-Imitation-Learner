@@ -27,7 +27,7 @@ from ocatari.vision.game_objects import GameObject
 from ocatari.core import OCAtari
 from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_ESSENTIAL_OBJECTS
 
-from nudge.agents.imitation_agent import ImitationAgent
+from nsfr.agents.imitation_agent import ImitationAgent
 
 # Action Mapping
 ACTION_MAP = {
@@ -219,7 +219,7 @@ def is_gaze_on_object(gaze, obj, margin=15):
 
 def extract_logic_state_from_tracked(tracked_objects, n_objects=47, n_features=5):
     """
-    Adapted from Seaquest NudgeEnv.extract_logic_state.
+    Adapted from Seaquest NSFREnv.extract_logic_state.
     Converts list of TrackedObject or SnapshotObject to logic state tensor (n_objects, n_features).
     Returns:
         state: torch.Tensor
