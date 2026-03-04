@@ -3,6 +3,7 @@ import glob
 import re
 import argparse
 import sys
+import importlib
 import numpy as np
 import torch
 import pygame
@@ -16,9 +17,21 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nsfr')
 
 from nsfr.utils.common import load_module
 from nudge.agents.neural_agent import ActorCritic
-from ocatari.vision.seaquest import _detect_objects
 from ocatari.vision.game_objects import GameObject, NoObject
-from ocatari.ram.seaquest import MAX_NB_OBJECTS, _init_objects_ram 
+
+
+def load_ocatari_modules(env_name: str):
+    """Dynamically import OCAtari vision and ram modules for the given environment."""
+    game_key = env_name.lower()  # e.g. 'seaquest', 'asterix'
+    
+    vision_mod = importlib.import_module(f'ocatari.vision.{game_key}')
+    ram_mod = importlib.import_module(f'ocatari.ram.{game_key}')
+    
+    detect_fn = getattr(vision_mod, '_detect_objects')
+    init_fn = getattr(ram_mod, '_init_objects_ram')
+    
+    return detect_fn, init_fn
+
 
 # Ensure Seaquest-specific classes are available if needed
 # Actually, _detect_objects instantiates them directly from ocatari.vision.seaquest
@@ -34,9 +47,15 @@ PREDICATE_PROBS_COL_WIDTH = 300
 CELL_BACKGROUND_DEFAULT = np.array([40, 40, 40])
 
 class TrajectoryVisualizer:
-    def __init__(self, data_path: str, agent_path: str, start_frame: int = 0):
+    def __init__(self, data_path: str, agent_path: str, env_name: str = 'seaquest',
+                 rules: str = 'new', start_frame: int = 0):
         self.data_path = data_path
         self.agent_path = agent_path
+        self.env_name = env_name
+        self.rules = rules
+        
+        # Load environment-specific OCAtari modules
+        self._detect_objects, self._init_objects_ram = load_ocatari_modules(env_name)
         
         # Load images and data
         self.images = self._load_images()
@@ -81,21 +100,20 @@ class TrajectoryVisualizer:
         self.running = True
 
     def _load_agent(self):
-        print(f"Loading agent from {self.agent_path}...")
+        print(f"Loading agent from {self.agent_path} (env={self.env_name}, rules={self.rules})...")
         
-        # We assume defaults: env=seaquest, rules=default
         device = "cpu"
         
         try:
             from nudge.agents.imitation_agent import ImitationAgent
             
-            # Init agent
-            agent = ImitationAgent("seaquest", "new", device)
+            # Init agent with the specified environment and rules
+            agent = ImitationAgent(self.env_name, self.rules, device)
             agent.load(self.agent_path)
             
             # We also need the env wrapper for state extraction logic
             from nudge.env import NudgeBaseEnv
-            self.env_wrapper = NudgeBaseEnv.from_name("seaquest", mode="logic")
+            self.env_wrapper = NudgeBaseEnv.from_name(self.env_name, mode="logic")
             
             return agent
             
@@ -176,20 +194,8 @@ class TrajectoryVisualizer:
         return data_map
 
     def _init_ocatari_objects(self):
-        # Initialize objects list based on MAX_NB_OBJECTS
-        # Seaquest MAX_NB_OBJECTS in ocatari currently:
-        # { Player: 1, Shark: 12, Submarine: 12, Diver: 4, EnemyMissile: 4, PlayerMissile: 1, OxygenBar: 1, CollectedDiver: 6, PlayerScore: 1, Lives: 1, OxygenBarDepleted: 1 }
-        # And some logos sometimes.
-        # NudgeEnv.env.py has logic:
-        # 34:         if 'EnemyMissile' in MAX_ESSENTIAL_OBJECTS:
-        # 35:              MAX_ESSENTIAL_OBJECTS['EnemyMissile'] = 8
-        # We should replicate the size calculation to be safe.
-        
-        # We must initialize the objects list with the correct types expected by Ocatari
-        # _detect_objects (vision) expects precise indices for Player etc. and updates them in-place.
-        # If we just use NoSet, they stay NoSet and are filtered out.
-        # So we use the RAM init function to get the structure.
-        return _init_objects_ram(hud=True)
+        # Use the dynamically loaded _init_objects_ram for the current environment
+        return self._init_objects_ram(hud=True)
 
     def extract_logic_state(self, objects):
         # We need to convert Ocatari objects to the logic tensor format expected by the agent.
@@ -216,7 +222,7 @@ class TrajectoryVisualizer:
         
         # 2. Extract Objects
         # _detect_objects(objects, obs, hud=False)
-        _detect_objects(self.objects, image_rgb, hud=True)
+        self._detect_objects(self.objects, image_rgb, hud=True)
         
         # 3. Get Logic State & Neural State 
         # We filter out NoObject for the env wrapper
@@ -499,27 +505,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str, default="data/seaquest/54_RZ_2461867_Aug-11-09-35-18", help="Path to trajectory folder (images)")
     parser.add_argument("--agent_path", type=str, default="out/imitation/seaquest_new_il.pth", help="Path to trained agent .pth")
+    parser.add_argument("--env", type=str, default="seaquest", help="Environment name (e.g. seaquest, asterix)")
+    parser.add_argument("--rules", type=str, default="new", help="Ruleset name")
     parser.add_argument("--start_frame", type=int, default=0, help="Start frame index")
     
     args = parser.parse_args()
     
-    # Adjust paths relative to project root if needed
-    # Note: data path in arg default assumes being run from NeSY-Imitation-Learning or NUDGE root?
-    # The default above looks like relative path.
-    # We should make it robust.
-    
-    # Resolve absolute paths
-    project_root = "/home/nikhilesh/Projects/NUDGE" # running from here?
-    nesy_root = "/home/nikhilesh/Projects/NeSY-Imitation-Learning"
-    
-    # Default override if standard paths
-    if "NeSY-Imitation-Learning" in args.data_path or "data/seaquest" in args.data_path:
-        # Check if absolute or relative
-        if not os.path.isabs(args.data_path):
-             # Try combining with nesy root
-             combined = os.path.join(nesy_root, args.data_path)
-             if os.path.exists(combined):
-                 args.data_path = combined
-    
-    visualizer = TrajectoryVisualizer(args.data_path, args.agent_path, start_frame=args.start_frame)
+    visualizer = TrajectoryVisualizer(args.data_path, args.agent_path,
+                                      env_name=args.env, rules=args.rules,
+                                      start_frame=args.start_frame)
     visualizer.run()
