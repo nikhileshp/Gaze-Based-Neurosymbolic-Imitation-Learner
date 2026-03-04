@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import os
-from core.utils.data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
+from core.utils.utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
 
 def my_softmax(x):
     """
@@ -278,14 +278,14 @@ if __name__ == "__main__":
         if args.use_facts:
             if not args.facts_dataset:
                 parser.error('--facts_dataset required when using --use_facts')
-            from core.utils.data_utils import load_fact_gaze_predictor_data
+            from core.utils.utils import load_fact_gaze_predictor_data
             facts_stacked, gaze_masks, valid_indices = load_fact_gaze_predictor_data(
                 args.facts_dataset, args.dataset, frame_stack=args.frame_stack, device='cpu'
             )
             gp.train_fact_model(facts_stacked, gaze_masks, valid_indices,
                                 epochs=args.epochs, batch_size=args.batch_size)
         else:
-            from core.utils.data_utils import load_gaze_predictor_data
+            from core.utils.utils import load_gaze_predictor_data
             imgs_nhwc, gaze_masks, valid_indices = load_gaze_predictor_data(
                 args.dataset, frame_stack=args.frame_stack, device='cpu'
             )

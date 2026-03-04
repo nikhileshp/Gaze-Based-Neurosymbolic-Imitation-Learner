@@ -136,6 +136,6 @@ Once all methods above are ported and tested:
 | Data loader | `PtDataset` / `ExpertDataset` | `load_pt_dataset()` |
 | Env name casing | `"Seaquest"` (capital) | `"seaquest"` (lowercase) |
 | Eval function | `evaluate_bc_gabril()` | `evaluate_bc()` |
-| Imports | From `scripts/preprocess/data_utils` | From `core/utils/utils` |
+| Imports | From `core/utils/data_utils` | From `core/utils/utils` |
 
 Always keep `train_bc_pt.py`'s conventions when porting.

@@ -22,5 +22,4 @@ cmake
 rtpt
 wandb
 pyglet
-ocatari
 

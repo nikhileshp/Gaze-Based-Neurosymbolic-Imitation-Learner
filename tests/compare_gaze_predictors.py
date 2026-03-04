@@ -4,7 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import torch
 import numpy as np
 from tqdm import tqdm
-from scripts.data.data_utils import load_gaze_predictor_data
+from core.utils.utils import load_gaze_predictor_data
 from scripts.gaze.gaze_predictor import HumanGazeNet
 
 def compare_models():

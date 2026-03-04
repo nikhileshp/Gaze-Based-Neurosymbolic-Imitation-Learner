@@ -24,9 +24,10 @@ A framework for training a Neuro-Symbolic Forward Reasoning (NSFR) agent on Atar
 ```bash
 git clone <repo-url>
 cd Gaze-Based-Neurosymbolic-Imitation-Learner
-git checkout refactor   # or main / v2
+git checkout refactor   # Moved to mai later
 
-conda activate nesy-il
+conda create -n grail -python=3.9
+pip install -r requirements.txt
 pip install -e .        # installs all deps + registers grail-* CLI commands
 ```
 

@@ -7,7 +7,7 @@ the checkpoint to:
     trained_models/gaze_predictor/<env>/<model_name>.pth
 
 Wraps the Human_Gaze_Predictor class from scripts/gaze/gaze_predictor.py and
-the data loaders from scripts/preprocess/data_utils.py.
+the data loaders from core/utils/utils.py.
 
 Supported input modes:
   --dataset         .pt dataset file (frames + gaze heatmaps)
@@ -34,7 +34,7 @@ import argparse
 import torch
 
 from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
-from core.utils.data_utils import (
+from core.utils.utils import (
     load_gaze_predictor_data,
     load_fact_gaze_predictor_data,
 )

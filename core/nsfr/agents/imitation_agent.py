@@ -1,11 +1,16 @@
 import torch
 import torch.nn as nn
 from nsfr.common import get_nsfr_model
+from core.utils.utils import get_primitive_action_map
 
 class ImitationAgent(nn.Module):
     def __init__(self, env_name, rules, device, gaze_threshold=None):
         super().__init__()
         self.device = device
+        self.env_name = env_name
+        self.primitive_action_map = get_primitive_action_map(env_name)
+        self.num_actions = max(self.primitive_action_map.values()) + 1
+        
         print(f"Initializing NSFR model for {env_name}...", flush=True)
         self.model = get_nsfr_model(env_name, rules, device=device, train=True, gaze_threshold=gaze_threshold)
         print("NSFR model initialized.", flush=True)
@@ -19,8 +24,6 @@ class ImitationAgent(nn.Module):
             gazes: Tensor of gaze centers (batch_size, 2) or None
             vT: Pre-computed intermediate valuation tensor (batch_size, num_atoms) or None
         """
-        from core.utils.data_utils import PRIMITIVE_ACTION_MAP
-        
         if vT is not None:
             # The model's forward() automatically detects if the input is V_0 (B, num_atoms)
             # and skips the slow FactsConverter (perception), continuing securely into self.im (reasoning).
@@ -31,17 +34,17 @@ class ImitationAgent(nn.Module):
         
         # 1. Aggregate rules into Actions using Max (Argmax Aggregation)
         # We find the best rule valuation for each action class.
-        action_rule_probs = {idx: [] for idx in range(6)}
+        action_rule_probs = {idx: [] for idx in range(self.num_actions)}
         prednames = self.model.get_prednames()
 
         for i, pred in enumerate(prednames):
             prefix = pred.split('_')[0]
-            if prefix in PRIMITIVE_ACTION_MAP:
-                idx = PRIMITIVE_ACTION_MAP[prefix]
+            if prefix in self.primitive_action_map:
+                idx = self.primitive_action_map[prefix]
                 action_rule_probs[idx].append(probs[:, i])
         
         action_scores_list = []
-        for idx in range(6):
+        for idx in range(self.num_actions):
             if action_rule_probs[idx]:
                 stacked = torch.stack(action_rule_probs[idx], dim=1)
                 m, _ = torch.max(stacked, dim=1)
@@ -51,18 +54,18 @@ class ImitationAgent(nn.Module):
                 batch_size = probs.size(0)
                 action_scores_list.append(torch.zeros(batch_size, device=self.device))
         
-        action_scores = torch.stack(action_scores_list, dim=1) # (B, 6)
+        action_scores = torch.stack(action_scores_list, dim=1) # (B, num_actions)
         
         batch_size = action_scores.size(0)
         eps = 1e-10
         if loss_type == 'bce':
             # Binary Cross Entropy: target action → 1.0, all others → 0.0
             # Respects logical independence of rules (no softmax compression)
-            target_matrix = torch.zeros(batch_size, 6, device=self.device)
+            target_matrix = torch.zeros(batch_size, self.num_actions, device=self.device)
             target_matrix.scatter_(1, actions.unsqueeze(1), 1.0)
             loss = nn.BCELoss()(action_scores, target_matrix)
         else:  # 'nll'
-            # NLL: log of aggregated action scores, NLLLoss over 6 classes
+            # NLL: log of aggregated action scores, NLLLoss over classes
             log_action_scores = torch.log(action_scores + eps)
             loss = nn.NLLLoss()(log_action_scores, actions)
 

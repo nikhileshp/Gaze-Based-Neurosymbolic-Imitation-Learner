@@ -2,7 +2,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from scripts.data.data_utils import PtDataset
+from core.utils.utils import PtDataset
 from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
 

@@ -14,7 +14,7 @@ from core.utils.utils import (
 from scripts.evaluation.evaluate_model import evaluate
 import time
 
-# Dataset classes moved to scripts/data_utils.py
+# Dataset classes and util functions are in core/utils/utils.py
 
 
 # def evaluate(agent, env, num_episodes=5, seed=42):
