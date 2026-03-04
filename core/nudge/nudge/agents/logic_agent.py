@@ -21,7 +21,7 @@ class NsfrActorCritic(nn.Module):
         self.actor = get_nsfr_model(env.name, rules, device=device, train=True)
         self.prednames = self.get_prednames()
 
-        mlp_module_path = f"in/envs/{self.env.name}/mlp.py"
+        mlp_module_path = f"core/envs/{self.env.name}/mlp.py"
         module = load_module(mlp_module_path)
         self.critic = module.MLP(out_size=1, logic=True)
 
