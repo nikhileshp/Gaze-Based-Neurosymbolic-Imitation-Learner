@@ -202,6 +202,15 @@ def facing_right(player: th.Tensor) -> th.Tensor:
     result = player[..., 5] == 4
     return bool_to_probs(result)
 
+def enemy_facing_left(enemy: th.Tensor) -> th.Tensor:
+    # Orientation is at index 5
+    result = enemy[..., 5] == 12
+    return bool_to_probs(result)
+
+def enemy_facing_right(enemy: th.Tensor) -> th.Tensor:
+    # Orientation is at index 5
+    result = enemy[..., 5] == 4
+    return bool_to_probs(result)
 
 def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th.Tensor:
     player_y = player[..., 2]
@@ -245,6 +254,17 @@ def same_depth_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     iou = _vertical_iou(player, obj, 11, 11)
     return iou * bool_to_probs(obj_exists)
 
+# def above_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+#     obj_exists = obj[..., 0] == 1
+#     # Player (11) vs Missile (4)
+#     iou = _vertical_iou(player, obj, 11, 4)
+#     return iou * bool_to_probs(obj_exists)
+
+# def below_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+#     obj_exists = obj[..., 0] == 1
+#     # Player (11) vs Missile (4)
+#     iou = _vertical_iou(player, obj, 11, 4)
+#     return iou * bool_to_probs(obj_exists)
 
 def same_depth_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1
@@ -259,9 +279,10 @@ def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_y = obj[..., 2]
     result = obj_exists & (player_y > obj_y) & (same_depth_enemy(player, obj) < HIGHER_BOUND)
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
     # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
     
-    return bool_to_probs(result)
+    return bool_to_probs(result) * non_overlap
 
 
 def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -271,9 +292,10 @@ def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_y = obj[..., 2]
   
     result = obj_exists & (player_y > obj_y) & (same_depth_diver(player, obj) < HIGHER_BOUND)
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 11)
     # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
 
-    return bool_to_probs(result)
+    return bool_to_probs(result) * non_overlap
 
 # If there is an enemy below the player, then the player is higher than the enemy. Based on the distance from the enemy, the probability increased from the LOWER_BOUND_THRESHOLD
 def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -283,12 +305,13 @@ def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # print("Player", player)
     # print("Object", obj)
     obj_y = obj[..., 2]
-    result = obj_exists & (player_y < obj_y) & (same_depth_enemy(player, obj) < HIGHER_BOUND)
+    result = obj_exists & (player_y < obj_y)
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
     
     # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
 
     # print("Result", result, "Object y", obj_y, "Player y", player_y, "prox", prox)
-    return bool_to_probs(result)
+    return bool_to_probs(result) * non_overlap
 
 
 def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -299,12 +322,9 @@ def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     
     # Calculate vertical difference (obj_y - player_y)
     # Since y increases downwards, higher means smaller y
-    
-    
     # Check if higher than threshold (11px)
     result = obj_exists & (player_y < obj_y) & (same_depth_diver(player, obj) < HIGHER_BOUND)
-
-    
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
     # Old Logic: Increases with distance
     # prox = th.clip((result * (obj_y-player_y-11)/11), 0, 1)
     
@@ -312,7 +332,7 @@ def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # Starts high near threshold (11px) and decays as distance increases
     # e.g. at 11px diff -> 1.0, at 51px diff -> 0.0
     # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
-    return bool_to_probs(result)
+    return bool_to_probs(result) * non_overlap
 
 
 def close_by_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -341,12 +361,10 @@ def not_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     return (1-proximity) * bool_to_probs(obj_exists)
 
 
+
 def close_by_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    # proximity = _close_by(player, obj)
-    player_y = player[..., 2]
-    obj_y = obj[..., 2]
-    proximity = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
+    proximity = _close_by(player, obj)
     # Only return proximity if object exists, else 0
     return proximity * bool_to_probs(obj_exists)
 
@@ -356,7 +374,7 @@ def _close_by(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_x = obj[..., 1]
     obj_y = obj[..., 2]
-    result = th.clip((128 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 128, 0, 1)
+    result = th.clip((300 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 300, 0, 1)
     #use a threshold of 15 px and return 1 if the distance is less than 15 px else 0
     # bool_val = abs(player_x - obj_x) + abs(player_y - obj_y) < 50
     return result
@@ -499,7 +517,7 @@ def is_collected_diver(obj: th.Tensor) -> th.Tensor:
     # If I rename `divers_collected_full` to `all_divers_collected(player)`? No.
     #
     # I will implement `oxygen_critical` and `surface_submarine` first.
-    pass
+    # pass
 
 def above_water(player: th.Tensor) -> th.Tensor:
     """True if player is above water (at surface, y < 55)."""

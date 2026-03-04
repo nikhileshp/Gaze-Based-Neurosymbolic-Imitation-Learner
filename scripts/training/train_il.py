@@ -479,6 +479,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
+import datetime
 from pathlib import Path
 from tqdm import tqdm
 from core.utils.utils import get_primitive_action_map
@@ -493,6 +494,7 @@ from core.utils.utils import (
 )
 from scripts.evaluation.evaluate_model import evaluate
 import time
+import signal
 
 
 def run_diagnostics(agent, epoch_loader, device, args, warmup_batches=30, measure_batches=50):
@@ -643,6 +645,7 @@ def main():
     parser.add_argument("--diagnose", action="store_true", help="Profile bottlenecks and exit")
     args = parser.parse_args()
 
+    now_time = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     # ── Gaze setup ───────────────────────────────────────────────────────────
     gaze_predictor = None
     if args.use_gazemap:
@@ -773,9 +776,9 @@ def main():
 
     # ── Paths ─────────────────────────────────────────────────────────────────
     num_iters = args.num_episodes if args.num_episodes is not None else "full"
-    run_dir   = (f"trained_models/{args.env}/grail/{num_iters}_ep"
+    run_dir   = (f"trained_models/{args.env}/grail/{num_iters}_ep_{args.rules}_rules_{args.lr}_lr/{now_time}"
                  if args.use_gazemap
-                 else f"trained_models/{args.env}/nsfr/{num_iters}_ep")
+                 else f"trained_models/{args.env}/nsfr/{num_iters}_ep_{args.rules}_rules_{args.lr}_lr/{now_time}")
     os.makedirs(run_dir, exist_ok=True)
     os.makedirs("out/imitation", exist_ok=True)
 
@@ -791,6 +794,35 @@ def main():
     patience_counter = 0
     results_log      = []
     last_email_time  = time.time()
+
+    # ── Graceful interrupt handler ────────────────────────────────────────────
+    # On Ctrl+C or SIGTERM: save current model + CSV, then exit cleanly.
+    def _emergency_save(signum, frame):
+        print(f"\n\n[INTERRUPTED] Signal {signum} received. Saving checkpoint and results...")
+        try:
+            interrupt_path = os.path.join(run_dir, "interrupted.pth")
+            agent.save(interrupt_path)
+            print(f"  Model saved to {interrupt_path}")
+        except Exception as e:
+            print(f"  WARNING: Could not save model: {e}")
+        try:
+            if results_log:
+                csv_path = os.path.join(run_dir, f"results_{args.epochs}_interrupted.csv")
+                pd.DataFrame(results_log).to_csv(csv_path, index=False)
+                print(f"  Results CSV saved to {csv_path}")
+                # Also print a quick summary to stdout
+                print("  Learning curve so far:")
+                for res in results_log:
+                    print(f"    Epoch {res['epoch']:3d} | Loss {res.get('train_loss', float('nan')):.4f} "
+                          f"| T-Acc {res.get('train_acc', 0.0):.4f} "
+                          f"| Score {res['mean_reward']:.2f} ± {res['std_reward']:.2f}")
+        except Exception as e:
+            print(f"  WARNING: Could not save CSV: {e}")
+        print("[INTERRUPTED] Done. Exiting.")
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGINT,  _emergency_save)
+    signal.signal(signal.SIGTERM, _emergency_save)
 
     print("Starting epoch-based training over full dataset...")
 
@@ -935,6 +967,12 @@ def main():
         agent.save(save_path)
         print(f"Saved model to {save_path}")
 
+        # ── Rolling CSV save (every eval_interval epochs) ─────────────────────
+        if (epoch + 1) % args.eval_interval == 0 and results_log:
+            _csv_path = os.path.join(run_dir, f"results_{args.epochs}.csv")
+            pd.DataFrame(results_log).to_csv(_csv_path, index=False)
+            print(f"Results CSV updated → {_csv_path}")
+
         # ── Best model / early stopping ───────────────────────────────────────
         if mean_reward > best_mean_reward:
             best_mean_reward = mean_reward
@@ -983,7 +1021,7 @@ def main():
     print("=" * 50)
 
     results_df       = pd.DataFrame(results_log)
-    results_csv_path = os.path.join(run_dir, f"results_lr_{args.lr}.csv")
+    results_csv_path = os.path.join(run_dir, f"results_{args.epochs}.csv")
     results_df.to_csv(results_csv_path, index=False)
     print(f"Results saved to {results_csv_path}")
 

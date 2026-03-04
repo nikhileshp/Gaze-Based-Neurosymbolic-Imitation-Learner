@@ -18,3 +18,15 @@ same_depth_enemy:2:oplayer,oenemy
 same_depth_diver:2:oplayer,odiver
 same_depth_missile:2:oplayer,omissile
 oxygen_low:1:ooxygenbar
+oxygen_critical:1:ooxygenbar
+divers_collected_full:1:osixthdiver
+surface_submarine:1:osurfacesub
+is_collected_diver:1:ocollecteddiver
+above_water:1:oplayer
+below_water:1:oplayer
+above_surface:2:oplayer,osurface
+below_surface:2:oplayer,osurface
+not_close_by_enemy:2:oplayer,oenemy
+not_close_by_missile:2:oplayer,omissile
+enemy_facing_left:1:oenemy
+enemy_facing_right:1:oenemy
