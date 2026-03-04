@@ -9,7 +9,7 @@ nudge/nudge.egg-info
 scripts/email_me.py
 
 # Large Data & Models
-models/
+trained_models/
 logs/
 *.log
 *.pkl

@@ -9,7 +9,7 @@ try:
     agent = ImitationAgent("seaquest", "new", device)
     print("Agent initialized.")
     
-    model_path = "models/nsfr/seaquest/no_gaze/1_ep/best.pth"
+    model_path = "trained_models/nsfr/seaquest/no_gaze/1_ep/best.pth"
     import os
     if os.path.exists(model_path):
         print(f"Loading model from {model_path}...")

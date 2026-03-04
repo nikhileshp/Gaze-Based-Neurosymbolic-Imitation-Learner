@@ -4,7 +4,7 @@ import pandas as pd
 import subprocess
 import re
 
-run_base_dir = "models/bc/incremental_agil"
+run_base_dir = "trained_models/bc/incremental_agil"
 output_csv = "bc_sample_efficiency_incremental_agil_50ep.csv"
 episodes_to_eval = 50
 

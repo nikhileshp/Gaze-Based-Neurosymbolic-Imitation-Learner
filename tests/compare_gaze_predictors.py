@@ -34,7 +34,7 @@ def compare_models():
     gt_masks = gt_masks / gt_sums
 
     # 2. Find models
-    model_dir = "models/gaze_predictor/"
+    model_dir = "trained_models/gaze_predictor/"
     models = [f for f in os.listdir(model_dir) if f.endswith(".pth")]
     print(f"\nFound {len(models)} models: {models}\n")
 

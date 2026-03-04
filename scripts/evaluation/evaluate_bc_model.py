@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 from collections import deque
+from core.utils.utils import preprocess_frame
 
-# Import GABRIL CNN mapping
-from baselines.models.linear_models import Encoder
+from core.utils.linear_models import Encoder
 
 PRIMITIVE_ACTIONS = {0: 'noop', 1: 'fire', 2: 'up', 3: 'right', 4: 'left', 5: 'down'}
 
@@ -144,8 +144,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
         # Initialize Gaze temporal buffer (always 4 for the Gaze Predictor)
         frame_buffer = deque(maxlen=4)
         raw_frame = env.get_rgb_frame() if hasattr(env, 'get_rgb_frame') else (env.render() if hasattr(env, 'render') else state)
-        gray = cv2.cvtColor(raw_frame, cv2.COLOR_RGB2GRAY)
-        gray = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA) / 255.0
+        gray = preprocess_frame(raw_frame)
         for _ in range(4): frame_buffer.append(gray)
         
         from tqdm import tqdm
@@ -163,8 +162,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
                 raw_frame = env.render() if hasattr(env, 'render') else state
                 
             # Grayscale -> 84x84 -> normalize [0, 1]
-            gray = cv2.cvtColor(raw_frame, cv2.COLOR_RGB2GRAY)
-            gray = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA) / 255.0
+            gray = preprocess_frame(raw_frame)
             
             img_stack_4 = np.stack(frame_buffer, axis=-1) # (84, 84, 4)
             

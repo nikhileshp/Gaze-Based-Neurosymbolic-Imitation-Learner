@@ -5,7 +5,7 @@ import numpy as np
 import subprocess
 import re
 
-run_dir = "models/Seaquest/AGIL/independent_seed_42_lr_0.0001_nep28_zdim256_stack_4_epochs_10_gaze_AGIL/2026_03_01_12_31_57"
+run_dir = "trained_models/Seaquest/AGIL/independent_seed_42_lr_0.0001_nep28_zdim256_stack_4_epochs_10_gaze_AGIL/2026_03_01_12_31_57"
 output_csv = "eval_every_10_epochs.csv"
 episodes_to_eval = 50
 

@@ -165,8 +165,6 @@ Neural baseline model implementations.
 | File | Description |
 |---|---|
 | `agil.py` | AGIL (Attention-Guided Imitation Learning) Keras/TensorFlow network architecture reference. |
-| `linear_models.py` | CNN `Encoder`, `Decoder`, `AutoEncoder`, and `VectorQuantizer` modules used by BC and AGIL training. |
-| `gabril_utils.py` | GABRIL dataset loading (`load_dataset`), evaluation loop, and gaze mask generation utilities. |
 
 ---
 
@@ -177,6 +175,7 @@ Shared utilities used across the project.
 | File | Description |
 |---|---|
 | `utils.py` | General evaluation helper (`evaluate`), gaze-mask utilities (`GazeToMask`, `apply_gmd_dropout`), and seeding. |
+| `linear_models.py` | CNN `Encoder`, `Decoder`, `AutoEncoder`, and `VectorQuantizer` modules used by BC and AGIL training. |
 | `email_me.py` | Send email notifications during long training runs (SMTP helper). |
 | `find_warning_frames.py` | Scan a `.pt` dataset for frames with anomalous states or missing gaze data. |
 

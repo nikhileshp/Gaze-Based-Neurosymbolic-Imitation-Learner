@@ -13,7 +13,7 @@ from nudge.agents.imitation_agent import ImitationAgent
 from nudge.env import NudgeBaseEnv
 
 DATASET_PATH = 'data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt'
-OUTPUT_PATH = 'models/nsfr/seaquest/_no_gaze/valuation.pt'
+OUTPUT_PATH = 'trained_models/nsfr/seaquest/_no_gaze/valuation.pt'
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def main():

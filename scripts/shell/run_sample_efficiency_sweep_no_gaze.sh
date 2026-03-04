@@ -28,7 +28,7 @@ run_eval() {
     local N=$1
     local GAZE_TAG=$2       # "gaze" or "no_gaze"
     local GAZE_FLAGS=$3     # "--use_gazemap" or ""
-    local RUN_DIR="models/nsfr/seaquest/${GAZE_TAG}/${N}_ep"
+    local RUN_DIR="trained_models/nsfr/seaquest/${GAZE_TAG}/${N}_ep"
     local BEST_MODEL="${RUN_DIR}/best.pth"
     local LOG_FILE="${RUN_DIR}/run_experiment_${GAZE_TAG}_${N}_ep.log"
 
@@ -71,7 +71,7 @@ for N in "${EPISODES[@]}"; do
         --seed "$SEED" \
         --rules "$RULES" \
         --eval_interval 5 \
-        --valuation_path "models/nsfr/seaquest/_no_gaze/valuation.pt" \
+        --valuation_path "trained_models/nsfr/seaquest/_no_gaze/valuation.pt" \
         --eval_max_steps 3000 \
         --send_email \
         --email_interval 30
@@ -83,5 +83,5 @@ echo ""
 echo "=========================================="
 echo "  SWEEP COMPLETE"
 echo "  Summary: $SUMMARY_CSV"
-echo "  Models:  models/nsfr/seaquest/{no_gaze}/{N}_ep/"
+echo "  Models:  trained_models/nsfr/seaquest/{no_gaze}/{N}_ep/"
 echo "=========================================="

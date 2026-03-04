@@ -7,8 +7,8 @@ export CUDA_VISIBLE_DEVICES=3
 set -e
 LR=0.0001
 DATASET="data/seaquest/full_data_16_episodes_10p0_sigma_win_10_obj_limit_1.pt"
-RUN_DIR="models/bc/incremental_agil_fewer_objs"
-GAZE_MODEL_PATH="models/gaze_predictor/seaquest_visual_gaze_predictor_limit_1.pth"
+RUN_DIR="trained_models/bc/incremental_agil_fewer_objs"
+GAZE_MODEL_PATH="trained_models/gaze_predictor/seaquest_visual_gaze_predictor_limit_1.pth"
 EVAL_EPISODES=1
 EPOCHS_PER_EPISODE=20
 

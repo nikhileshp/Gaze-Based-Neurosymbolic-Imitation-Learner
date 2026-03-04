@@ -191,7 +191,7 @@ class Human_Gaze_Predictor:
                 df = pd.DataFrame([{'epoch': epoch + 1, 'loss': avg_loss}])
                 df.to_csv(self.log_csv, mode='a', header=False, index=False)
             
-        save_path = f"models/gaze_predictor/{self.game_name}_{'fact' if hasattr(self.model, 'fc') else 'visual'}_gaze_predictor_limit_2.pth"
+        save_path = f"trained_models/gaze_predictor/{self.game_name}_{'fact' if hasattr(self.model, 'fc') else 'visual'}_gaze_predictor_limit_2.pth"
         torch.save(self.model.state_dict(), save_path)
         print(f"Model saved to {save_path}")
   

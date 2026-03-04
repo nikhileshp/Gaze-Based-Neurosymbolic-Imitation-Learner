@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from gaze.gaze_utils import apply_gmd_dropout
+from core.utils.gaze_utils import apply_gmd_dropout
 
 def weight_init(m):
     """Custom weight init for Conv2D and Linear layers."""

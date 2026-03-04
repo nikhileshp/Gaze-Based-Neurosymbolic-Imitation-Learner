@@ -153,12 +153,12 @@ python preprocess_dataset.py \
     --env           seaquest \
     --use_gaze \
     --gaze_threshold 50.0 \
-    --gaze_model_path core/models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth \
+    --gaze_model_path core/trained_models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth \
     --output        train_atoms_gaze.pkl \
     --device        cuda
 ```
 
-The output `.pkl` is a dict mapping `frame_id → atom_probs_tensor` and is loaded automatically by `train_il.py` if placed at `models/nsfr/seaquest/{gaze|_no_gaze}/valuation.pt`.
+The output `.pkl` is a dict mapping `frame_id → atom_probs_tensor` and is loaded automatically by `train_il.py` if placed at `trained_models/nsfr/seaquest/{gaze|_no_gaze}/valuation.pt`.
 
 ---
 
@@ -188,7 +188,7 @@ python scripts/train_il.py \
     --rules         new \
     --dataset       data/seaquest/dataset.pt \
     --use_gazemap \
-    --gaze_model_path core/models/gaze_predictor/seaquest_gaze_predictor_2.pth \
+    --gaze_model_path core/trained_models/gaze_predictor/seaquest_gaze_predictor_2.pth \
     --gaze_threshold  50.0 \
     --epochs          50 \
     --lr              0.001 \
@@ -215,7 +215,7 @@ python scripts/train_il.py \
 | `--eval_max_steps` | `10000` | Max game steps per eval episode |
 | `--send_email` | off | Send periodic email updates during training |
 
-Saved checkpoints: `core/models/nsfr/seaquest/{gaze|no_gaze}/{N}_ep/epoch_X.pth`
+Saved checkpoints: `core/trained_models/nsfr/seaquest/{gaze|no_gaze}/{N}_ep/epoch_X.pth`
 
 ### Evaluating a trained NSFR model
 
@@ -223,7 +223,7 @@ Saved checkpoints: `core/models/nsfr/seaquest/{gaze|no_gaze}/{N}_ep/epoch_X.pth`
 python tests/evaluate_model.py \
     --env       seaquest \
     --rules     new \
-    --model     core/models/nsfr/seaquest/gaze/full_ep/best.pth \
+    --model     core/trained_models/nsfr/seaquest/gaze/full_ep/best.pth \
     --num_episodes 10
 ```
 
@@ -268,7 +268,7 @@ bash scripts/run_sample_efficiency_sweep_no_gaze.sh # BC no-gaze
 
 ```bash
 python tests/evaluate_bc_model.py \
-    --model  core/models/bc/seaquest/best.pth \
+    --model  core/trained_models/bc/seaquest/best.pth \
     --env    seaquest \
     --num_episodes 10 \
     --device cuda
@@ -285,7 +285,7 @@ cd scripts
 python compare_gaze_predictions.py \
     --dataset      ../data/seaquest/dataset.pt \
     --game_name    seaquest \
-    --model_weights ../core/models/gaze_predictor/seaquest_gaze_predictor_2.pth \
+    --model_weights ../core/trained_models/gaze_predictor/seaquest_gaze_predictor_2.pth \
     --output       ../gaze_comparison.mp4 \
     --num_frames   3000 \
     --multiplier   2.0    # upscale factor for output resolution
@@ -309,9 +309,9 @@ Watch the trained NSFR agent play the game in real time with a visual overlay sh
 python scripts/play_il_gui.py \
     --env    seaquest \
     --rules  new \
-    --model  core/models/nsfr/seaquest/gaze/full_ep/best.pth
+    --model  core/trained_models/nsfr/seaquest/gaze/full_ep/best.pth
     # --use_gazemap    # enable live gaze predictor during play
-    # --gaze_model_path core/models/gaze_predictor/seaquest_gaze_predictor_2.pth
+    # --gaze_model_path core/trained_models/gaze_predictor/seaquest_gaze_predictor_2.pth
 ```
 
 The GUI shows:

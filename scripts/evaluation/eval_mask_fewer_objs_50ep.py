@@ -6,15 +6,15 @@ import re
 eval_configs = [
     {
         "name": "Mask (1-obj) 50ep",
-        "run_dir": "models/bc/bc_mask_fewer_objs_1_max_epoch_50/all_ep",
+        "run_dir": "trained_models/bc/bc_mask_fewer_objs_1_max_epoch_50/all_ep",
         "gaze_method": "Mask",
-        "gaze_model_path": "models/gaze_predictor/seaquest_gaze_predictor_limit_1.pth",
+        "gaze_model_path": "trained_models/gaze_predictor/seaquest_gaze_predictor_limit_1.pth",
     },
     {
         "name": "Mask (2-obj) 50ep",
-        "run_dir": "models/bc/bc_mask_fewer_objs_2_max_epoch_50/all_ep",
+        "run_dir": "trained_models/bc/bc_mask_fewer_objs_2_max_epoch_50/all_ep",
         "gaze_method": "Mask",
-        "gaze_model_path": "models/gaze_predictor/seaquest_visual_gaze_predictor_limit_2.pth",
+        "gaze_model_path": "trained_models/gaze_predictor/seaquest_visual_gaze_predictor_limit_2.pth",
     }
 ]
 

@@ -13,168 +13,20 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import random
 import numpy as np
 
-from baselines.models.linear_models import Encoder, weight_init, VectorQuantizer, Decoder, AutoEncoder
+from core.utils.linear_models import Encoder, weight_init, VectorQuantizer, Decoder, AutoEncoder
 from scripts.play.atari_env_manager import create_env as create_atari_environment
-from baselines.gaze.gaze_utils import get_gaze_mask, apply_gmd_dropout
+from core.utils.gaze_utils import get_gaze_mask, apply_gmd_dropout
 from torch.utils.tensorboard import SummaryWriter
 import datetime
 import pandas as pd
 from collections import deque
 import time
-from scripts.utils.email_me import send_email
-
 from nudge.env import NudgeBaseEnv
-from nudge.utils import make_deterministic
-from scripts.utils.utils import evaluate
+from core.utils.utils import (
+    evaluate, set_seed_everywhere, format_results_table, 
+    send_run_update, load_pt_dataset
+)
 
-def set_seed_everywhere(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    make_deterministic(seed)
-
-def format_results_table(results_log):
-    if not results_log:
-        return "No results yet."
-    
-    header = f"{'Epoch':<6} | {'Loss':<10} | {'Mean Reward':<12} | {'Std Reward':<12}"
-    divider = "-" * len(header)
-    rows = []
-    for res in results_log:
-        epoch = res.get('epoch', '-')
-        loss = res.get('train_loss', 0.0)
-        mean_r = res.get('mean_reward', 0.0)
-        std_r = res.get('std_reward', 0.0)
-        # Handle NaN for mean_reward if evaluation didn't happen this epoch
-        mean_r_str = f"{mean_r:<12.2f}" if not np.isnan(mean_r) else f"{'N/A':<12}"
-        std_r_str = f"{std_r:<12.2f}" if not np.isnan(std_r) else f"{'N/A':<12}"
-        rows.append(f"{epoch:<6} | {loss:<10.4f} | {mean_r_str} | {std_r_str}")
-    
-    return "\n".join([header, divider] + rows)
-
-def send_run_update(args, results_log, current_ep, current_epoch, last_loss, best_loss, last_reward, best_reward, is_final=False, is_started=False):
-    method = args.gaze_method
-    num_ep = args.num_episodes if args.num_episodes is not None else "All"
-    
-    if args.incremental:
-        training_type = "Incremental"
-    elif args.independent:
-        training_type = "Independent"
-    else:
-        training_type = "Standard"
-        
-    if is_started:
-        status_prefix = "Started"
-    elif is_final:
-        status_prefix = "Final"
-    else:
-        status_prefix = "Periodic"
-    
-    subject = f"Server Run Update: Run {args.env} - BC Training - {method} | Training Type: {training_type} | Using {num_ep} episodes | Using {args.n_epochs} epochs"
-    
-    # Format NaN rewards
-    last_reward_str = f"{last_reward:.2f}" if not np.isnan(last_reward) else "N/A"
-    best_reward_str = f"{best_reward:.2f}" if not np.isnan(best_reward) else "N/A"
-
-    body = f"""
-Status: {status_prefix} Update
-Environment: {args.env}
-Method: {method}
-Episodes: {num_ep}
-Current Episode: {current_ep}
-Current Epoch: {current_epoch}
-Last Train Loss: {last_loss:.4f}
-Best Train Loss: {best_loss:.4f}
-Last Mean Reward: {last_reward_str}
-Best Mean Reward: {best_reward_str}
-
-Progress Table:
-{format_results_table(results_log)}
-"""
-    send_email(subject, body.strip())
-
-def load_pt_dataset(pt_path, num_episodes=None, use_gaze=False, stack=1):
-    print(f"Loading custom dataset from {pt_path} ...")
-    data = torch.load(pt_path, map_location='cpu', weights_only=False)
-
-    obs      = data['observations']            # (N, H, W) uint8
-    actions  = data['actions']                 # (N,)
-    ep_nums  = data.get('episode_number', None)
-    gaze     = data.get('gaze_image', None)    # (N, 84, 84) float32
-    gaze_info = data.get('gaze_information', None)
-
-    if not isinstance(obs, torch.Tensor):      obs = torch.from_numpy(obs)
-    if not isinstance(actions, torch.Tensor):  actions = torch.from_numpy(actions)
-    if ep_nums is not None and not isinstance(ep_nums, torch.Tensor):
-        ep_nums = torch.from_numpy(ep_nums)
-    if gaze is not None and not isinstance(gaze, torch.Tensor):
-        gaze = torch.from_numpy(gaze)
-    if gaze_info is not None and not isinstance(gaze_info, torch.Tensor):
-        gaze_info = torch.from_numpy(gaze_info)
-
-    actions = actions.long()
-    obs     = obs.byte()
-
-    mask = (actions <= 5)
-    obs, actions = obs[mask], actions[mask]
-    if ep_nums is not None: ep_nums = ep_nums[mask]
-    if gaze is not None:    gaze    = gaze[mask]
-    if gaze_info is not None: gaze_info = gaze_info[mask]
-
-    # Handle Frame Stacking across episodes
-    if ep_nums is not None:
-        unique_eps = torch.unique(ep_nums)
-        if num_episodes is not None:
-            unique_eps = unique_eps[:num_episodes]
-        
-        stacked_obs = []
-        stacked_gaze = []
-        stacked_coords = []
-        final_actions = []
-        final_ep_nums = []
-
-        for ep in unique_eps:
-            mask_ep = (ep_nums == ep)
-            o_ep = obs[mask_ep]
-            a_ep = actions[mask_ep]
-            g_ep = gaze[mask_ep] if gaze is not None else torch.zeros(len(o_ep), 84, 84)
-            gc_ep = gaze_info[mask_ep][:, :2].float() if gaze_info is not None else torch.zeros(len(o_ep), 2)
-
-            if len(o_ep) == 0: continue
-
-            # Sliding Window For Stack Parameter
-            pad_o = o_ep[0].unsqueeze(0).repeat(stack - 1, 1, 1)
-            o_padded = torch.cat([pad_o, o_ep], dim=0)
-            stacked_obs.append(torch.stack([o_padded[i:i+stack] for i in range(len(o_ep))]))
-
-            pad_g = g_ep[0].unsqueeze(0).repeat(stack - 1, 1, 1)
-            g_padded = torch.cat([pad_g, g_ep], dim=0)
-            stacked_gaze.append(torch.stack([g_padded[i:i+stack] for i in range(len(g_ep))]))
-            
-            final_actions.append(a_ep)
-            stacked_coords.append(gc_ep)
-            final_ep_nums.append(ep_nums[mask_ep])
-
-    if ep_nums is not None:
-        obs     = torch.cat(stacked_obs, dim=0)
-        gaze    = torch.cat(stacked_gaze, dim=0).float()
-        actions = torch.cat(final_actions, dim=0)
-        gaze_coords = torch.cat(stacked_coords, dim=0)
-        final_ep_nums = torch.cat(final_ep_nums, dim=0)
-    else:
-        obs = obs.unsqueeze(1)
-        gaze = gaze.unsqueeze(1).float() if gaze is not None else torch.zeros(len(obs), 1, 84, 84)
-        gaze_coords = gaze_info[:, :2].float() if gaze_info is not None else torch.zeros(len(obs), 2)
-        final_ep_nums = torch.zeros(len(obs), dtype=torch.int64)
-
-    if not use_gaze:
-        gaze = torch.zeros(len(obs), stack, 84, 84)
-
-    if gaze.max() > 1.0: gaze = gaze / 255.0
-
-    return obs, actions, gaze, gaze_coords, final_ep_nums
 
 def get_args(run_in_notebook=False):
     import argparse
@@ -266,7 +118,7 @@ def train(args, verbose=False):
         try:
             from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
             gaze_predictor = Human_Gaze_Predictor(args.env)
-            gaze_predictor.init_model("models/gaze_predictor/seaquest_gaze_predictor_2.pth")
+            gaze_predictor.init_model("trained_models/gaze_predictor/seaquest_gaze_predictor_2.pth")
             gaze_predictor.model.eval()
             for param in gaze_predictor.model.parameters():
                 param.requires_grad = False
@@ -374,11 +226,12 @@ def train(args, verbose=False):
         save_tag += "_" + args.add_path
 
     now_time = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    save_dir = os.path.join(f"models/{args.env}/{args.gaze_method}", save_tag, now_time)
+    model_name = args.gaze_method.lower() if args.gaze_method != 'None' else 'bc'
+    save_dir = os.path.join(f"trained_models/{args.env}/{model_name}", save_tag, now_time)
     last_save_dir = ""
     
     if not args.eval_only:
-        log_dir = os.path.join(f"logs/imitation_learning_models/{args.env}/{args.gaze_method}", now_time, save_tag)
+        log_dir = os.path.join(f"logs/imitation_learning_trained_models/{args.env}/{model_name}", now_time, save_tag)
         os.makedirs(log_dir, exist_ok=True)
         writer = SummaryWriter(log_dir)
         os.makedirs(save_dir, exist_ok=True)
@@ -458,7 +311,7 @@ def train(args, verbose=False):
         raise NotImplementedError("Oreo requires VQ-VAE. Skipping for this dataset.")
         # quantizer = VectorQuantizer(args.embedding_dim, args.num_embeddings, 0.25).to(device)
         
-        # vqvae_path = f"trained_models/vqvae_models/{args.env}/seed_1_stack_{args.stack}_ep_{args.num_episodes}_train_type_{args.train_type}/model.torch"
+        # vqvae_path = f"trained_models/vqvae_trained_models/{args.env}/seed_1_stack_{args.stack}_ep_{args.num_episodes}_train_type_{args.train_type}/model.torch"
         
         # for p in quantizer.parameters():
         #     p.requires_grad = False
@@ -517,7 +370,12 @@ def train(args, verbose=False):
     last_reward = float('nan')
 
     best_reward = float('nan')
-    send_run_update(args, results_log, current_ep, current_epoch, last_loss, best_loss, last_reward, best_reward, is_final=False, is_started=True)
+    send_run_update(args, results_log, current_epoch, {
+        'last_loss': last_loss,
+        'best_loss': best_loss,
+        'last_reward': last_reward,
+        'best_reward': best_reward
+    }, is_final=False, is_started=True, task_name="BC Training")
     
     pbar_stage = tqdm(unique_eps if (args.incremental or args.independent) else [0], desc="Overall Progress")
     
@@ -845,11 +703,17 @@ def train(args, verbose=False):
             })
 
             # Periodic Email Update
-            if args.send_email:
-                current_time = time.time()
-                if (current_time - last_email_time) / 60 >= args.email_interval:
-                    send_run_update(args, results_log, stage, global_epoch, train_loss/train_count, best_loss, score, best_score)
-                    last_email_time = current_time
+                if args.send_email:
+                    current_time = time.time()
+                    if (current_time - last_email_time) / 60 >= args.email_interval:
+                        send_run_update(args, results_log, global_epoch, {
+                            'current_episode': stage,
+                            'last_loss': train_loss/train_count,
+                            'best_loss': best_loss,
+                            'last_reward': score,
+                            'best_reward': best_score
+                        }, task_name="BC Training")
+                        last_email_time = current_time
             
             writer.flush()
 
@@ -896,7 +760,13 @@ def train(args, verbose=False):
     # Final Email Update
     if args.send_email:
         last_loss = results_log[-1]['train_loss'] if results_log else 0.0
-        send_run_update(args, results_log, stage, global_epoch, last_loss, best_loss, score, best_score, is_final=True)
+        send_run_update(args, results_log, global_epoch, {
+            'current_episode': stage,
+            'last_loss': last_loss,
+            'best_loss': best_loss,
+            'last_reward': score,
+            'best_reward': best_score
+        }, is_final=True, task_name="BC Training")
     
 
 if __name__ == "__main__":

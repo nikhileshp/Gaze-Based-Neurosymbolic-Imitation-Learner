@@ -31,7 +31,7 @@ If you are using OCAtari for your scientific publications, please cite us:
 This repository is structured into multiple folder:
 - [Ocatari](ocatari/) -- the actual wrapper
 - [Producing your own dataset](dataset_generation/) -- includes all scripts needed to generate object-centric datasets for Atari game
-- [Models to use or test with](models/) -- a placeholder folder. put the needed models into to reproduce our results as well as to test out the environments
+- [Models to use or test with](trained_models/) -- a placeholder folder. put the needed models into to reproduce our results as well as to test out the environments
 - [Scripts](scripts/) -- A huge amount of scripts to help and test while implementing, extending or using OCAtari. 
 Most are used to reverse engineer the RAM state, like searching for correlations within the RAM state.
 
@@ -110,7 +110,7 @@ Use the demo files in the scripts/demo folder to test it yourself. You can set t
 You can also run the demo file with an already trained agent or your own developed agent. You can use the -p flag in the command to run the demo file by an agent and let the agent play the game.
 Here is an example: 
 
-`python demo_pong.py -p models/Pong/model_50000000.gz`
+`python demo_pong.py -p trained_models/Pong/model_50000000.gz`
 
 More information can be found in this [ReadMe](scripts/demo/README%20Demos.md)
 

@@ -172,7 +172,7 @@ def main():
     parser.add_argument("--dataset_path", type=str, required=True, help="Path to the .pt dataset file")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for valuation")
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Gaze threshold for valuation scaling")
-    parser.add_argument("--gaze_model_path", type=str, default="models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth", help="Path to gaze predictor weights")
+    parser.add_argument("--gaze_model_path", type=str, default="trained_models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth", help="Path to gaze predictor weights")
     args = parser.parse_args()
     
     if not os.path.exists(CSV_FILE):

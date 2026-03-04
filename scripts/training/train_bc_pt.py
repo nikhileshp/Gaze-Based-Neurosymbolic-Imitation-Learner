@@ -16,7 +16,7 @@ Supported methods (--gaze_method):
   Mask   : Multiplies pixels by gaze mask before encoding
 
 Results are saved to:
-  models/bc/{gaze_method}/{N}_ep/  (checkpoints + results CSV)
+  trained_models/{env}/{model_name}/
 
 Usage:
   python train_bc_pt.py \
@@ -27,27 +27,17 @@ Usage:
 import os
 import sys
 import argparse
-import random
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import cv2
 from collections import deque
-from torch.utils.data import DataLoader, TensorDataset
-from tqdm import tqdm
-
-try:
-    from scripts.utils.email_me import send_email
-except ImportError:
-    send_email = None
-
-# ── GABRIL CNN models (copied to baselines/) ──────────────────────────────────
-from baselines.models.linear_models import Encoder, weight_init
-
-# ── NUDGE environment for evaluation (same as NSFR) ──────────────────────────
+from core.utils.utils import (
+    evaluate, set_seed_everywhere, format_results_table, 
+    send_run_update, load_pt_dataset
+)
 from nudge.env import NudgeBaseEnv
-from nudge.utils import make_deterministic
+from core.utils.linear_models import Encoder, weight_init
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -56,57 +46,6 @@ from nudge.utils import make_deterministic
 
 PRIMITIVE_ACTIONS = {0: 'noop', 1: 'fire', 2: 'up', 3: 'right', 4: 'left', 5: 'down'}
 
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    make_deterministic(seed)
-
-
-def load_pt_dataset(pt_path, num_episodes=None, use_gaze=False):
-    """Load .pt file and return tensors suitable for BC training."""
-    print(f"Loading dataset from {pt_path} ...")
-    data = torch.load(pt_path, map_location='cpu', weights_only=False)
-
-    obs      = data['observations']            # (N, H, W) uint8
-    actions  = data['actions']                 # (N,)
-    ep_nums  = data.get('episode_number', None)
-    gaze     = data.get('gaze_image', None)    # (N, 84, 84) float32
-
-    if not isinstance(obs, torch.Tensor):      obs = torch.from_numpy(obs)
-    if not isinstance(actions, torch.Tensor):  actions = torch.from_numpy(actions)
-    if ep_nums is not None and not isinstance(ep_nums, torch.Tensor):
-        ep_nums = torch.from_numpy(ep_nums)
-    if gaze is not None and not isinstance(gaze, torch.Tensor):
-        gaze = torch.from_numpy(gaze)
-
-    actions = actions.long()
-    obs     = obs.byte()   # keep as uint8 to save RAM; cast to float in loop
-
-    # Filter to supported actions (0-5)
-    mask = (actions <= 5)
-    obs, actions = obs[mask], actions[mask]
-    if ep_nums is not None: ep_nums = ep_nums[mask]
-    if gaze is not None:    gaze    = gaze[mask]
-
-    # Select first num_episodes episodes
-    if num_episodes is not None and ep_nums is not None:
-        unique_eps = torch.unique(ep_nums)[:num_episodes]
-        ep_mask = torch.isin(ep_nums, unique_eps)
-        obs, actions = obs[ep_mask], actions[ep_mask]
-        if gaze is not None: gaze = gaze[ep_mask]
-        print(f"  Using {num_episodes} episodes → {len(actions)} samples")
-    else:
-        print(f"  Total samples: {len(actions)}")
-
-    if not use_gaze or gaze is None:
-        gaze = torch.zeros(len(obs), 1, 84, 84)   # dummy
-    else:
-        gaze = gaze.float().unsqueeze(1)           # (N, 1, H, W)
-
-    return obs, actions, gaze
 
 
 def preprocess_obs(obs_batch, device):
@@ -233,7 +172,7 @@ def get_args():
 
 def main():
     args = get_args()
-    set_seed(args.seed)
+    set_seed_everywhere(args.seed)
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(f"Device: {device} | Gaze method: {args.gaze_method}")
 
@@ -293,10 +232,11 @@ def main():
 
     # ── Output dirs ───────────────────────────────────────────────────────────
     gaze_tag  = args.gaze_method.lower()
+    model_name = gaze_tag if gaze_tag != 'none' else 'bc'
     if args.run_dir:
         base_run_dir = args.run_dir
     else:
-        base_run_dir = f"models/bc/incremental_{gaze_tag}_fewer_objs_2" if args.incremental else f"models/bc/{gaze_tag}_fewer_objs_2"
+        base_run_dir = f"trained_models/{args.env}/{model_name}"
     os.makedirs(base_run_dir, exist_ok=True)
 
     results_log = []
@@ -336,7 +276,7 @@ def main():
             print(f"  Training conventional mode for {epochs_per_episode} epochs")
         print(f"=======================================================")
 
-        obs, actions, gaze = load_pt_dataset(args.dataset, num_episodes=target_ep_load if target_ep_load != "all" else None, use_gaze=use_gaze)
+        obs, actions, gaze, _, _ = load_pt_dataset(args.dataset, num_episodes=target_ep_load if target_ep_load != "all" else None, use_gaze=use_gaze)
 
         # Shuffle + 95/5 train/val split for the current accumulative dataset
         idx = list(range(len(obs)))

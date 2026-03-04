@@ -18,7 +18,7 @@ from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
 def main():
     parser = argparse.ArgumentParser(description="Visualize the converted .pt dataset.")
     parser.add_argument('--dataset', type=str, required=True, help='Path to the .pt dataset file')
-    parser.add_argument('--predicted', type=str, default=None, help='Path to predicted gaze model weights use models/gaze_predictor/seaquest_gaze_predictor.pth')
+    parser.add_argument('--predicted', type=str, default=None, help='Path to predicted gaze model weights use trained_models/gaze_predictor/seaquest_gaze_predictor.pth')
     parser.add_argument('--start', type=int, default=0, help='Start frame index')
     parser.add_argument('--fps', type=int, default=30, help='Playback speed (FPS)')
     parser.add_argument('--video', type=str, default=None, help='Path to save output video (e.g. output.mp4)')

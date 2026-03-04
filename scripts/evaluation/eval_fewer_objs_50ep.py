@@ -6,15 +6,15 @@ import re
 eval_configs = [
     {
         "name": "AGIL (1-obj) 50ep New",
-        "run_dir": "models/bc/agil_fewer_objs_1_50_ep_new/all_ep",
+        "run_dir": "trained_models/bc/agil_fewer_objs_1_50_ep_new/all_ep",
         "gaze_method": "AGIL",
-        "gaze_model_path": "models/gaze_predictor/seaquest_gaze_predictor_limit_1.pth",
+        "gaze_model_path": "trained_models/gaze_predictor/seaquest_gaze_predictor_limit_1.pth",
     },
     {
         "name": "AGIL (2-obj) 50ep New",
-        "run_dir": "models/bc/agil_fewer_objs_2_50_ep_new/all_ep",
+        "run_dir": "trained_models/bc/agil_fewer_objs_2_50_ep_new/all_ep",
         "gaze_method": "AGIL",
-        "gaze_model_path": "models/gaze_predictor/seaquest_visual_gaze_predictor_limit_2.pth",
+        "gaze_model_path": "trained_models/gaze_predictor/seaquest_visual_gaze_predictor_limit_2.pth",
     }
 ]
 

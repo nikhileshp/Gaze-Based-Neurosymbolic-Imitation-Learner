@@ -10,7 +10,7 @@ args = argparse.Namespace(
     env='seaquest', rules='new', dataset='data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt',
     data_path=None, epochs=1, batch_size=32, lr=0.01, seed=42, device='cuda', limit=500, num_workers=0,
     val_split=0.0, gaze_threshold=50.0, use_gaze=False, use_gazemap=False, gaze_model_path='',
-    num_episodes=1, sort_by=None, valuation_path='models/nsfr/seaquest/_no_gaze/valuation.pt',
+    num_episodes=1, sort_by=None, valuation_path='trained_models/nsfr/seaquest/_no_gaze/valuation.pt',
     eval_interval=1, eval_max_steps=200
 )
 

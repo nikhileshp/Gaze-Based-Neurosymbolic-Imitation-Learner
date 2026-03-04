@@ -16,7 +16,7 @@ from baselines.models.linear_models import Encoder, weight_init
 def get_args():
     parser = argparse.ArgumentParser(description="Compare Valuation CNN predictions against ground truth")
     parser.add_argument("--dataset", type=str, default="nsfr/seaquest/initial_atoms.pkl")
-    parser.add_argument("--model_dir", type=str, default="models/valuation_cnn")
+    parser.add_argument("--model_dir", type=str, default="trained_models/valuation_cnn")
     parser.add_argument("--samples", type=int, default=10, help="Number of samples to visualize")
     parser.add_argument("--threshold", type=float, default=0.5, help="Threshold to binarize probability")
     parser.add_argument("--seed", type=int, default=42)

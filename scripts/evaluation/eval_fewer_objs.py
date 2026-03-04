@@ -6,27 +6,27 @@ import re
 eval_configs = [
     {
         "name": "BC (1-obj)",
-        "run_dir": "models/bc/none_fewer_objs_1/all_ep",
+        "run_dir": "trained_models/bc/none_fewer_objs_1/all_ep",
         "gaze_method": "None",
         "gaze_model_path": None,
     },
     {
         "name": "AGIL (1-obj)",
-        "run_dir": "models/bc/agil_fewer_objs_1/all_ep",
+        "run_dir": "trained_models/bc/agil_fewer_objs_1/all_ep",
         "gaze_method": "AGIL",
-        "gaze_model_path": "models/gaze_predictor/seaquest_gaze_predictor_limit_1.pth",
+        "gaze_model_path": "trained_models/gaze_predictor/seaquest_gaze_predictor_limit_1.pth",
     },
     {
         "name": "BC (2-obj)",
-        "run_dir": "models/bc/none_fewer_objs_2/all_ep",
+        "run_dir": "trained_models/bc/none_fewer_objs_2/all_ep",
         "gaze_method": "None",
         "gaze_model_path": None,
     },
     {
         "name": "AGIL (2-obj)",
-        "run_dir": "models/bc/agil_fewer_objs_2/all_ep",
+        "run_dir": "trained_models/bc/agil_fewer_objs_2/all_ep",
         "gaze_method": "AGIL",
-        "gaze_model_path": "models/gaze_predictor/seaquest_visual_gaze_predictor_limit_2.pth",
+        "gaze_model_path": "trained_models/gaze_predictor/seaquest_visual_gaze_predictor_limit_2.pth",
     }
 ]
 

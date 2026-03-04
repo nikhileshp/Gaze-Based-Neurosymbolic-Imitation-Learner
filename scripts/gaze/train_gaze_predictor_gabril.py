@@ -4,11 +4,11 @@ _project_root = _os.path.dirname(_scripts_dir)
 for _p in [_scripts_dir, _project_root]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
-from scripts.baselines.gabril_utils import load_dataset, set_seed_everywhere, plot_gaze_and_obs, MAX_EPISODES
+from core.utils.utils import load_dataset, set_seed_everywhere, plot_gaze_and_obs, MAX_EPISODES
 import random
 import torch
 from models.gaze_predictor import UNet
-from models.linear_models import AutoEncoder, Encoder, Decoder
+from core.utils.linear_models import AutoEncoder, Encoder, Decoder
 import torch.optim as optim
 import torch.nn as nn
 from tqdm import tqdm
@@ -56,7 +56,7 @@ def train(args):
 
     set_seed_everywhere(args.seed)
 
-    save_model_root = f'trained_models/gaze_predictor_models/{args.env}'
+    save_model_root = f'trained_models/gaze_predictor_trained_models/{args.env}'
     tensorboard_root = f'logs/gaze_predictor/{args.env}'
 
     save_dir = f'seed_{args.seed}_stack_{args.stack}_ep_{args.num_episodes}_train_type_{args.train_type}'

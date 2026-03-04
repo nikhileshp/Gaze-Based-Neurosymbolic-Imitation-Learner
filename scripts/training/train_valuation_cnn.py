@@ -13,12 +13,12 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from tqdm import tqdm
 
-from baselines.models.linear_models import Encoder, weight_init
+from core.utils.linear_models import Encoder, weight_init
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train CNN to predict Neurosymbolic Valuation Atoms natively")
     parser.add_argument("--dataset", type=str, default="nsfr/seaquest/initial_atoms.pkl")
-    parser.add_argument("--out_dir", type=str, default="models/valuation_cnn")
+    parser.add_argument("--out_dir", type=str, default="trained_models/valuation_cnn")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-3)

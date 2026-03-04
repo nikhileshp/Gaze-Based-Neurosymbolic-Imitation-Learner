@@ -19,7 +19,7 @@ class ImitationAgent(nn.Module):
             gazes: Tensor of gaze centers (batch_size, 2) or None
             vT: Pre-computed intermediate valuation tensor (batch_size, num_atoms) or None
         """
-        from scripts.data_utils import PRIMITIVE_ACTION_MAP
+        from scripts.preprocess.data_utils import PRIMITIVE_ACTION_MAP
         
         if vT is not None:
             # The model's forward() automatically detects if the input is V_0 (B, num_atoms)

@@ -106,14 +106,14 @@ def main():
     # Evaluate 1-Frame Model
     print("\\n[1] Evaluating 1-Frame Static Model...")
     loader_1, n_atoms = get_validation_loader("nsfr/seaquest/initial_atoms.pkl", in_channels=1)
-    loss_1, acc_1 = evaluate_model("models/valuation_cnn/100_epochs", loader_1, 1, n_atoms, device)
+    loss_1, acc_1 = evaluate_model("trained_models/valuation_cnn/100_epochs", loader_1, 1, n_atoms, device)
     print(f"  -> Validation BCELoss: {loss_1:.4f}")
     print(f"  -> Validation Accuracy: {acc_1*100:.2f}%")
     
     # Evaluate 4-Frame Model
     print("\\n[2] Evaluating 4-Frame Temporal Model...")
     loader_4, _ = get_validation_loader("nsfr/seaquest/initial_atoms_4frame.pkl", in_channels=4)
-    loss_4, acc_4 = evaluate_model("models/valuation_cnn_4/100_epochs", loader_4, 4, n_atoms, device)
+    loss_4, acc_4 = evaluate_model("trained_models/valuation_cnn_4/100_epochs", loader_4, 4, n_atoms, device)
     print(f"  -> Validation BCELoss: {loss_4:.4f}")
     print(f"  -> Validation Accuracy: {acc_4*100:.2f}%")
     

@@ -1,7 +1,7 @@
 import sys, os as _os
 _scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root]:
+for _p in [_scripts_dir, _project_root, _os.path.join(_project_root, "core", "ocatari")]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 import os
@@ -16,12 +16,11 @@ from ocatari.core import OCAtari
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
 from nudge.agents.imitation_agent import ImitationAgent
 from nudge.env import NudgeBaseEnv
-from nudge.utils import make_deterministic
-from tqdm import tqdm
-from collections import Counter
-from evaluate_model import evaluate
-from scripts.data.data_utils import PtDataset, ExpertDataset, PRIMITIVE_ACTION_MAP, CSV_FILE, BASE_IMAGE_DIR
-from scripts.utils.email_me import send_email
+from core.utils.utils import (
+    set_seed_everywhere, format_results_table, 
+    send_run_update, load_pt_dataset
+)
+from scripts.evaluation.evaluate_model import evaluate
 import time
 
 # Dataset classes moved to scripts/data_utils.py
@@ -51,53 +50,6 @@ import time
 #     return rewards
 
 
-def format_results_table(results_log):
-    if not results_log:
-        return "No results yet."
-    
-    header = f"{'Epoch':<6} | {'Loss':<10} | {'Mean Reward':<12} | {'Std Reward':<12}"
-    divider = "-" * len(header)
-    rows = []
-    for res in results_log:
-        epoch = res.get('epoch', '-')
-        loss = res.get('train_loss', 0.0)
-        mean_r = res.get('mean_reward', 0.0)
-        std_r = res.get('std_reward', 0.0)
-        # Handle NaN for mean_reward if evaluation didn't happen this epoch
-        mean_r_str = f"{mean_r:<12.2f}" if not np.isnan(mean_r) else f"{'N/A':<12}"
-        std_r_str = f"{std_r:<12.2f}" if not np.isnan(std_r) else f"{'N/A':<12}"
-        rows.append(f"{epoch:<6} | {loss:<10.4f} | {mean_r_str} | {std_r_str}")
-    
-    return "\n".join([header, divider] + rows)
-
-def send_run_update(args, results_log, current_epoch, last_loss, best_loss, last_reward, best_reward, is_final=False):
-    gaze_status = "With Gaze" if args.use_gaze else "Without Gaze"
-    num_ep = args.num_episodes if args.num_episodes is not None else "All"
-    
-    status_prefix = "Final" if is_final else "Periodic"
-    subject = f"Server Run Update: Run {args.env} - NSFR Training - {gaze_status} | {args.rules} Rules | Using {num_ep} episodes"
-    
-    # Format NaN rewards
-    last_reward_str = f"{last_reward:.2f}" if not np.isnan(last_reward) else "N/A"
-    best_reward_str = f"{best_reward:.2f}" if not np.isnan(best_reward) else "N/A"
-
-    body = f"""
-Status: {status_prefix} Update
-Environment: {args.env}
-Ruleset: {args.rules}
-Gaze: {gaze_status}
-Episodes: {num_ep}
-
-Current Epoch: {current_epoch}
-Last Train Loss: {last_loss:.4f}
-Best Train Loss: {best_loss:.4f}
-Last Mean Reward: {last_reward_str}
-Best Mean Reward: {best_reward_str}
-
-Progress Table:
-{format_results_table(results_log)}
-"""
-    send_email(subject, body.strip())
 
 def main():
     parser = argparse.ArgumentParser()
@@ -116,11 +68,12 @@ def main():
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
     parser.add_argument("--num_workers", type=int, default=4, help="DataLoader workers")
-    parser.add_argument("--val_split", type=float, default=0.00, help="Fraction of data to use as validation (0 = no validation)")
+    parser.add_argument("--val_split", type=float, default=0.05, help="Fraction of data to use as validation (0 = no validation)")
+    parser.add_argument("--lr_patience", type=int, default=3, help="LR reduction patience")
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Threshold for gaze-based valuation scaling")
     parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
     parser.add_argument("--use_gazemap", default=False, action="store_true", help="Use full gaze map for valuation")
-    parser.add_argument("--gaze_model_path", type=str, default="models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth", help="Path to the .pth gaze predictor weights")
+    parser.add_argument("--gaze_model_path", type=str, default="trained_models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth", help="Path to the .pth gaze predictor weights")
     parser.add_argument("--num_episodes", type=int, default=None, help="Number of episodes to load from .pt dataset")
     parser.add_argument("--sort_by", type=str, default=None, choices=['length', 'reward_per_step'], help="How to sort episodes before selection")
     parser.add_argument("--valuation_path", type=str, default=None, help="Path to pre-computed valuation.pt")
@@ -211,9 +164,9 @@ def main():
         # ── Epoch-based training loop ─────────────────────────────────────────
         print("Starting epoch-based training over full dataset...")
         results_log = []
-        os.makedirs(f"models/nsfr/{args.env}", exist_ok=True)
+        os.makedirs(f"trained_models/nsfr/{args.env}", exist_ok=True)
         os.makedirs("out/imitation", exist_ok=True)
-        gaze_str = "gaze" if args.use_gazemap else "no_gaze"
+        
         num_iters = args.num_episodes if args.num_episodes is not None else "full"
         experiment_str = f"{args.env}_{args.rules}_il_lr_{args.lr}_num_ep_{num_iters}"
 
@@ -223,9 +176,9 @@ def main():
         if v_path is None:
             # Auto-detect path
             if args.use_gazemap:
-                v_path = f"models/nsfr/{args.env}/gaze/valuation.pt"
+                v_path = f"trained_models/{args.env}/grail/valuation.pt"
             else:
-                v_path = f"models/nsfr/{args.env}/_no_gaze/valuation.pt"
+                v_path = f"trained_models/{args.env}/nsfr//valuation.pt"
         
         if os.path.exists(v_path):
             print(f"Loading pre-computed valuations from {v_path}...")
@@ -273,6 +226,7 @@ def main():
 
         # Use Adam for better stability with scaled logits
         optimizer = torch.optim.Adam(agent.model.parameters(), lr=args.lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=args.lr_patience)
 
         last_email_time = time.time()
         for epoch in range(args.epochs):
@@ -291,9 +245,11 @@ def main():
             agent.model.train()
 
             total_loss, n_batches = 0.0, 0
+            train_correct, train_samples = 0, 0
             pbar = tqdm(epoch_loader, desc=f"Epoch {epoch+1}")
             for states, actions, gazes, ep_nums, step_idxs in pbar:
                 states, actions, gazes = states.to(device), actions.to(device), gazes.to(device)
+                batch_size = states.size(0)
 
                 # Look up pre-computed valuations if available
                 vT_batch = None
@@ -319,21 +275,38 @@ def main():
                 
                 loss_val = loss.item()
 
+                # Calculate Accuracy (matching train_il_new.py logic)
+                with torch.no_grad():
+                    if vT_batch is not None:
+                        probs = agent.model.get_predictions(vT_batch, prednames=agent.model.prednames)
+                    else:
+                        probs = agent.model(states, gazes if args.use_gaze else None)
+                    
+                    num_actions = max(PRIMITIVE_ACTION_MAP.values()) + 1
+                    action_probs = torch.zeros(batch_size, num_actions, device=device)
+                    for i, pred in enumerate(agent.model.get_prednames()):
+                        prefix = pred.split('_')[0]
+                        if prefix in PRIMITIVE_ACTION_MAP:
+                            act_idx = PRIMITIVE_ACTION_MAP[prefix]
+                            action_probs[:, act_idx] += probs[:, i]
+                    
+                    train_correct += (action_probs.argmax(dim=1) == actions).sum().item()
+                    train_samples += batch_size
+
                 total_loss += loss_val
                 n_batches  += 1
                 pbar.set_postfix({"loss": f"{loss_val:.4f}"})
 
-            # Optional PER Replay for full dataset (sampling from recent successes/failures)
-            # 1. Add some samples to buffer from this epoch
-            # ... (omitted for brevity in full dataset loop to keep it fast, or add if needed)
-
             avg_loss = total_loss / max(n_batches, 1)
-            print(f"Epoch {epoch+1} Train Loss: {avg_loss:.4f}")
+            avg_train_acc = train_correct / max(train_samples, 1)
+            print(f"Epoch {epoch+1} Train Loss: {avg_loss:.4f} | Train Acc: {avg_train_acc:.4f}")
 
             # Optional validation pass
+            avg_val_acc = 0.0
             if val_loader:
                 agent.model.eval()
                 val_loss, val_n = 0.0, 0
+                val_correct, val_samples = 0, 0
                 with torch.no_grad():
                     for states, actions, gazes, ep_nums, step_idxs in val_loader:
                         states, actions, gazes = states.to(device), actions.to(device), gazes.to(device)
@@ -349,8 +322,20 @@ def main():
                         else:
                             probs = agent.model(states, gazes if args.use_gaze else None)
                         
-                        # Ensure model is in same mode as trainer's update for aggregation
-                        # Match the logic in agent.update
+                        # Accuracy calculation
+                        num_actions = max(PRIMITIVE_ACTION_MAP.values()) + 1
+                        action_probs = torch.zeros(B, num_actions, device=device)
+                        for i, pred in enumerate(agent.model.get_prednames()):
+                            prefix = pred.split('_')[0]
+                            if prefix in PRIMITIVE_ACTION_MAP:
+                                act_idx = PRIMITIVE_ACTION_MAP[prefix]
+                                action_probs[:, act_idx] += probs[:, i]
+                        
+                        val_correct += (action_probs.argmax(dim=1) == actions).sum().item()
+                        val_samples += B
+
+                        # Independent Log-Probabilities (No Softmax, matching ImitationAgent.update)
+                        # Re-calculate score aggregation for loss consistency
                         action_rule_probs = {idx: [] for idx in range(6)}
                         for i, pred in enumerate(agent.model.get_prednames()):
                             prefix = pred.split('_')[0]
@@ -368,15 +353,18 @@ def main():
                                 action_scores_list.append(torch.zeros(B, device=device))
                         
                         action_scores = torch.stack(action_scores_list, dim=1) # (B, 6)
-                            
-                        # Independent Log-Probabilities (No Softmax, matching ImitationAgent.update)
                         eps = 1e-10
                         log_action_probs = torch.log(action_scores + eps)
                         
                         loss = nn.NLLLoss()(log_action_probs, actions) # mean loss
                         val_loss += loss.item()
                         val_n += 1
-                print(f"Epoch {epoch+1} Val Loss:   {val_loss / max(val_n, 1):.4f}")
+                
+                avg_val_acc = val_correct / max(val_samples, 1)
+                print(f"Epoch {epoch+1} Val Loss:   {val_loss / max(val_n, 1):.4f} | Val Acc: {avg_val_acc:.4f}")
+            
+            # Step the scheduler
+            scheduler.step(avg_val_acc if val_loader else -avg_loss)
             # Evaluation in environment (every eval_interval epochs)
             if (epoch + 1) % args.eval_interval == 0:
                 rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, valuation_interval=0, log_interval=0,
@@ -391,10 +379,16 @@ def main():
                 'epoch': epoch + 1, 'trajectory': 'all',
                 'num_episodes': num_iters,
                 'mean_reward': mean_reward, 'std_reward': std_reward,
-                'train_loss': avg_loss, 'gaze': args.use_gaze,
+                'train_loss': avg_loss, 
+                'train_acc': avg_train_acc,
+                'val_acc': avg_val_acc,
+                'gaze': args.use_gaze,
             })
-
-            run_dir = f"models/nsfr/{args.env}/{gaze_str}/{num_iters}_ep"
+            
+            if args.gazemap:
+                run_dir = f"trained_models/{args.env}/grail/{num_iters}_ep"
+            else:
+                run_dir = f"trained_models/{args.env}/nsfr/{num_iters}_ep"
             os.makedirs(run_dir, exist_ok=True)
             save_path = f"{run_dir}/epoch_{epoch+1}.pth"
             agent.save(save_path)
@@ -423,110 +417,20 @@ def main():
             if args.send_email:
                 current_time = time.time()
                 if (current_time - last_email_time) / 60 >= args.email_interval:
-                    send_run_update(args, results_log, epoch + 1, avg_loss, best_loss, mean_reward, best_mean_reward)
+                        send_run_update(args, results_log, epoch + 1, {
+                            'last_loss': avg_loss,
+                            'train_acc': avg_train_acc,
+                            'val_acc': avg_val_acc,
+                            'best_loss': best_loss,
+                            'last_reward': mean_reward,
+                            'best_reward': best_mean_reward
+                        }, task_name="NSFR IL Training")
                     last_email_time = current_time
             
 
     else:
-        # ── Legacy per-trajectory loop ────────────────────────────────────────
-        data_path = args.data_path or CSV_FILE
-        if os.path.exists(data_path):
-            full_df = pd.read_csv(data_path)
-            trajectories = sorted(full_df['trajectory_number'].unique()) if 'trajectory_number' in full_df.columns else [1]
-        else:
-            trajectories = [1]
-
-        # Training Loop
-        print("Starting iterative training by trajectory...")
-        results_log = []
-        
-        # Initialize Early Stopping and Best Model tracking
-        patience = 5
-        patience_counter = 0
-        
-        # Use args.epochs as the number of trajectories to process if it's less than total trajectories
-        num_iters = min(args.epochs, len(trajectories))
-        gaze_str = "gaze" if args.use_gazemap else "no_gaze"
-        experiment_str = f"{args.env}_{args.rules}_il_lr_{args.lr}_num_ep_{num_iters}"
-        last_email_time = time.time()
-        for epoch in range(num_iters):
-            traj_num = trajectories[epoch]
-            print(f"\n--- Epoch {epoch+1}/{num_iters} (Trajectory {traj_num}) ---")
-
-            dataset = ExpertDataset(args.env, agent.model.prednames, args.data_path, nudge_env=env, limit=args.limit, use_gazemap=args.use_gazemap, trajectory=traj_num)
-            if len(dataset) == 0:
-                print(f"Skipping empty trajectory {traj_num}")
-                continue
-
-            dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
-            total_loss = 0
-            pbar = tqdm(dataloader, desc=f"Training Traj {traj_num}")
-            agent.model.train()
-            for states, actions, gazes in pbar:
-                states  = states.to(device)
-                actions = actions.to(device)
-                gazes   = gazes.to(device)
-
-                # Perform update using the agent's unified method
-                loss = agent.update(states, actions, gazes if args.use_gaze else None, loss_type=args.loss)
-                
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(agent.model.parameters(), 1.0)
-                optimizer.step()
-                
-                loss_val = loss.item()
-                total_loss += loss_val
-                pbar.set_postfix({"loss": f"{loss_val:.4f}"})
-                
-            avg_loss = total_loss / len(dataloader)
-            print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
-
-            # Evaluation
-            if args.use_gazemap:
-                rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=gaze_predictor)
-            else:
-                rewards = evaluate(agent, env, num_episodes=5, seed=args.seed, gaze_predictor=None)
-            mean_reward, std_reward = np.mean(rewards), np.std(rewards)
-            print(f"Epoch {epoch+1} Evaluation Score: Mean={mean_reward:.2f}, Std={std_reward:.2f}")
-
-            results_log.append({'epoch': epoch+1, 'trajectory': traj_num, 'num_episodes': num_iters, 'mean_reward': mean_reward, 'std_reward': std_reward, 'train_loss': avg_loss, 'gaze': args.use_gaze})
-
-            run_dir = f"models/nsfr/{args.env}/{gaze_str}/{num_iters}_ep"
-            os.makedirs(run_dir, exist_ok=True)
-            save_path = f"{run_dir}/epoch_{epoch+1}.pth"
-            agent.save(save_path)
-            
-            # Use reward AND loss for early stopping 
-            improved = False
-            if mean_reward > best_mean_reward:
-                best_mean_reward = mean_reward
-                improved = True
-                best_model_path = f"{run_dir}/best.pth"
-                agent.save(best_model_path)
-                print(f"--- New Best Model! Reward: {best_mean_reward:.2f}. Saved to {best_model_path} ---")
-            
-            if avg_loss < best_loss: # Use < for minimizing loss
-                best_loss = avg_loss
-                improved = True
-                print(f"--- New Best Loss: {best_loss:.4f} ---")
-            
-            if improved:
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                print(f"--- No improvement in reward/loss. Patience: {patience_counter}/{patience} ---")
-                if patience_counter >= patience:
-                    print(f"--- Early stopping triggered after {epoch+1} epochs ---")
-                    break
-
-            # Periodic Email Update
-            if args.send_email:
-                current_time = time.time()
-                if (current_time - last_email_time) / 60 >= args.email_interval:
-                    send_run_update(args, results_log, epoch + 1, avg_loss, best_loss, mean_reward, best_mean_reward)
-                    last_email_time = current_time
-
+        print("No dataset found. There is no implementation for taking .csv as input")
+        quit()
     # Print and save final learning curve
     print("\n" + "="*50)
     print("LEARNING CURVE")
@@ -534,12 +438,18 @@ def main():
     for res in results_log:
         traj = res.get('trajectory', '-')
         loss = res.get('train_loss', float('nan'))
-        print(f"  Epoch {res['epoch']:3d} | Traj {traj} | Loss {loss:.4f} | Score {res['mean_reward']:.2f} ± {res['std_reward']:.2f}")
+        t_acc = res.get('train_acc', 0.0)
+        v_acc = res.get('val_acc', 0.0)
+        print(f"  Epoch {res['epoch']:3d} | Traj {traj} | Loss {loss:.4f} | T-Acc {t_acc:.4f} | V-Acc {v_acc:.4f} | Score {res['mean_reward']:.2f} ± {res['std_reward']:.2f}")
     print("="*50)
 
     results_df = pd.DataFrame(results_log)
     # Save CSV co-located with the models for this run
-    run_dir = f"models/nsfr/{args.env}/{gaze_str}/{num_iters}_ep"
+    if args.use_gazemap:
+        run_dir = f"trained_models/{args.env}/grail/{num_iters}_ep"
+    else:
+        run_dir = f"trained_models/{args.env}/nsfr/{num_iters}_ep"
+    
     os.makedirs(run_dir, exist_ok=True)
     results_csv_path = os.path.join(run_dir, f"results_lr_{args.lr}.csv")
     results_df.to_csv(results_csv_path, index=False)
@@ -549,13 +459,14 @@ def main():
     if args.send_email:
         # Get final values from the last entry in results_log
         last_res = results_log[-1] if results_log else {}
-        send_run_update(args, results_log, 
-                        last_res.get('epoch', 0), 
-                        last_res.get('train_loss', 0.0), 
-                        best_loss, 
-                        last_res.get('mean_reward', 0.0), 
-                        best_mean_reward,
-                        is_final=True)
+        send_run_update(args, results_log, last_res.get('epoch', 0), {
+            'train_loss': last_res.get('train_loss', 0.0),
+            'train_acc': last_res.get('train_acc', 0.0),
+            'val_acc': last_res.get('val_acc', 0.0),
+            'best_loss': best_loss,
+            'last_reward': last_res.get('mean_reward', 0.0),
+            'best_reward': best_mean_reward
+        }, is_final=True, task_name="NSFR IL Training")
 
 if __name__ == "__main__":
     main()

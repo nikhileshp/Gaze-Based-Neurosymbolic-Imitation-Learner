@@ -8,8 +8,8 @@ export CUDA_VISIBLE_DEVICES=2
 set -e
 LR=0.0001
 DATASET="data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt"
-RUN_DIR="models/bc/bc_mask_incremental_50ep"
-GAZE_MODEL_PATH="models/gaze_predictor/seaquest_gaze_predictor_2.pth"
+RUN_DIR="trained_models/bc/bc_mask_incremental_50ep"
+GAZE_MODEL_PATH="trained_models/gaze_predictor/seaquest_gaze_predictor_2.pth"
 EVAL_EPISODES=50
 EPOCHS_PER_EPISODE=50
 

@@ -4,7 +4,7 @@ export CUDA_VISIBLE_DEVICES=1
 # Trains exactly 1 epoch sequentially per episode for all 28 episodes.
 # Evaluates on 50 episodes immediately after each training step.
 # Results saved to: bc_sample_efficiency_new_runs.csv
-# Checkpoints saved to: models/bc/incremental_{none|agil}/{N}_ep/
+# Checkpoints saved to: trained_models/bc/incremental_{none|agil}/{N}_ep/
 
 set -e
 LR=0.0001
@@ -27,7 +27,7 @@ EVAL_EPISODES=50
 #     --num_eval_episodes "$EVAL_EPISODES" \
 #     --send_email \
 #     --email_interval 30 \
-#     --result_csv "models/Seaquest/bc_results_new.csv"
+#     --result_csv "trained_models/Seaquest/bc_results_new.csv"
 
 
 # ── AGIL ──────────────────────────────────────────────────────────────────────
@@ -46,5 +46,5 @@ conda run -n nesy-il python -u train_bc.py \
     --num_eval_episodes "$EVAL_EPISODES" \
     --send_email \
     --email_interval 30 \
-    --result_csv "models/Seaquest/bc_results.csv"
+    --result_csv "trained_models/Seaquest/bc_results.csv"
 

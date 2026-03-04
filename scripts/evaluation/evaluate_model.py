@@ -20,11 +20,7 @@ try:
 except ImportError:
     send_email = None
 
-def preprocess_frame(frame):
-    """Convert raw 210x160x3 RGB frame to 84x84 grayscale frame."""
-    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
-    return resized / 255.0
+from core.utils.utils import preprocess_frame
 
 def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None,
              log_interval=100, valuation_interval=50, max_steps=2000):

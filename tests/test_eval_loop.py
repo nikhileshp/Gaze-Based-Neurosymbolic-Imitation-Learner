@@ -9,7 +9,7 @@ try:
     print(f"Using device: {device}")
     
     agent = ImitationAgent("seaquest", "new", device)
-    agent.load("models/nsfr/seaquest/no_gaze/1_ep/best.pth")
+    agent.load("trained_models/nsfr/seaquest/no_gaze/1_ep/best.pth")
     agent.model.eval()
     
     env = NudgeBaseEnv.from_name("seaquest", mode='logic')
