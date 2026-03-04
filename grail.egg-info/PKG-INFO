@@ -1,0 +1,27 @@
+Metadata-Version: 2.1
+Name: grail
+Version: 0.1.0
+Summary: Gaze-Based Neurosymbolic Imitation Learner
+Author: Nikhilesh Prabhakar
+Requires-Python: >=3.9
+License-File: LICENSE
+Requires-Dist: torch
+Requires-Dist: numpy<2.0.0
+Requires-Dist: pandas
+Requires-Dist: tqdm
+Requires-Dist: pillow
+Requires-Dist: opencv-python
+Requires-Dist: matplotlib
+Requires-Dist: scipy
+Requires-Dist: seaborn
+Requires-Dist: scikit-learn
+Requires-Dist: gymnasium[accept-rom-license,atari]
+Requires-Dist: lark
+Requires-Dist: PyYAML
+Requires-Dist: wandb
+Requires-Dist: rtpt
+Requires-Dist: termcolor
+Requires-Dist: scikit-image
+Requires-Dist: keyboard
+Requires-Dist: pygame
+Requires-Dist: pyfiglet

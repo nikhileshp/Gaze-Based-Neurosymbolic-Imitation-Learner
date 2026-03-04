@@ -7,11 +7,9 @@ from pathlib import Path
 import os
 import re
 
-from nsfr.agents.logic_agent import NsfrActorCritic
-from nsfr.agents.neural_agent import ActorCritic
-from nsfr.env import NSFRBaseEnv
 
-from nsfr.utils.torch import softor
+
+from nsfr.utils.torch_utils import softor
 
 def save_hyperparams(signature, local_scope, save_path, print_summary: bool = False):
     hyperparams = {}
@@ -72,6 +70,7 @@ def load_model(model_dir,
     env_kwargs.update(env_kwargs_override)
 
     # Setup the environment
+    from nsfr.env import NSFRBaseEnv
     env = NSFRBaseEnv.from_name(environment, mode=algorithm, **env_kwargs)
 
     rules = config["rules"]
@@ -79,8 +78,10 @@ def load_model(model_dir,
     print("Loading...")
     # Initialize the model
     if algorithm == 'ppo':
+        from nsfr.agents.neural_agent import ActorCritic
         model = ActorCritic(env).to(device)
     else:  # algorithm == 'logic'
+        from nsfr.agents.logic_agent import NsfrActorCritic
         model = NsfrActorCritic(env, device=device, rules=rules).to(device)
 
     # Load the model weights

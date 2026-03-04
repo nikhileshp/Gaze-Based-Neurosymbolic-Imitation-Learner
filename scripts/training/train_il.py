@@ -4,8 +4,11 @@ import torch
 import torch.nn as nn
 import numpy as np
 from pathlib import Path
+from tqdm import tqdm
+from core.utils.utils import PtDataset
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
 from nsfr.agents.imitation_agent import ImitationAgent
+from nsfr.utils import make_deterministic
 from nsfr.env import NSFRBaseEnv
 from core.utils.utils import (
     set_seed_everywhere, format_results_table, 
@@ -397,14 +400,14 @@ def main():
             if args.send_email:
                 current_time = time.time()
                 if (current_time - last_email_time) / 60 >= args.email_interval:
-                        send_run_update(args, results_log, epoch + 1, {
-                            'last_loss': avg_loss,
-                            'train_acc': avg_train_acc,
-                            'val_acc': avg_val_acc,
-                            'best_loss': best_loss,
-                            'last_reward': mean_reward,
-                            'best_reward': best_mean_reward
-                        }, task_name="NSFR IL Training")
+                    send_run_update(args, results_log, epoch + 1, {
+                        'last_loss': avg_loss,
+                        'train_acc': avg_train_acc,
+                        'val_acc': avg_val_acc,
+                        'best_loss': best_loss,
+                        'last_reward': mean_reward,
+                        'best_reward': best_mean_reward
+                    }, task_name="NSFR IL Training")
                     last_email_time = current_time
             
 

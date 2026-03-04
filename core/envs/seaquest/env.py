@@ -5,7 +5,8 @@ from nsfr.env import NSFRBaseEnv
 import numpy as np
 import torch as th
 from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_ESSENTIAL_OBJECTS
-from hackatari import HackAtari
+# from hackatari import HackAtari
+from ocatari.core import OCAtari
 
 
 class NSFREnv(NSFRBaseEnv):
@@ -22,7 +23,7 @@ class NSFREnv(NSFRBaseEnv):
 
     def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False):
         super().__init__(mode)
-        self.env = HackAtari(env_name="ALE/Seaquest-v5", mode="vision",
+        self.env = OCAtari(env_name="ALE/Seaquest-v5", mode="vision",
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
         self.n_objects = 49 # Increased from 47 to include Surface
         self.n_features = 7  # visible, x-pos, y-pos, width, height, right-facing, type_id

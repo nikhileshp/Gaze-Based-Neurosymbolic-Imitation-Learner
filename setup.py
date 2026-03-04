@@ -14,18 +14,34 @@ def package_files(directory):
 nsfr_lark_files = package_files('core/nsfr/lark')
 
 setup(
-    name='gbnil',
+    name='grail',
     version='0.1.0',
     description='Gaze-Based Neurosymbolic Imitation Learner',
     author='Nikhilesh Prabhakar',
     python_requires='>=3.9',
 
-    # Discover all packages under scripts/ and core/
-    packages=find_packages(where='.', include=['scripts*', 'core*']),
+    # Robust programmatic package discovery
+    # We want nsfr, ocatari, and envs to be top-level aliases of their core/ counterparts.
+    # We also want core and scripts to be available as top-level packages.
+    packages=(
+        ['nsfr', 'ocatari', 'envs', 'core', 'scripts'] +
+        ['nsfr.' + p for p in find_packages(where='core/nsfr')] +
+        ['ocatari.' + p for p in find_packages(where='core/ocatari')] +
+        ['envs.' + p for p in find_packages(where='core/envs')] +
+        ['core.' + p for p in find_packages(where='core')] +
+        ['scripts.' + p for p in find_packages(where='scripts')]
+    ),
+    package_dir={
+        'nsfr': 'core/nsfr',
+        'ocatari': 'core/ocatari',
+        'envs': 'core/envs',
+        'core': 'core',
+        'scripts': 'scripts',
+    },
 
     # Ship the NSFR lark grammar files as package data
     package_data={
-        'core.nsfr': ['lark/*'],
+        'nsfr': ['lark/*'],
     },
     include_package_data=True,
 

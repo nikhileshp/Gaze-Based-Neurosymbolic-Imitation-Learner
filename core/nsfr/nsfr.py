@@ -2,7 +2,7 @@ import numpy as np
 import torch.nn as nn
 import torch
 from nsfr.utils.logic import get_index_by_predname
-from nsfr.utils.torch import softor
+from nsfr.utils.torch_utils import softor
 
 class NSFReasoner(nn.Module):
     """The Neuro-Symbolic Forward Reasoner.

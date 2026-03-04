@@ -1,0 +1,13 @@
+[console_scripts]
+grail-convert = scripts.preprocess.convert_trajectories_to_pt:main
+grail-eval = scripts.evaluation.evaluate_model:main
+grail-eval-bc = scripts.evaluation.evaluate_bc_model:main
+grail-gen-atoms = scripts.preprocess.generate_valuation_atoms:main
+grail-play = scripts.play.play_il_gui:main
+grail-precompute = scripts.preprocess.precompute_valuations:main
+grail-preprocess = scripts.preprocess.preprocess_dataset:main
+grail-train = scripts.training.train_il:main
+grail-train-bc = scripts.training.train_bc:main
+grail-train-bc-pt = scripts.training.train_bc_pt:main
+grail-train-gaze = scripts.training.train_gaze:main
+grail-visualize = scripts.visualization.visualize_trajectory:main
