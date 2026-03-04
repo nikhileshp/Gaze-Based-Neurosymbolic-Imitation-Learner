@@ -1,3 +1,0 @@
-config_name,run_dir,gaze_method,mean_reward,std_reward
-AGIL (1-obj) 50ep New,models/bc/agil_fewer_objs_1_50_ep_new/all_ep,AGIL,104.0,30.72
-AGIL (2-obj) 50ep New,models/bc/agil_fewer_objs_2_50_ep_new/all_ep,AGIL,126.4,40.68
