@@ -1,18 +1,9 @@
-import sys, os as _os
-_scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root, _os.path.join(_project_root, "core")]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 import os
 import argparse
 import torch
 import torch.nn as nn
 import numpy as np
 from pathlib import Path
-import pandas as pd
-from PIL import Image
-from ocatari.core import OCAtari
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
 from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
@@ -57,8 +48,6 @@ def main():
     parser.add_argument("--rules", type=str, default="new", help="Ruleset name")
     # .pt dataset (new preferred path)
     parser.add_argument("--dataset", type=str, default=None, help="Path to .pt dataset file (from convert_trajectories_to_pt.py)")
-    # Legacy CSV path
-    parser.add_argument("--data_path", type=str, default=None, help="Path to expert data (legacy CSV/pkl)")
     parser.add_argument("--epochs", type=int, default=16, help="Number of training epochs")
     parser.add_argument("--loss", type=str, default="nll", choices=["nll", "bce"],
                         help="Loss function for imitation: 'nll' (NLLLoss on aggregated scores) or 'bce' (BCELoss, action-independent)")
@@ -110,17 +99,8 @@ def main():
     agent_gaze_threshold = args.gaze_threshold if args.use_gaze else None
     agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold)
 
-    # Determine trajectories to iterate over
-    # We look at train.csv to find all trajectory numbers
-    data_path = args.data_path or CSV_FILE
-    if os.path.exists(data_path) and not args.dataset:
-        full_df = pd.read_csv(data_path)
-        if 'trajectory_number' in full_df.columns:
-            trajectories = sorted(full_df['trajectory_number'].unique())
-            print(f"Found {len(trajectories)} trajectories: {trajectories}")
-        else:
-            print("Warning: 'trajectory_number' column not found in CSV. Using single trajectory [1].")
-            trajectories = [1]
+    if not args.dataset:
+        raise ValueError("--dataset is required. The legacy CSV/data_path flow is no longer supported.")
 
 
     # Best model/loss tracking for both loops

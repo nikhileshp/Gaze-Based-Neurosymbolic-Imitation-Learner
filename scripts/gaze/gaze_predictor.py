@@ -1,16 +1,10 @@
-import sys, os as _os
-_scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import os
-from scripts.preprocess.data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
+from core.utils.data_utils import load_gaze_predictor_data, load_fact_gaze_predictor_data
 
 def my_softmax(x):
     """
@@ -252,28 +246,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train or generate human gaze heatmaps.")
     # ----- new .pt-based flow -----
     parser.add_argument('--dataset', type=str, default=None,
-                        help='Path to .pt dataset file (from convert_trajectories_to_pt.py). '
-                             'When provided, this takes priority over --trajectories_dir / --labels_csv.')
+                        help='Path to .pt dataset file (from convert_trajectories_to_pt.py).')
     parser.add_argument('--use_facts', action='store_true',
                         help='If flag is set, Train FactGazeNet instead of HumanGazeNet directly from fact vectors.')
     parser.add_argument('--facts_dataset', type=str, default=None,
                         help='Path to .pkl containing atom_probs (only used with --use_facts).')
     parser.add_argument('--frame_stack', type=int, default=4,
                         help='Number of frames to stack as one input sample (default: 4).')
-    # ----- legacy CSV-based flow -----
-    parser.add_argument('--trajectories_dir', '-t', type=str, default=None,
-                        help='Path to the trajectories directory (legacy CSV flow).')
-    parser.add_argument('--labels_csv', '-l', type=str, default=None,
-                        help='Path to the labels CSV file (legacy CSV flow).')
-    parser.add_argument('--gaze_masks', type=str, default='data/seaquest/gaze_masks.pt',
-                        help='Ground truth gaze masks .pt file (legacy flow only).')
     # ----- shared args -----
     parser.add_argument('--game_name', '-g', type=str, required=True,
                         help='Game name prefix for the saved checkpoint (e.g. seaquest).')
     parser.add_argument('--model_weights', '-m', type=str, default=None,
                         help='Path to a .pth checkpoint to resume training from.')
     parser.add_argument('--train', action='store_true',
-                        help='Train the model (required for legacy CSV flow; always trains in .pt flow).')
+                        help='Train the model from the provided dataset.')
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=1.0)
@@ -288,37 +274,23 @@ if __name__ == "__main__":
     gp.log_csv = args.log_csv
 
     # ── .pt dataset flow ─────────────────────────────────────────────────────
-    if args.use_facts:
-        if not args.facts_dataset:
-            parser.error('--facts_dataset required when using --use_facts')
-        # Here gaze_masks is used as the target labels tensor
-        facts_stacked, gaze_masks, valid_indices = load_fact_gaze_predictor_data(
-            args.facts_dataset, args.gaze_masks, frame_stack=args.frame_stack, device='cpu'
-        )
-        gp.train_model(facts_stacked, gaze_masks, valid_indices,
-                       epochs=args.epochs, batch_size=args.batch_size)
-    elif args.dataset:
-        imgs_nhwc, gaze_masks, valid_indices = load_gaze_predictor_data(
-            args.dataset, frame_stack=args.frame_stack, device='cpu'
-        )
-
-        gp.train_model(imgs_nhwc, gaze_masks, valid_indices,
-                       epochs=args.epochs, batch_size=args.batch_size)
-
-    # ── Legacy CSV flow ───────────────────────────────────────────────────────
-    else:
-        from load_data import Dataset
-        if not args.trajectories_dir or not args.labels_csv:
-            parser.error('--trajectories_dir and --labels_csv are required when --dataset is not set.')
-
-        d = Dataset(args.trajectories_dir, args.labels_csv)
-        d.generate_data_for_gaze_prediction()
-
-        if args.train:
-            print(f"Loading ground truth masks from {args.gaze_masks}...")
-            masks_tensor = torch.load(args.gaze_masks, map_location='cpu')
-            valid_indices = d.original_indices[3:]
-            gp.train_model(d.gaze_imgs, masks_tensor, valid_indices,
-                           epochs=args.epochs, batch_size=args.batch_size)
+    if args.dataset:
+        if args.use_facts:
+            if not args.facts_dataset:
+                parser.error('--facts_dataset required when using --use_facts')
+            from core.utils.data_utils import load_fact_gaze_predictor_data
+            facts_stacked, gaze_masks, valid_indices = load_fact_gaze_predictor_data(
+                args.facts_dataset, args.dataset, frame_stack=args.frame_stack, device='cpu'
+            )
+            gp.train_fact_model(facts_stacked, gaze_masks, valid_indices,
+                                epochs=args.epochs, batch_size=args.batch_size)
         else:
-            gp.predict_and_save(d.gaze_imgs)
+            from core.utils.data_utils import load_gaze_predictor_data
+            imgs_nhwc, gaze_masks, valid_indices = load_gaze_predictor_data(
+                args.dataset, frame_stack=args.frame_stack, device='cpu'
+            )
+            gp.train_model(imgs_nhwc, gaze_masks, valid_indices,
+                           epochs=args.epochs, batch_size=args.batch_size)
+    else:
+        print("No dataset provided. Please use --dataset <path.pt>.")
+        quit()

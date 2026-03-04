@@ -1,9 +1,3 @@
-import sys, os as _os
-_scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 from core.utils.utils import load_dataset, set_seed_everywhere, plot_gaze_and_obs, MAX_EPISODES
 import random
 import torch
@@ -190,6 +184,11 @@ def train(args):
     print('Done!')
 
 
-if __name__ == "__main__":
+
+def main():
     args = get_args()
     train(args)
+
+
+if __name__ == "__main__":
+    main()

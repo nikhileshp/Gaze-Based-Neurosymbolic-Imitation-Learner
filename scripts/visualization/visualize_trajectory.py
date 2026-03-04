@@ -1,9 +1,3 @@
-import sys, os as _os
-_scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 import os
 import glob
 import re
@@ -507,17 +501,22 @@ class TrajectoryVisualizer:
 
         pygame.quit()
 
-if __name__ == "__main__":
+
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", type=str, default="data/seaquest/54_RZ_2461867_Aug-11-09-35-18", help="Path to trajectory folder (images)")
-    parser.add_argument("--agent_path", type=str, default="out/imitation/seaquest_new_il.pth", help="Path to trained agent .pth")
-    parser.add_argument("--env", type=str, default="seaquest", help="Environment name (e.g. seaquest, asterix)")
+    parser.add_argument("--data_path", type=str, required=True, help="Path to trajectory folder (images)")
+    parser.add_argument("--agent_path", type=str, required=True, help="Path to trained agent .pth")
+    parser.add_argument("--env", type=str, default="seaquest", help="Environment name")
     parser.add_argument("--rules", type=str, default="new", help="Ruleset name")
     parser.add_argument("--start_frame", type=int, default=0, help="Start frame index")
-    
+
     args = parser.parse_args()
-    
+
     visualizer = TrajectoryVisualizer(args.data_path, args.agent_path,
                                       env_name=args.env, rules=args.rules,
                                       start_frame=args.start_frame)
     visualizer.run()
+
+
+if __name__ == "__main__":
+    main()

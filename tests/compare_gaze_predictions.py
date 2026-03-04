@@ -1,9 +1,3 @@
-import sys, os as _os
-_scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 import argparse
 import os
 import torch
@@ -49,41 +43,13 @@ def load_from_pt(pt_path, num_frames):
     return stacked, orig_imgs, gt_masks, num_frames
 
 
-def load_from_csv(args):
-    """Load data from trajectories directory + CSV (legacy flow)."""
-    from load_data import Dataset
-    print("Loading Dataset from CSV...")
-    d = Dataset(args.trajectories_dir, args.labels_csv)
-    d.generate_data_for_gaze_prediction()
-
-    print(f"Loading ground truth masks from {args.gaze_masks}...")
-    masks_tensor = torch.load(args.gaze_masks, map_location='cpu')
-
-    valid_indices = d.original_indices[3:]
-    num_frames = min(args.num_frames, len(d.gaze_imgs))
-
-    # gaze_imgs is already (N, 84, 84, 4) NHWC
-    stacked = d.gaze_imgs[:num_frames]
-
-    # Original grayscale frames (single channel for display)
-    orig_imgs = d.train_imgs[3:3+num_frames]  # (N, 84, 84) float [0,1]
-
-    # Ground truth masks indexed by valid_indices
-    gt_masks_list = []
-    for i in range(num_frames):
-        gt_masks_list.append(masks_tensor[valid_indices[i]])
-    gt_masks = torch.stack(gt_masks_list)  # (N, 84, 84)
-
-    return stacked, orig_imgs, gt_masks, num_frames
-
-
 def make_video(args):
     # ── Load data ─────────────────────────────────────────────────────────────
     if args.dataset and os.path.exists(args.dataset):
         stacked, orig_imgs, gt_masks, num_frames = load_from_pt(args.dataset, args.num_frames)
     else:
-        stacked, orig_imgs, gt_masks, num_frames = load_from_csv(args)
-
+        print("Legacy CSV flow is not supported. Please use .pt dataset flow.")
+        quit()
     # ── Load gaze predictor ───────────────────────────────────────────────────
     print(f"Loading Gaze Predictor Model from {args.model_weights}...")
     gp = Human_Gaze_Predictor(args.game_name)
@@ -160,11 +126,7 @@ if __name__ == "__main__":
     # .pt dataset flow (takes priority if provided)
     parser.add_argument('--dataset', type=str, default=None,
                         help='Path to .pt dataset (contains observations and optionally gaze_image)')
-    # Legacy CSV flow
-    parser.add_argument('--trajectories_dir', default="data/seaquest/trajectories")
-    parser.add_argument('--labels_csv', default="data/seaquest/train_data_16_traj.csv")
-    parser.add_argument('--gaze_masks', default="data/seaquest/gaze_masks.pt",
-                        help='Ground truth gaze masks .pt (only used in CSV flow)')
+
     # Shared
     parser.add_argument('--game_name', default="seaquest")
     parser.add_argument('--model_weights', default="seaquest_gaze_predictor_2.pth")

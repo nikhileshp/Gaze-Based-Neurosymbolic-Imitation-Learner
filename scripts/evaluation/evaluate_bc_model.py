@@ -255,3 +255,29 @@ if __name__ == "__main__":
     
     print(f"\\nFinal Evaluation over {args.episodes} episodes:")
     print(f"Mean Reward: {np.mean(eval_rewards):.2f} ± {np.std(eval_rewards):.2f}")
+
+
+def main():
+    import argparse
+    from nsfr.env import NSFRBaseEnv
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run_dir", type=str, required=True)
+    parser.add_argument("--gaze_method", type=str, default="None", choices=["None", "AGIL", "Mask"])
+    parser.add_argument("--episodes", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--device", type=str, default="cuda" if __import__('torch').cuda.is_available() else "cpu")
+    parser.add_argument("--use_gazemap", action="store_true")
+    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
+    parser.add_argument("--ckpt_prefix", type=str, default="best_")
+    parser.add_argument("--stack", type=int, default=1)
+    args = parser.parse_args()
+
+    test_env = NSFRBaseEnv.from_name("seaquest", mode='logic')
+    eval_rewards = evaluate_bc_model(test_env, args.run_dir, gaze_method=args.gaze_method,
+                                     num_episodes=args.episodes, seed=args.seed, device=args.device,
+                                     use_gazemap=args.use_gazemap, gaze_model_path=args.gaze_model_path,
+                                     ckpt_prefix=args.ckpt_prefix, stack=args.stack)
+    import numpy as np
+    print(f"\nFinal Evaluation over {args.episodes} episodes:")
+    print(f"Mean Reward: {np.mean(eval_rewards):.2f} ± {np.std(eval_rewards):.2f}")

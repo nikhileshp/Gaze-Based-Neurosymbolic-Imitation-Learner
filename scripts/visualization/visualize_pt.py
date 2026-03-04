@@ -1,9 +1,3 @@
-import sys, os as _os
-_scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 import argparse
 import numpy as np
 import cv2

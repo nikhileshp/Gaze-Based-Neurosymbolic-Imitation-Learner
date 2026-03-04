@@ -9,10 +9,9 @@ nudge/nudge.egg-info
 scripts/email_me.py
 
 # Large Data & Models
-trained_models/
 logs/
 *.log
 *.pkl
-*.pth
+
 events.out.tfevents*
 eval_every_10_epochs.csv

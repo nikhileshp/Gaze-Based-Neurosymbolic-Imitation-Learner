@@ -1,9 +1,3 @@
-import sys, os as _os
-_scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_project_root = _os.path.dirname(_scripts_dir)
-for _p in [_scripts_dir, _project_root]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 from nsfr.renderer import Renderer, yellow, print_program, PREDICATE_PROBS_COL_WIDTH, CELL_BACKGROUND_DEFAULT, CELL_BACKGROUND_HIGHLIGHT, CELL_BACKGROUND_SELECTED
 from argparse import ArgumentParser
 from pathlib import Path
@@ -400,44 +394,39 @@ class ILRenderer(Renderer):
             text_rect.topleft = (self.env_render_shape[0] + 10, neural_pred_start_y)
             self.window.blit(text, text_rect)
 
-if __name__ == "__main__":
+
+def main():
     args = parser.parse_args()
-    
-    # Initialize Environment
-    # We need to pass render_mode="human" or similar? 
-    # Renderer uses env.env.render() which usually returns an array.
-    # NSFRBaseEnv defaults: render_mode="rgb_array"
+
     env = NSFRBaseEnv.from_name(args.game, mode="logic", render_oc_overlay=True)
-    
-    # Initialize Gaze Predictor if requested
+
     gaze_predictor = None
     if args.use_gazemap:
         if Human_Gaze_Predictor is None:
-            print("Error: Could not import Human_Gaze_Predictor. Ensure gaze_predictor.py exists in scripts/.")
+            print("Error: Could not import Human_Gaze_Predictor.")
             import sys; sys.exit(1)
-            
         print(f"Initializing Gaze Predictor from {args.gaze_model_path}...")
         gaze_predictor = Human_Gaze_Predictor(args.game)
         gaze_predictor.init_model(args.gaze_model_path)
         gaze_predictor.model.eval()
 
-    # Initialize Agent
     agent = ImitationAgent(args.game, args.rules, args.device)
-    
-    # Load Model
+
     print(f"Loading model from {args.agent_path}...")
     # agent.load(args.agent_path)
     print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
-    agent.model.eval() # Set to eval mode
-    
-    # Wrap Agent
+    agent.model.eval()
+
     model = AgentWrapper(agent, env, debug=args.debug, gaze_predictor=gaze_predictor)
-    
-    # Run Renderer
+
     renderer = ILRenderer(model=model,
                           env=env,
                           fps=15,
                           deterministic=True,
                           render_predicate_probs=not(args.no_predicates))
-    
+
     renderer.run()
+
+
+if __name__ == "__main__":
+    main()
