@@ -417,9 +417,15 @@ class InferModule(nn.Module):
         self.train_ = train
         if not train:
             self.W = self.init_identity_weights(device)
+        # else:
+        #     self.W = nn.Parameter(torch.Tensor(
+        #         np.random.normal(size=(m, I.size(0)))).to(device))
         else:
-            self.W = nn.Parameter(torch.Tensor(
-                np.random.normal(size=(m, I.size(0)))).to(device))
+            W_init = torch.zeros(m, I.size(0))
+            for i in range(min(m, I.size(0))):
+                W_init[i, i] = 3.0   # softmax(3.0) ≈ 0.95 — strong but not saturated
+            self.W = nn.Parameter(W_init.to(device))
+
 
         # nn.ModuleList so DataParallel can see and replicate these submodules
         # to each GPU. Plain Python lists are invisible to DataParallel and
