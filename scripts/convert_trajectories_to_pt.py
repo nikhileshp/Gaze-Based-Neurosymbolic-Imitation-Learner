@@ -36,16 +36,55 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
  
 from ocatari.vision.extract_vision_info import detect_objects_vision
 from ocatari.core import OCAtari
-from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_ESSENTIAL_OBJECTS
- 
-IMG_W = 160   # Seaquest game width (pixels)
-IMG_H = 210   # Seaquest game height (pixels)
-N_FEATURES = 7
-# Compute N_OBJECTS dynamically from MAX_ESSENTIAL_OBJECTS (mirrors the EnemyMissile
-# override applied in extract_logic_state so the count is always in sync with seaquest.py)
-_obj_counts = dict(MAX_ESSENTIAL_OBJECTS)
-_obj_counts['EnemyMissile'] = 8   # same override used in extract_logic_state
-N_OBJECTS = sum(_obj_counts.values())
+from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_NB_SEAQUEST
+from ocatari.ram.asterix import MAX_NB_OBJECTS as MAX_NB_ASTERIX
+
+IMG_W = 160   # Game width (pixels)
+IMG_H = 210   # Game height (pixels)
+
+# Environment-specific configurations
+ENV_CONFIGS = {
+    "Seaquest": {
+        "TYPE_MAP": {
+            'Shark': 0, 'Submarine': 0, 'SurfaceSubmarine': 0,
+            'Diver': 1, 'CollectedDiver': 6,
+            'OxygenBar': 2,
+            'Player': 3,
+            'EnemyMissile': 5, 'PlayerMissile': 5,
+            'Surface': 7
+        },
+        "CANONICAL_SIZES": {
+            'Shark': (8, 7),
+            'Diver': (8, 10),
+        },
+        "MAX_ESSENTIAL_OBJECTS": MAX_NB_SEAQUEST.copy(),
+        "N_FEATURES": 7,
+        "N_OBJECTS": None, # Computed at runtime
+        "TRAJ_DIR": 'data/seaquest/trajectories'
+    },
+    "Asterix": {
+        "TYPE_MAP": {
+            'Player': 0,
+            'Enemy': 1,
+            'Consumable': 2,
+            'Reward': 3
+        },
+        "CANONICAL_SIZES": {
+            'Player': (8, 11),
+            'Enemy': (7, 11),
+            'Consumable': (7, 11),
+            'Reward': (8, 11)
+        },
+        "MAX_ESSENTIAL_OBJECTS": MAX_NB_ASTERIX.copy(),
+        "N_FEATURES": 7,
+        "N_OBJECTS": 25, # Match nudge env.py
+        "TRAJ_DIR": 'data/asterix/trajectories'
+    }
+}
+# Override for Seaquest
+ENV_CONFIGS["Seaquest"]["MAX_ESSENTIAL_OBJECTS"]["EnemyMissile"] = 8
+ENV_CONFIGS["Seaquest"]["N_OBJECTS"] = sum(ENV_CONFIGS["Seaquest"]["MAX_ESSENTIAL_OBJECTS"].values())
+
 GAZE_IMG_SIZE = 84
 GAZE_SIGMA = 10.0          # Base Gaussian sigma (pixels in 84×84 space)
 GAZE_K_WINDOW = 10         # Symmetric temporal window (±k frames)
@@ -106,64 +145,76 @@ class ObjectTracker:
  
 # ─── Logic State Extraction ─────────────────────────────────────────────────
  
-TYPE_MAP = {
-    'Shark': 0, 'Submarine': 0, 'SurfaceSubmarine': 0,
-    'Diver': 1, 'CollectedDiver': 6,
-    'OxygenBar': 2,
-    'Player': 3,
-    'EnemyMissile': 5, 'PlayerMissile': 5,
-    'Surface': 7
-}
- 
-# Known canonical sprite sizes for objects that flicker in detected size.
-# The center is reliable; width/height are not. These are used to stabilize the logic state.
-CANONICAL_SIZES = {
-    'Shark':  (8, 7),   # width=8, height=7
-    'Diver':  (8, 10),   # width=8, height=10
-}
- 
-def extract_logic_state(tracked_objects):
+def extract_logic_state(tracked_objects, env_name="Seaquest"):
     """
     Convert list of TrackedObjects → (N_OBJECTS, N_FEATURES) int32 tensor.
-    Features: [present, x_or_width, y, width, height, orientation, type_id]
+    Format varies by environment to match nudge env.py / valuation.py
     """
-    state = np.zeros((N_OBJECTS, N_FEATURES), dtype=np.int32)
-    relevant = MAX_ESSENTIAL_OBJECTS.copy()
-    if 'EnemyMissile' in relevant:
-        relevant['EnemyMissile'] = 8
- 
-    offsets, obj_count = {}, {}
-    off = 0
-    for cat, max_c in relevant.items():
-        offsets[cat] = off
-        obj_count[cat] = 0
-        off += max_c
- 
-    for tr in tracked_objects:
-        obj = tr.obj
-        cat = obj.category
-        if cat not in relevant or obj_count.get(cat, 0) >= relevant[cat]:
-            continue
-        idx = offsets[cat] + obj_count[cat]
-        type_id = TYPE_MAP.get(cat, 0)
- 
-        if cat == 'OxygenBar':
-            state[idx] = [1, int(obj.x), int(obj.y), int(obj.w), int(obj.h), 0, type_id]
-        else:
-            orient = 0
-            if hasattr(obj, 'orientation') and obj.orientation is not None:
-                orient = obj.orientation.value if hasattr(obj.orientation, 'value') else int(obj.orientation)
-            # Use canonical size if available to prevent flickering
-            if cat in CANONICAL_SIZES:
-                w, h = CANONICAL_SIZES[cat]
+    cfg = ENV_CONFIGS[env_name]
+    n_objects = cfg["N_OBJECTS"]
+    n_features = cfg["N_FEATURES"]
+    state = np.zeros((n_objects, n_features), dtype=np.int32)
+    type_map = cfg["TYPE_MAP"]
+    canonical_sizes = cfg["CANONICAL_SIZES"]
+
+    if env_name == "Seaquest":
+        relevant = cfg["MAX_ESSENTIAL_OBJECTS"]
+        offsets, obj_count = {}, {}
+        off = 0
+        for cat, max_c in relevant.items():
+            offsets[cat] = off
+            obj_count[cat] = 0
+            off += max_c
+
+        for tr in tracked_objects:
+            obj = tr.obj
+            cat = obj.category
+            if cat not in relevant or obj_count.get(cat, 0) >= relevant[cat]:
+                continue
+            idx = offsets[cat] + obj_count[cat]
+            type_id = type_map.get(cat, 0)
+
+            if cat == 'OxygenBar':
+                state[idx] = [1, int(obj.x), int(obj.y), int(obj.w), int(obj.h), 0, type_id]
             else:
-                w = getattr(obj, "w", 0)
-                h = getattr(obj, "h", 0)
+                orient = 0
+                if hasattr(obj, 'orientation') and obj.orientation is not None:
+                    orient = obj.orientation.value if hasattr(obj.orientation, 'value') else int(obj.orientation)
+                # Use canonical size if available to prevent flickering
+                if cat in canonical_sizes:
+                    w, h = canonical_sizes[cat]
+                else:
+                    w = getattr(obj, "w", 0)
+                    h = getattr(obj, "h", 0)
+                cx, cy = getattr(obj, 'center', (int(obj.x + obj.w / 2), int(obj.y + obj.h / 2)))
+                state[idx] = [1, cx, cy, int(w), int(h), orient, type_id]
+
+            obj_count[cat] += 1
+    
+    elif env_name == "Asterix":
+        # Format: [Player, Enemy, Consumable, Reward, Unused, X, Y]
+        obj_idx = 1 # Start from 1 as in nudge env.py
+        for tr in tracked_objects:
+            if obj_idx >= n_objects:
+                break
+            obj = tr.obj
+            cat = obj.category
+            if cat == "NoObject": continue
+
+            if cat == "Player":
+                state[obj_idx][0] = 1
+            elif cat == "Enemy":
+                state[obj_idx][1] = 1
+            elif "Bonus" in cat or cat == "Consumable":
+                state[obj_idx][2] = 1
+            elif "Reward" in cat:
+                state[obj_idx][3] = 1
+            
             cx, cy = getattr(obj, 'center', (int(obj.x + obj.w / 2), int(obj.y + obj.h / 2)))
-            state[idx] = [1, cx, cy, int(w), int(h), orient, type_id]
- 
-        obj_count[cat] += 1
- 
+            state[obj_idx][5] = cx
+            state[obj_idx][6] = cy
+            obj_idx += 1
+
     return state
  
  
@@ -300,7 +351,7 @@ def parse_gaze_file(filepath):
 # ─── Episode Processing ──────────────────────────────────────────────────────
  
 def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
-                    gaze_sigma=GAZE_SIGMA, gaze_k_window=GAZE_K_WINDOW, objects_per_class=None):
+                    gaze_sigma=GAZE_SIGMA, gaze_k_window=GAZE_K_WINDOW, objects_per_class=None, env_name="Seaquest"):
     """
     Process one trajectory folder, which may contain multiple episodes
     (a new episode begins after any frame with negative reward).
@@ -347,15 +398,21 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         try:
             # hud=False is much faster. We detect death via player teleportation instead.
-            detect_objects_vision(oc.objects, rgb, "Seaquest", hud=False)
+            detect_objects_vision(oc.objects, rgb, env_name, hud=False)
             valid = [o for o in oc.objects if o.category != 'NoObject' and o.w > 0]
 
             # 2a. Optional object count filtering
             if objects_per_class is not None:
-                enemy_count = sum(1 for o in valid if o.category in ['Shark', 'Submarine', 'SurfaceSubmarine'])
-                diver_count = sum(1 for o in valid if o.category == 'Diver')
-                if enemy_count > objects_per_class or diver_count > objects_per_class:
-                    continue  # skip this frame
+                if env_name == "Seaquest":
+                    enemy_count = sum(1 for o in valid if o.category in ['Shark', 'Submarine', 'SurfaceSubmarine'])
+                    diver_count = sum(1 for o in valid if o.category == 'Diver')
+                    if enemy_count > objects_per_class or diver_count > objects_per_class:
+                        continue  # skip this frame
+                elif env_name == "Asterix":
+                    enemy_count = sum(1 for o in valid if o.category == 'Enemy')
+                    consumable_count = sum(1 for o in valid if 'Bonus' in o.category or o.category == 'Consumable')
+                    if enemy_count > objects_per_class or consumable_count > objects_per_class:
+                        continue  # skip this frame
 
             active = tracker.update(valid)
         except Exception:
@@ -363,7 +420,7 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
 
         # 1. Observations (84x84 grayscale) - added after filter
         obs_l.append(preprocess_frame(bgr))
-        logic_l.append(extract_logic_state(active))
+        logic_l.append(extract_logic_state(active, env_name=env_name))
  
         # 3. Gaze info — store raw points; heatmap built after loop
         if fid in gaze_map:
@@ -396,7 +453,8 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
  
 def main():
     parser = argparse.ArgumentParser(description="Convert trajectory PNG+txt folders to .pt dataset.")
-    parser.add_argument('--traj_dir', type=str, default='data/seaquest/trajectories')
+    parser.add_argument('--traj_dir', type=str, default=None)
+    parser.add_argument('--env', type=str, default='Seaquest')
     parser.add_argument('--output', type=str, default=None,
                         help='Output .pt path. Auto-generated from params if omitted.')
     parser.add_argument('--max_folders', type=int, default=None)
@@ -408,7 +466,13 @@ def main():
                         help='Max allowed objects of type enemy/diver per frame.')
     args = parser.parse_args()
  
-    traj_dir = os.path.abspath(args.traj_dir)
+    env_name = args.env # e.g. "Seaquest" or "Asterix"
+    if env_name not in ENV_CONFIGS:
+        print(f"Error: Unsupported environment {env_name}"); sys.exit(1)
+    
+    cfg = ENV_CONFIGS[env_name]
+    traj_dir = args.traj_dir or cfg["TRAJ_DIR"]
+    traj_dir = os.path.abspath(traj_dir)
     if not os.path.isdir(traj_dir):
         print(f"Error: {traj_dir} not found."); sys.exit(1)
  
@@ -427,7 +491,7 @@ def main():
     # when we know the actual episode count
  
     print(f"Found {len(ep_folders)} folder(s). Initializing Ocatari...\n")
-    oc = OCAtari("Seaquest", mode="vision", render_mode="rgb_array")
+    oc = OCAtari(env_name, mode="vision", render_mode="rgb_array")
  
     all_obs, all_gaze, all_gaze_img, all_logic = [], [], [], []
     all_epnum, all_act, all_rew, all_term, all_trunc = [], [], [], [], []
@@ -439,7 +503,8 @@ def main():
         out = process_episode(ep_folder, traj_dir, global_step, folder_idx, oc,
                               gaze_sigma=args.gaze_sigma,
                               gaze_k_window=args.sliding_window,
-                              objects_per_class=args.objects_per_class)
+                              objects_per_class=args.objects_per_class,
+                              env_name=env_name)
         obs, gaze, gaze_img, logic, epnum, act, rew, term, trunc = out
         if not obs:
             continue
@@ -461,8 +526,9 @@ def main():
     # Auto-generate output filename now that we know actual episode count
     if args.output is None:
         sigma_str = f"{args.gaze_sigma:.1f}".replace('.', 'p')
-        obj_suffix = f"_obj_limit_{args.objects_per_class}" if args.objects_per_class else f"_obj_{N_OBJECTS}"
-        fname = (f"full_data_{num_episodes}_episodes"
+        n_objects = cfg["N_OBJECTS"]
+        obj_suffix = f"_obj_limit_{args.objects_per_class}" if args.objects_per_class else f"_obj_{n_objects}"
+        fname = (f"{env_name}_full_data_{num_episodes}_episodes"
                  f"_{sigma_str}_sigma"
                  f"_win_{args.sliding_window}"
                  f"{obj_suffix}.pt")
@@ -491,7 +557,8 @@ def main():
     print(f"\nSaving → {out_path}")
     torch.save(dataset, out_path, _use_new_zipfile_serialization=True, pickle_protocol=4)
     print("Done!")
-    print(f"  episodes={num_episodes}, gaze_sigma={args.gaze_sigma}, sliding_window={args.sliding_window}, n_objects={N_OBJECTS}")
+    n_objects = cfg["N_OBJECTS"]
+    print(f"  episodes={num_episodes}, gaze_sigma={args.gaze_sigma}, sliding_window={args.sliding_window}, n_objects={n_objects}")
  
  
 if __name__ == '__main__':

@@ -193,7 +193,7 @@ class ValuationModule(nn.Module, ABC):
         if result is not None:
             # The constant is an object constant
             obj_id = result[1]
-            obj_index = int(obj_id)  # No need to subtract 1 since we now support obj0
+            obj_index = int(obj_id) - 1  # 1-based names (obj1, obj2...) -> 0-based tensor index
             self.term_cache[const.name] = obj_index
             return zs[:, obj_index]
 

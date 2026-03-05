@@ -144,15 +144,16 @@ def at_bottom(z_1):
 def at_left(z_1):
     player_mask = is_player(z_1)
     x = z_1[:, -2]
-    result = player_mask & (x < 40)
+    result = player_mask & (x < 60)
     return bool_to_probs(result)
-
-
+ 
+ 
 def at_right(z_1):
     player_mask = is_player(z_1)
     x = z_1[:, -2]
-    result = player_mask & (x > 120)
+    result = player_mask & (x > 100)
     return bool_to_probs(result)
+
 
 def visible(z_1, gaze=None):
     result = z_1[:, 0:4].sum(dim=1) > 0.5
@@ -246,11 +247,11 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     return gaze_prob * vis_mask
 
 def _close_by(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
-    player_x = player[..., 1]
-    player_y = player[..., 2]
-    obj_x = obj[..., 1]
-    obj_y = obj[..., 2]
+    # Feature layout: [player_flag, enemy_flag, bonus_flag, reward_flag, ?, x, y]
+    # Indices -2 and -1 are x and y (equivalently, indices 5 and 6 for n_features=7)
+    player_x = player[..., -2]
+    player_y = player[..., -1]
+    obj_x = obj[..., -2]
+    obj_y = obj[..., -1]
     result = th.clip((128 - abs(player_x - obj_x) - abs(player_y - obj_y)) / 171, 0, 1)
-    #use a threshold of 15 px and return 1 if the distance is less than 15 px else 0
-    # bool_val = abs(player_x - obj_x) + abs(player_y - obj_y) < 50
     return result
