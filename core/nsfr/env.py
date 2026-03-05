@@ -2,7 +2,8 @@ from typing import Dict
 from abc import ABC
 from nsfr.utils.common import load_module
 import torch
-
+import os
+from contextlib import redirect_stdout, redirect_stderr
 
 class NSFRBaseEnv(ABC):
     name: str
@@ -55,7 +56,9 @@ class NSFRBaseEnv(ABC):
     @staticmethod
     def from_name(name: str, **kwargs):
         env_path = f"core/envs/{name}/env.py"
-        env_module = load_module(env_path)
+        with open(os.devnull, 'w') as fnull:
+            with redirect_stdout(fnull), redirect_stderr(fnull):
+                env_module = load_module(env_path)
         return env_module.NSFREnv(**kwargs)
 
     def close(self):

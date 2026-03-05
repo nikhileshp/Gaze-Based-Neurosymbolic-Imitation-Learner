@@ -5,16 +5,44 @@ from tqdm import tqdm
 from core.utils.utils import PtDataset
 from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
+import argparse
+
+
 
 DATASET_PATH = 'data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt'
-OUTPUT_PATH = 'trained_models/seaquest/nsfr/valuation.pt'
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def main():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env", type=str, default="seaquest", help="Environment name")
+    parser.add_argument("--rules", type=str, default="claude_extensive", help="Ruleset name")
+    parser.add_argument("--dataset", type=str, default=None, help="Path to .pt dataset file (from convert_trajectories_to_pt.py)")
+    parser.add_argument("--output_path", type=str, default=None, help="Path to save pre-computed valuations")
+    parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
+    parser.add_argument("--use_gaze", type=bool, default=False, help="Use gaze (GRAIL) or not (NSFR)")
+    parser.add_argument("--num_episodes", type=int, default=None, help="Number of episodes to load from .pt dataset")
+    args = parser.parse_args()
+    
+    if args.use_gaze:
+        raise NotImplementedError("GRAIL (gaze based valuations) not implemented yet")
+        # OUTPUT_PATH = f"trained_models/{args.env}/grail/valuations_{args.rules}.pt"
+    else:
+        OUTPUT_PATH = f"trained_models/{args.env}/nsfr/valuations_{args.rules}.pt"
+
+    if args.dataset is None:
+        args.dataset = DATASET_PATH
+    if args.output_path is None:
+        args.output_path = OUTPUT_PATH
+    if args.device is None:
+        args.device = DEVICE
+    if args.num_episodes is None:
+        args.num_episodes = 28
+
     print(f"Loading dataset from {DATASET_PATH} ...")
     dataset = PtDataset(DATASET_PATH, num_episodes=28)
     # Make sure dataset returns ep_nums and step_idxs
-    dataloader = DataLoader(dataset, batch_size=256, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=128, shuffle=False)
 
     print("Initializing logic model...")
     env = NSFRBaseEnv.from_name('seaquest', mode='logic')

@@ -336,9 +336,9 @@ class ImitationAgent(nn.Module):
         """
         with torch.no_grad():
             if vT is not None:
-                probs = self.model(vT.to(self.device))
+                probs = self.unwrapped_model(vT.to(self.device))
             else:
-                probs = self.model(states, gazes)
+                probs = self.unwrapped_model(states, gazes)
 
             action_scores = self._aggregate_to_action_scores(probs)
 

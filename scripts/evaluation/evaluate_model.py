@@ -8,7 +8,9 @@ from collections import deque
 from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
 from nsfr.utils import make_deterministic
-
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+os.environ['ALE_PY_QUIET'] = '1'
 try:
     from scripts.gaze_predictor import Human_Gaze_Predictor
 except ImportError:
@@ -51,7 +53,14 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name, max_steps
 
         while not done and steps < max_steps:
             logic_state, _ = state
-            state_q.put((worker_id, _MSG_STATE, logic_state))
+            
+            # 🚨 Convert to numpy array safely to avoid torch mp queue fd sharing errors
+            if hasattr(logic_state, 'cpu'):
+                logic_state_np = logic_state.cpu().numpy()
+            else:
+                logic_state_np = logic_state
+                
+            state_q.put((worker_id, _MSG_STATE, logic_state_np))
             msg = action_q.get()
             if msg[0] == _MSG_STOP:
                 return
@@ -66,7 +75,7 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name, max_steps
 
 
 def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
-                      num_workers=None, max_steps=10000, gaze_predictor=None):
+                      num_workers=None, max_steps=10000, gaze_predictor=None, train_run=False):
     """
     Parallel evaluation using multiprocessing worker pool.
 
@@ -113,14 +122,16 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
     worker_seeds = [[] for _ in range(num_workers)]
     for ep in range(num_episodes):
         worker_seeds[ep % num_workers].append(seed + ep)
-
     # One shared inbound queue (workers -> main)
     # One outbound queue per worker (main -> worker)
     state_q   = mp.Queue()
     action_qs = [mp.Queue() for _ in range(num_workers)]
 
-    # Fork worker processes (fork is faster than spawn on Linux)
-    ctx = mp.get_context('fork')
+    if train_run:
+        ctx = mp.get_context('spawn')
+    else:
+        ctx = mp.get_context('fork')
+    # Fork worker processes (spawn is safer via forkserver/spawn with CUDA active)
     workers = []
     for wid in range(num_workers):
         p = ctx.Process(
@@ -159,7 +170,8 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
                 elif msg_type == _MSG_DONE:
                     episode_rewards.append(payload)
                     n = len(episode_rewards)
-                    print(f"  Episode {n}/{num_episodes}: Reward = {payload:.1f}")
+                    # Print seed number along with episode number
+                    print(f"  Episode {n}/{num_episodes} (Seed: {worker_seeds[wid]}): Reward = {payload:.1f}")
 
                 elif msg_type == _MSG_STOP:
                     workers_done += 1
