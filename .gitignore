@@ -7,7 +7,6 @@ nudge/nudge.egg-info
 *__pycache*
 /results/bs_data/
 scripts/email_me.py
-
 # Large Data & Models
 logs/
 *.log

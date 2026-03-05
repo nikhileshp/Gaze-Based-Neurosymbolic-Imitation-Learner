@@ -158,7 +158,7 @@ def main():
                         help="Loss function: 'nll' or 'bce'")
     parser.add_argument("--num_eval_episodes", type=int, default=50, help="Number of evaluation episodes")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
@@ -173,7 +173,7 @@ def main():
     parser.add_argument("--num_episodes", type=int, default=None, help="Episodes to load from .pt dataset")
     parser.add_argument("--sort_by", type=str, default=None, choices=['length', 'reward_per_step'])
     parser.add_argument("--valuation_path", type=str, default=None, help="Path to pre-computed valuation.pt")
-    parser.add_argument("--eval_interval", type=int, default=5, help="Evaluate every N epochs")
+    parser.add_argument("--eval_interval", type=int, default=1, help="Evaluate every N epochs")
     parser.add_argument("--eval_max_steps", type=int, default=10000, help="Max steps per eval episode")
     parser.add_argument("--send_email", action="store_true", help="Enable periodic email updates")
     parser.add_argument("--email_interval", type=int, default=30, help="Minutes between email updates")
@@ -279,15 +279,15 @@ def main():
     sample_weights = class_weights[train_actions]
 
     action_names = ['noop', 'fire', 'up', 'right', 'left', 'down']
-    print("  Weighted sampler class weights:")
-    for i, (cnt, w) in enumerate(zip(class_counts.tolist(), class_weights.tolist())):
-        print(f"    {i} ({action_names[i]:5s}): {int(cnt):6d} samples  weight={w:.5f}")
+    # print("  Weighted sampler class weights:")
+    # for i, (cnt, w) in enumerate(zip(class_counts.tolist(), class_weights.tolist())):
+    #     print(f"    {i} ({action_names[i]:5s}): {int(cnt):6d} samples  weight={w:.5f}")
 
-    weighted_sampler = WeightedRandomSampler(
-        weights=sample_weights,
-        num_samples=len(sample_weights),
-        replacement=True,
-    )
+    # weighted_sampler = WeightedRandomSampler(
+    #     weights=sample_weights,
+    #     num_samples=len(sample_weights),
+    #     replacement=True,
+    # )
 
     # ── Load pre-computed valuations ─────────────────────────────────────────
     valuations = None
@@ -393,7 +393,7 @@ def main():
         epoch_loader = DataLoader(
             train_dataset,
             batch_size=args.batch_size,
-            sampler=weighted_sampler,   # replaces shuffle=True
+            shuffle=False,
             num_workers=args.num_workers,
             pin_memory=(device.type == 'cuda'),
             persistent_workers=(args.num_workers > 0),
@@ -462,7 +462,6 @@ def main():
 
         if val_loader:
             agent.model.eval()
-            
             val_loss, val_n          = 0.0, 0
             val_correct, val_samples = 0, 0
             eps_nll                  = 1e-10

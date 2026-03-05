@@ -403,7 +403,7 @@ class InferModule(nn.Module):
     A class of differentiable forward-chaining inference.
     """
 
-    def __init__(self, I, m, infer_step, gamma=0.01, device=None, train=False):
+    def __init__(self, I, m, infer_step, gamma=0.01, device=None, train=False, clauses=None):
         super(InferModule, self).__init__()
         self.register_buffer('I', I)  # buffer: DataParallel moves to each GPU
         self.infer_step = infer_step
@@ -415,27 +415,94 @@ class InferModule(nn.Module):
         self.gamma = gamma
         self.device = device
         self.train_ = train
+        if clauses is None:
+            print("There is an error. No clauses provided")
+            quit()
         if not train:
             self.W = self.init_identity_weights(device)
         # else:
         #     self.W = nn.Parameter(torch.Tensor(
         #         np.random.normal(size=(m, I.size(0)))).to(device))
+        # else:
+        #     W_init = torch.zeros(m, I.size(0))
+        #     for i in range(min(m, I.size(0))):
+        #         W_init[i, i] = 3.0   # softmax(3.0) ≈ 0.95 — strong but not saturated
+        #     self.W = nn.Parameter(W_init.to(device))
+
         else:
-            W_init = torch.zeros(m, I.size(0))
-            for i in range(min(m, I.size(0))):
-                W_init[i, i] = 3.0   # softmax(3.0) ≈ 0.95 — strong but not saturated
-            self.W = nn.Parameter(W_init.to(device))
-
-
+            self.W = nn.Parameter(
+                self._init_block_diagonal(m, I.size(0), clauses, device)
+            )
+            
         # nn.ModuleList so DataParallel can see and replicate these submodules
         # to each GPU. Plain Python lists are invisible to DataParallel and
         # would cause device mismatch errors in multi-GPU training.
         self.cs = nn.ModuleList([ClauseFunction(i, I, gamma=gamma)
                                  for i in range(self.I.size(0))])
 
+
+
     def init_identity_weights(self, device):
         ones = torch.ones((self.C,), dtype=torch.float32) * 100
         return torch.diag(ones).to(device)
+    
+    def _init_block_diagonal(self, m, C, clauses, device, target_diagonal=0.70):
+        # Block-diagonal W initialisation.
+        #
+        # Spreads target_diagonal weight evenly across all clauses sharing the
+        # same head predicate. Rules with n clauses each get weight target/n
+        # so their combined softor contribution starts at the target level.
+        #
+        # Falls back to simple diagonal if clauses=None (e.g. from checkpoint).
+        import math
+
+        W_init = torch.zeros(m, C)
+
+        if clauses is None or len(clauses) != C:
+            print("  [W init] clauses not provided — using simple diagonal init")
+            diag_val = math.log(target_diagonal * (C - 1) / (1 - target_diagonal))
+            for i in range(min(m, C)):
+                W_init[i, i] = diag_val
+            return W_init.to(device)
+
+        # Extract head predicate name for each clause
+        try:
+            clause_heads = [c.head.pred.name for c in clauses]
+        except AttributeError:
+            clause_heads = [str(c).split('(')[0] for c in clauses]
+
+        # Ordered unique rule names (first-occurrence order)
+        seen = {}
+        rule_names = []
+        for h in clause_heads:
+            if h not in seen:
+                seen[h] = True
+                rule_names.append(h)
+
+        print(f"  [W init] Block-diagonal: {m} rules, {C} clauses, "
+              f"target={target_diagonal*100:.0f}% per rule")
+
+        for rule_idx in range(m):
+            if rule_idx >= len(rule_names):
+                break
+            rule_name = rule_names[rule_idx]
+            clause_indices = [i for i, h in enumerate(clause_heads) if h == rule_name]
+            n   = len(clause_indices)
+            off = C - n
+
+            if off == 0:
+                diag_val = 0.0
+            else:
+                ratio = target_diagonal * off / ((1 - target_diagonal) * n)
+                diag_val = math.log(max(ratio, 1e-8))
+
+            for ci in clause_indices:
+                W_init[rule_idx, ci] = diag_val
+
+            print(f"    Rule {rule_idx:2d} ({rule_name:25s}): "
+                  f"clauses={clause_indices}  diag_val={diag_val:.2f}")
+
+        return W_init.to(device)
 
     def forward(self, x):
         R = x
