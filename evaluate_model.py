@@ -153,7 +153,7 @@ def main():
 
     # Initialize Environment
     print(f"Initializing Environment: {args.env}...")
-    env = NudgeBaseEnv.from_name(args.env, mode='logic')
+    env = NudgeBaseEnv.from_name(args.env, mode='logic',)
 
     # Initialize Agent
     print(f"Initializing Agent for rules: {args.rules}...")
