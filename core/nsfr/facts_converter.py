@@ -90,22 +90,14 @@ class FactsConverter(nn.Module):
                 sums       = sums * (flat_Z[:, 0] > 0.5).float()
                 gaze_sums  = sums.reshape(B_size, N_OBJ)          # (B, N_OBJ)
 
-                if getattr(self.vm, "unnormalized", False):
-                    # Unnormalized: scale relative to the most attended object
-                    # so the peak always reaches 1.0, preserving relative
-                    # attention strength. Raw SAT sums are small (heatmap mass
-                    # is spread across the frame) so without this all valuations
-                    # would be suppressed and the agent gets no reward.
-                    # A 0.05 floor prevents complete zeroing from gaze noise.
+               if getattr(self.vm, "unnormalized", False):
+    # Keep raw SAT sums — no normalization
+                    gaze_sums = torch.max(gaze_sums, is_present * 0.05)
+                else:
+                    # Normalized: max-normalize so peak attended object = 1.0
                     gaze_max  = gaze_sums.max(dim=1, keepdim=True).values.clamp(min=1e-8)
                     gaze_sums = gaze_sums / gaze_max
                     gaze_sums = torch.max(gaze_sums, is_present * 0.05)
-                else:
-                    # Normalized: raw SAT sums are already on [0,1] since the
-                    # heatmap sums to 1. Apply a 0.05 floor to present objects
-                    # so noisy frames don't zero out relevant objects entirely.
-                    floor     = 0.05
-                    gaze_sums = torch.max(gaze_sums, is_present * floor)
 
                 # Append per-object gaze score as last feature: Z becomes (B, N_OBJ, F+1)
                 Z = torch.cat([Z, gaze_sums.unsqueeze(-1)], dim=-1)
