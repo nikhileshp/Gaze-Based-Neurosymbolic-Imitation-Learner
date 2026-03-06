@@ -17,7 +17,7 @@ parser.add_argument("-a", "--agent_path", type=str, default="out/imitation/seaqu
 parser.add_argument("-np", "--no_predicates", action="store_true")
 parser.add_argument("-d", "--device", type=str, default="cpu")
 parser.add_argument("-db", "--debug",type=bool, default=False)
-parser.add_argument("--use_gazemap", action="store_true", help="Visualize gaze predictions dynamically")
+parser.add_argument("--use_gaze", action="store_true", help="Visualize gaze predictions dynamically")
 parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
 
 try:
@@ -401,7 +401,7 @@ def main():
     env = NSFRBaseEnv.from_name(args.game, mode="logic", render_oc_overlay=True)
 
     gaze_predictor = None
-    if args.use_gazemap:
+    if args.use_gaze:
         if Human_Gaze_Predictor is None:
             print("Error: Could not import Human_Gaze_Predictor.")
             import sys; sys.exit(1)

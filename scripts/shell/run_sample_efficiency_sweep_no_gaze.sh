@@ -27,7 +27,7 @@ fi
 run_eval() {
     local N=$1
     local GAZE_TAG=$2       # "gaze" or "no_gaze"
-    local GAZE_FLAGS=$3     # "--use_gazemap" or ""
+    local GAZE_FLAGS=$3     # "--use_gaze" or ""
     local RUN_DIR="trained_models/nsfr/seaquest/${GAZE_TAG}/${N}_ep"
     local BEST_MODEL="${RUN_DIR}/best.pth"
     local LOG_FILE="${RUN_DIR}/run_experiment_${GAZE_TAG}_${N}_ep.log"

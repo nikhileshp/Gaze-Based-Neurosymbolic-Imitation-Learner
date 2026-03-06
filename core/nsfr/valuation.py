@@ -40,7 +40,7 @@ class ValuationModule(nn.Module, ABC):
     val_fns: Dict[str, ValuationFunction]  # predicate names to corresponding valuation fn
 
     def __init__(self, val_fn_path: str, lang: Language, device: Union[torch.device, str],
-                 pretrained: bool = True, gaze_threshold=None):
+                 pretrained: bool = True, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1):
         super().__init__()
 
         # Parse all valuation functions
@@ -52,6 +52,9 @@ class ValuationModule(nn.Module, ABC):
         self.device = device
         self.pretrained = pretrained
         self.gaze_threshold = gaze_threshold
+        self.unnormalized = unnormalized
+        self.visible_preds_only = visible_preds_only
+        self.alpha = alpha
         
         # Cache for term grounding (term.name -> index or onehot)
         self.term_cache = {}
@@ -128,13 +131,13 @@ class ValuationModule(nn.Module, ABC):
                 flat_all_objects = ao_expanded.reshape(batch_size * num_atoms, all_objects.size(1), all_objects.size(2))
 
         # 4. Call Valuation Function
-        val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze, flat_all_objects)
+        val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze, flat_all_objects, unnormalized=self.unnormalized, batch_size=batch_size, num_atoms=num_atoms)
         
         # 5. Reshape back
         val = val_flat.view(batch_size, num_atoms)
         return val
 
-    def _call_val_fn(self, pred_name, args, gaze, all_objects=None):
+    def _call_val_fn(self, pred_name, args, gaze, all_objects=None, unnormalized=False, batch_size=None, num_atoms=None):
         try:
             val_fn = self.val_fns[pred_name]
         except KeyError as e:
@@ -144,8 +147,9 @@ class ValuationModule(nn.Module, ABC):
         accepts_gaze = 'gaze' in sig.parameters
         accepts_all_objects = 'all_objects' in sig.parameters
 
-        # Try to pass gaze map if available and function accepts it
-        if gaze is not None and len(gaze.shape) > 2:
+        # Try to pass gaze map if available and function accepts it, 
+        # but skip this if using unnormalized override to prevent double gaze penalty.
+        if gaze is not None and not unnormalized and len(gaze.shape) > 2:
             try:
                 if accepts_gaze and accepts_all_objects and all_objects is not None:
                     val = val_fn(*args, gaze=gaze, all_objects=all_objects)
@@ -159,6 +163,31 @@ class ValuationModule(nn.Module, ABC):
                 val = val_fn(*args)
         else:
             val = val_fn(*args)
+
+        # Gaze Override: multiply base valuation by the max gaze value of objects involved.
+        # Gaze probability is expected to be appended as the last element of the object vector.
+        if len(args) > 0:
+            # Check if we should apply gaze scaling based on the visible_preds_only flag
+            should_scale = True
+            if self.visible_preds_only:
+                should_scale = pred_name.startswith("visible_")
+
+            if should_scale:
+                found_object = False
+                # Flattened max_gaze per evaluation instance (batch*atoms)
+                max_gaze_flat = torch.zeros(val.shape[0], device=self.device)
+                
+                # Find the max gaze among all object arguments provided to this predicate
+                for arg in args:
+                    # The last dimension is the appended gaze from FactsConverter.
+                    if arg.dim() == 2 and arg.size(1) >= 6:
+                        obj_gaze = arg[:, -1]
+                        max_gaze_flat = torch.max(max_gaze_flat, obj_gaze)
+                        found_object = True
+
+                if found_object:
+                    # Apply multiplication
+                    val = val * max_gaze_flat
 
         # Gaze-based valuation scaling (Old Logic for points)
         if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and gaze.shape[1] == 2 and pred_name.startswith("visible_"):

@@ -92,7 +92,7 @@ def load_bc_model(run_dir, gaze_method="None", device="cuda", ckpt_prefix="best_
     return encoder, pre_actor, actor, encoder_agil
 
 
-def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42, device="cuda", use_gazemap=False, gaze_model_path="seaquest_gaze_predictor_2.pth", ckpt_prefix="best_", stack=4):
+def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42, device="cuda", use_gaze=False, gaze_model_path="seaquest_gaze_predictor_2.pth", ckpt_prefix="best_", stack=4):
     """
     Loads a pretrained BC/AGIL baseline and runs it in the provided environment.
     
@@ -103,7 +103,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
         num_episodes (int): Number of episodes to evaluate.
         seed (int): Random seed for environments.
         device (str): Compute device ("cuda" or "cpu").
-        use_gazemap (bool): If True, instantiate live Human_Gaze_Predictor to supply heatmaps.
+        use_gaze (bool): If True, instantiate live Human_Gaze_Predictor to supply heatmaps.
         gaze_model_path (str): Path to the gaze predictor model.
         ckpt_prefix (str): Prefix of the checkpoints (default: "best_").
         stack (int): Number of frames for the encoder stack.
@@ -115,7 +115,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
     encoder, pre_actor, actor, encoder_agil = load_bc_model(run_dir, gaze_method, device, ckpt_prefix=ckpt_prefix, stack=stack)
     
     gaze_predictor = None
-    if (use_gazemap or gaze_method in ['ViSaRL', 'Mask', 'AGIL']) and gaze_method != "None":
+    if (use_gaze or gaze_method in ['ViSaRL', 'Mask', 'AGIL']) and gaze_method != "None":
         try:
             from scripts.gaze_predictor import Human_Gaze_Predictor
             print(f"Initializing Test-Time Gaze Predictor from {gaze_model_path}...")
@@ -238,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
+    parser.add_argument("--use_gaze", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
     parser.add_argument("--ckpt_prefix", type=str, default="best_")
     parser.add_argument("--stack", type=int, default=1, help="Number of frames stacked for the agent's input")
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     print(f"Loading {args.gaze_method} BC Model from: {args.run_dir} with prefix {args.ckpt_prefix}")
     eval_rewards = evaluate_bc_model(test_env, args.run_dir, gaze_method=args.gaze_method, 
                                      num_episodes=args.episodes, seed=args.seed, device=args.device,
-                                     use_gazemap=args.use_gazemap, gaze_model_path=args.gaze_model_path,
+                                     use_gaze=args.use_gaze, gaze_model_path=args.gaze_model_path,
                                      ckpt_prefix=args.ckpt_prefix, stack=args.stack)
     
     print(f"\\nFinal Evaluation over {args.episodes} episodes:")
@@ -267,7 +267,7 @@ def main():
     parser.add_argument("--episodes", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="cuda" if __import__('torch').cuda.is_available() else "cpu")
-    parser.add_argument("--use_gazemap", action="store_true")
+    parser.add_argument("--use_gaze", action="store_true")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
     parser.add_argument("--ckpt_prefix", type=str, default="best_")
     parser.add_argument("--stack", type=int, default=1)
@@ -276,7 +276,7 @@ def main():
     test_env = NSFRBaseEnv.from_name("seaquest", mode='logic')
     eval_rewards = evaluate_bc_model(test_env, args.run_dir, gaze_method=args.gaze_method,
                                      num_episodes=args.episodes, seed=args.seed, device=args.device,
-                                     use_gazemap=args.use_gazemap, gaze_model_path=args.gaze_model_path,
+                                     use_gaze=args.use_gaze, gaze_model_path=args.gaze_model_path,
                                      ckpt_prefix=args.ckpt_prefix, stack=args.stack)
     import numpy as np
     print(f"\nFinal Evaluation over {args.episodes} episodes:")

@@ -31,7 +31,7 @@ conda run -n nesy-il python -u train_bc_pt.py \
     --eval_episodes "$EVAL_EPISODES" \
     --patience 0 \
     --lr_patience 0 \
-    --use_gazemap \
+    --use_gaze \
     --run_dir "$RUN_DIR" 
 
 

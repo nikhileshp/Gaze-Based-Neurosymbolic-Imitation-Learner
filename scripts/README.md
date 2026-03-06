@@ -53,7 +53,7 @@ python scripts/training/train_il.py \
   --env seaquest --rules new \
   --dataset data/seaquest/<file>.pt \
   --epochs 50 --lr 0.001 \
-  --use_gaze --use_gazemap \
+  --use_gaze \
   --num_episodes 28
 ```
 

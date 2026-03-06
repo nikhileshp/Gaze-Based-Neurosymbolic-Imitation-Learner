@@ -60,7 +60,7 @@ def run_diagnostics(agent, epoch_loader, device, args, warmup_batches=30, measur
             batch = next(loader_iter)
         states, actions, gazes, ep_nums, step_idxs = batch
         states, actions, gazes = states.to(device), actions.to(device), gazes.to(device)
-        loss, _, _ = agent.update(states, actions, gazes if args.use_gaze else None)
+        loss, _, _ = agent.update(states, actions, gazes if use_gaze else None)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -89,7 +89,7 @@ def run_diagnostics(agent, epoch_loader, device, args, warmup_batches=30, measur
             total_samples += states.size(0)
 
             t0 = time.perf_counter()
-            loss, _, _ = agent.update(states, actions, gazes if args.use_gaze else None)
+            loss, _, _ = agent.update(states, actions, gazes if use_gaze else None)
             if device.type == "cuda":
                 torch.cuda.synchronize()
             t_forwards.append(time.perf_counter() - t0)
@@ -166,10 +166,9 @@ def main():
     parser.add_argument("--val_split", type=float, default=0.05, help="Validation fraction")
     parser.add_argument("--lr_patience", type=int, default=3, help="LR reduction patience")
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Gaze valuation threshold")
-    parser.add_argument("--use_gaze", action="store_true", help="Use gaze data for training")
-    parser.add_argument("--use_gazemap", default=False, action="store_true", help="Use full gaze map")
+    parser.add_argument("--use_gaze", action="store_true", help="Use full gaze map")
     parser.add_argument("--gaze_model_path", type=str,
-                        default="trained_models/gaze_predictor/seaquest_gaze_predictor_sigma_10.pth")
+                        default="gaze_models/seaquest/seaquest_gaze_predictor_2.pth")
     parser.add_argument("--num_episodes", type=int, default=None, help="Episodes to load from .pt dataset")
     parser.add_argument("--sort_by", type=str, default=None, choices=['length', 'reward_per_step'])
     parser.add_argument("--valuation_path", type=str, default=None, help="Path to pre-computed valuation.pt")
@@ -178,13 +177,26 @@ def main():
     parser.add_argument("--send_email", action="store_true", help="Enable periodic email updates")
     parser.add_argument("--email_interval", type=int, default=30, help="Minutes between email updates")
     parser.add_argument("--diagnose", action="store_true", help="Profile bottlenecks and exit")
+    parser.add_argument("--unnormalized", action="store_true", help="Use unnormalized gaze probabilities and multiply valuations")
+    parser.add_argument("--visible_preds_only", action="store_true", help="Only scale visible_{object} predicates with gaze")
+    parser.add_argument("--alpha", type=float, default=None, help="Laplacian smoothing parameter for gaze normalization")
     args = parser.parse_args()
+    
+    unnormalized = args.unnormalized
+    visible_preds_only = args.visible_preds_only
+    alpha = args.alpha
+    use_gaze = args.use_gaze
+    # Auto-enable use_gaze if unnormalized is set
+    if unnormalized or visible_preds_only:
+        use_gaze = True
+
+    if use_gaze and alpha is None and not unnormalized:
+        alpha = 0.1
 
     now_time = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     # ── Gaze setup ───────────────────────────────────────────────────────────
     gaze_predictor = None
-    if args.use_gazemap:
-        args.use_gaze = True
+    if use_gaze:
         from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
         print(f"Initializing Gaze Predictor from {args.gaze_model_path}...")
         gaze_predictor = Human_Gaze_Predictor(args.env)
@@ -207,8 +219,8 @@ def main():
     env = NSFRBaseEnv.from_name(args.env, mode='logic')
 
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
-    agent_gaze_threshold = args.gaze_threshold if args.use_gaze else None
-    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold)
+    agent_gaze_threshold = args.gaze_threshold if use_gaze else None
+    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha)
 
         # Multi-GPU: DataParallel splits the batch evenly across all visible GPUs.
     # Each GPU processes batch/N samples independently — no cross-GPU communication
@@ -226,7 +238,7 @@ def main():
     # ── Dataset ──────────────────────────────────────────────────────────────
     full_dataset = PtDataset(
         args.dataset,
-        use_gaze=args.use_gazemap,
+        use_gaze=use_gaze,
         num_episodes=args.num_episodes,
         sort_by=args.sort_by,
     )
@@ -294,7 +306,7 @@ def main():
     v_path = args.valuation_path
     if v_path is None:
         v_path = (f"trained_models/{args.env}/grail/valuations_{args.rules}.pt"
-                  if args.use_gazemap
+                  if use_gaze
                   else f"trained_models/{args.env}/nsfr/valuations_{args.rules}.pt")
 
     if os.path.exists(v_path):
@@ -336,11 +348,101 @@ def main():
 
     # ── Paths ─────────────────────────────────────────────────────────────────
     num_iters = len(unique_eps) if (args.num_episodes is None) and (args.limit is not None) else "full"
-    run_dir   = (f"trained_models/{args.env}/grail/{num_iters}_ep_{args.rules}_rules_{args.lr}_lr_{args.loss}/{now_time}"
-                 if args.use_gazemap
-                 else f"trained_models/{args.env}/nsfr/{num_iters}_ep_{args.rules}_rules_{args.lr}_lr_{args.loss}/{now_time}")
+    vis_tag = "_vis_only" if visible_preds_only else ""
+    alpha_tag = f"_a{alpha}" if alpha is not None else ""
+    if use_gaze and unnormalized:
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_unnormalized{vis_tag}/{num_iters}_ep/{now_time}")
+    elif use_gaze:
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_normalized{vis_tag}{alpha_tag}/{num_iters}_ep/{now_time}")
+    else:
+        run_dir   = (f"trained_models/{args.env}/nsfr/{args.rules}_rules_{args.lr}_lr_{args.loss}/{num_iters}_ep/{now_time}")
     os.makedirs(run_dir, exist_ok=True)
     os.makedirs("out/imitation", exist_ok=True)
+
+    if valuations is None and (use_gaze or unnormalized):
+        print("\n" + "="*50)
+        print("Precomputing valuations using predicted CNN gaze...")
+        print("="*50)
+        
+        # We need gaze_predictor
+        if gaze_predictor is None:
+            from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
+            print(f"Initializing Gaze Predictor for precomputation from {args.gaze_model_path}...")
+            gaze_predictor = Human_Gaze_Predictor(args.env)
+            gaze_predictor.init_model(args.gaze_model_path)
+            gaze_predictor.model.eval()
+        gaze_predictor.model.to(device)
+            
+        import gc
+        data = torch.load(args.dataset, map_location='cpu', weights_only=False)
+        obs_t = data['observations']
+        if not isinstance(obs_t, torch.Tensor): obs_t = torch.tensor(obs_t)
+        logic_t = data['logic_state']
+        if not isinstance(logic_t, torch.Tensor): logic_t = torch.tensor(logic_t)
+        actions_t = data['actions']
+        if not isinstance(actions_t, torch.Tensor): actions_t = torch.tensor(actions_t)
+        ep_nums_t = data.get('episode_number', torch.zeros(len(obs_t), dtype=torch.long))
+        if not isinstance(ep_nums_t, torch.Tensor): ep_nums_t = torch.tensor(ep_nums_t)
+        
+        valuations = {}
+        with torch.no_grad():
+            unique_eps_pre = torch.unique(ep_nums_t).numpy()
+            for ep in tqdm(unique_eps_pre, desc="Precomputing valuations"):
+                mask = (ep_nums_t == ep)
+                ep_obs = obs_t[mask]
+                ep_logic = logic_t[mask]
+                ep_actions = actions_t[mask]
+                
+                T_ep = len(ep_obs)
+                if T_ep == 0: continue
+                
+                # 1. Stacking
+                pad = ep_obs[0:1].expand(3, -1, -1)
+                padded_obs = torch.cat([pad, ep_obs], dim=0) # (T_ep + 3, H, W)
+                
+                stacks = []
+                for i in range(T_ep):
+                    stacks.append(padded_obs[i:i+4])
+                stacks = torch.stack(stacks, dim=0) # (T_ep, 4, H, W)
+                
+                # 2. Predict Gazes
+                batch_size_gaze = 256
+                ep_gazes = []
+                for i in range(0, T_ep, batch_size_gaze):
+                    batch_stacks = stacks[i:i+batch_size_gaze].to(device, dtype=torch.float32) / 255.0
+                    gaze_pred = gaze_predictor.predict_normalized(batch_stacks).squeeze(1) # (B, 84, 84)
+                    ep_gazes.append(gaze_pred)
+                ep_gazes_t = torch.cat(ep_gazes, dim=0) # (T_ep, 84, 84)
+                
+                # 3. Filter actions <= 5
+                valid_mask = (ep_actions <= 5)
+                valid_logic = ep_logic[valid_mask]
+                valid_gazes = ep_gazes_t[valid_mask]
+                
+                K_ep = len(valid_logic)
+                if K_ep == 0: continue
+                
+                # 4. Compute V_0
+                ep_v0 = []
+                for i in range(0, K_ep, batch_size_gaze):
+                    b_logic = valid_logic[i:i+batch_size_gaze].to(device, dtype=torch.float32)
+                    b_gaze = valid_gazes[i:i+batch_size_gaze]
+                    v0 = agent.unwrapped_model.fc(b_logic, agent.unwrapped_model.atoms, agent.unwrapped_model.bk, gaze=b_gaze)
+                    ep_v0.append(v0.cpu())
+                ep_v0_t = torch.cat(ep_v0, dim=0) # (K_ep, num_atoms)
+                
+                # 5. Store in list
+                valuations[int(ep)] = [ep_v0_t[i] for i in range(K_ep)]
+                
+        # cleanup memory
+        del data, obs_t, logic_t, actions_t, ep_nums_t
+        gc.collect()
+        
+        v_base_dir = os.path.dirname(os.path.dirname(run_dir))
+        v_save_path = os.path.join(v_base_dir, f"valuations_{args.rules}.pt")
+        print(f"Saving precomputed valuations to {v_base_dir}")
+        torch.save(valuations, v_save_path)
+        print("Valuation precomputation complete.\n")
 
     # ── Optimizer / Scheduler ────────────────────────────────────────────────
     optimizer = torch.optim.Adam(agent.unwrapped_model.parameters(), lr=args.lr)
@@ -429,7 +531,7 @@ def main():
             # Single forward pass — update() returns probs & action_scores
             loss, probs, action_scores = agent.update(
                 states, actions,
-                gazes if args.use_gaze else None,
+                gazes if use_gaze else None,
                 vT=vT_batch,
                 loss_type=args.loss,
             )
@@ -483,7 +585,7 @@ def main():
 
                     probs, action_scores = agent.predict(
                         states,
-                        gazes if args.use_gaze else None,
+                        gazes if use_gaze else None,
                         vT=vT_batch,
                     )
 
@@ -503,10 +605,12 @@ def main():
         if (epoch + 1) % args.eval_interval == 0:
             rewards = evaluate_parallel(
                 agent, env_name=args.env,
-                train_run=True,
                 num_episodes=args.num_eval_episodes, seed=args.seed,
                 max_steps=args.eval_max_steps,
-                gaze_predictor=(gaze_predictor if args.use_gazemap else None),
+                gaze_model_path=(args.gaze_model_path if use_gaze or unnormalized else None),
+                use_gaze=use_gaze,
+                num_workers=(16 if use_gaze or unnormalized else None),
+                train_run=True
             )
             mean_reward, std_reward = np.mean(rewards), np.std(rewards)
         else:
@@ -523,7 +627,7 @@ def main():
             'train_acc':    avg_train_acc,
             'val_acc':      avg_val_acc,
             'val_loss':     avg_val_loss,
-            'gaze':         args.use_gaze,
+            'gaze':         use_gaze,
         })
 
         # ── Save checkpoint ───────────────────────────────────────────────────

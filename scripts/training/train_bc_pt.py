@@ -157,7 +157,7 @@ def get_args():
     parser.add_argument("--patience", type=int, default=5, help="Stop training if val_acc doesn't improve for N epochs (0 to disable)")
     parser.add_argument("--lr_patience", type=int, default=3, help="Reduce LR if val_acc doesn't improve for N epochs")
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--use_gazemap", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
+    parser.add_argument("--use_gaze", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
     parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
     parser.add_argument("--send_email", action="store_true", help="Send email with results after evaluation")
     parser.add_argument("--run_dir", type=str, default=None, help="Custom output directory")
@@ -170,11 +170,11 @@ def main():
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(f"Device: {device} | Gaze method: {args.gaze_method}")
 
-    use_gaze = args.gaze_method in ["AGIL", "Mask"]
+    use_gaze_data = args.use_gaze or args.gaze_method in ["AGIL", "Mask"]
     num_ep   = args.num_episodes
 
     gaze_predictor = None
-    if (args.use_gazemap or args.gaze_method in ['ViSaRL', 'Mask', 'AGIL']) and args.gaze_method != "None":
+    if (args.use_gaze or args.gaze_method in ['ViSaRL', 'Mask', 'AGIL']) and args.gaze_method != "None":
         try:
             from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
             print(f"Initializing Test-Time Gaze Predictor from {args.gaze_model_path}...")
@@ -270,7 +270,7 @@ def main():
             print(f"  Training conventional mode for {epochs_per_episode} epochs")
         print(f"=======================================================")
 
-        obs, actions, gaze, _, _ = load_pt_dataset(args.dataset, num_episodes=target_ep_load if target_ep_load != "all" else None, use_gaze=use_gaze)
+        obs, actions, gaze, _, _ = load_pt_dataset(args.dataset, num_episodes=target_ep_load if target_ep_load != "all" else None, use_gaze=use_gaze_data)
 
         # Shuffle + 95/5 train/val split for the current accumulative dataset
         idx = list(range(len(obs)))
