@@ -90,8 +90,8 @@ class FactsConverter(nn.Module):
                 sums       = sums * (flat_Z[:, 0] > 0.5).float()
                 gaze_sums  = sums.reshape(B_size, N_OBJ)          # (B, N_OBJ)
 
-               if getattr(self.vm, "unnormalized", False):
-    # Keep raw SAT sums — no normalization
+                if getattr(self.vm, "unnormalized", False):
+                    # Keep raw SAT sums — no normalization
                     gaze_sums = torch.max(gaze_sums, is_present * 0.05)
                 else:
                     # Normalized: max-normalize so peak attended object = 1.0
