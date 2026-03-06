@@ -3,22 +3,22 @@ import torch as th
 from nsfr.utils.common import bool_to_probs
 HIGHER_BOUND=0.98
 
-def visible_missile(obj: th.Tensor, gaze: th.Tensor = None, all_objects: th.Tensor = None) -> th.Tensor:
+def visible_missile(missile: th.Tensor) -> th.Tensor:
     """Probability that a missile is 'visible' (present).
     Gaze-based attention is now handled by the core ValuationModule."""
-    return bool_to_probs(obj[..., 0] == 1)
+    return bool_to_probs(missile[..., 0] == 1)
 
 
-def visible_enemy(obj: th.Tensor, gaze: th.Tensor = None, all_objects: th.Tensor = None) -> th.Tensor:
+def visible_enemy(enemy: th.Tensor) -> th.Tensor:
     """Probability that an enemy is 'visible' (present).
     Gaze-based attention is now handled by the core ValuationModule."""
-    return bool_to_probs(obj[..., 0] == 1)
+    return bool_to_probs(enemy[..., 0] == 1)
 
 
-def visible_diver(obj: th.Tensor, gaze: th.Tensor = None, all_objects: th.Tensor = None) -> th.Tensor:
+def visible_diver(diver: th.Tensor) -> th.Tensor:
     """Probability that a diver is 'visible' (present).
     Gaze-based attention is now handled by the core ValuationModule."""
-    return bool_to_probs(obj[..., 0] == 1)
+    return bool_to_probs(diver[..., 0] == 1)
 
 
 

@@ -144,25 +144,12 @@ class ValuationModule(nn.Module, ABC):
             raise NotImplementedError(f"Missing implementation for valuation function '{pred_name}'.")
 
         sig = inspect.signature(val_fn)
-        accepts_gaze = 'gaze' in sig.parameters
         accepts_all_objects = 'all_objects' in sig.parameters
 
-        # Try to pass gaze map if available and function accepts it, 
-        # but skip this if using unnormalized override to prevent double gaze penalty.
-        if gaze is not None and not unnormalized and len(gaze.shape) > 2:
-            try:
-                if accepts_gaze and accepts_all_objects and all_objects is not None:
-                    val = val_fn(*args, gaze=gaze, all_objects=all_objects)
-                elif accepts_gaze:
-                    val = val_fn(*args, gaze=gaze)
-                else:
-                    val = val_fn(*args)
-            except Exception as e:
-                # Fallback
-                print(f"Error calling {pred_name} with gaze: {e}")
-                val = val_fn(*args)
+        if accepts_all_objects and all_objects is not None:
+             val = val_fn(*args, all_objects=all_objects)
         else:
-            val = val_fn(*args)
+             val = val_fn(*args)
 
         # Gaze Override: multiply base valuation by the max gaze value of objects involved.
         # Gaze probability is expected to be appended as the last element of the object vector.
