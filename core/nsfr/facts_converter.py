@@ -91,6 +91,8 @@ class FactsConverter(nn.Module):
                   # If normalized mode: ensure each frame's gaze sums to 1.0 (or 0 if no objects)
                   if not getattr(self.vm, "unnormalized", False):
                        alpha = getattr(self.vm, "alpha", 0.1)
+                       if alpha is None:
+                           alpha = 0.1
                        # Count present objects per frame: (B, 1)
                        is_present = (Z[:, :, 0] > 0.5).float()
                        num_present = is_present.sum(dim=1, keepdim=True)
@@ -99,7 +101,7 @@ class FactsConverter(nn.Module):
                        total_mass = gaze_sums.sum(dim=1, keepdim=True)
                        # Add alpha only to present objects to maintain sum=1.0 across present ones
                        gaze_sums = (gaze_sums + alpha) / (total_mass + num_present * alpha + 1e-8)
-                       # Re-zero absent objects
+                        # Re-zero absent objects
                        gaze_sums = gaze_sums * is_present
                        
                   # Append to Z as the last feature
@@ -114,10 +116,7 @@ class FactsConverter(nn.Module):
                        # Fallback: append 1.0s if shape is unexpected
                        gaze_tensor = torch.ones((batch_size, Z.size(1), 1), device=self.device)
                        Z = torch.cat([Z, gaze_tensor], dim=-1)
-        else:
-             # No gaze: ensure Z still gets an extra feature (default 1.0) for consistency
-             gaze_tensor = torch.ones((batch_size, Z.size(1), 1), device=self.device)
-             Z = torch.cat([Z, gaze_tensor], dim=-1)
+
 
         # 1. Group atoms by predicate (if not cached)
         # We assume G (list of atoms) is static for a given FactsConverter usage context.

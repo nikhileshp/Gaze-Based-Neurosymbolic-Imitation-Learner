@@ -172,7 +172,7 @@ class ValuationModule(nn.Module, ABC):
             if self.visible_preds_only:
                 should_scale = pred_name.startswith("visible_")
 
-            if should_scale:
+            if should_scale and gaze is not None:
                 found_object = False
                 # Flattened max_gaze per evaluation instance (batch*atoms)
                 max_gaze_flat = torch.zeros(val.shape[0], device=self.device)
@@ -180,7 +180,7 @@ class ValuationModule(nn.Module, ABC):
                 # Find the max gaze among all object arguments provided to this predicate
                 for arg in args:
                     # The last dimension is the appended gaze from FactsConverter.
-                    if arg.dim() == 2 and arg.size(1) >= 6:
+                    if arg.dim() == 2 and arg.size(1) >= 8:
                         obj_gaze = arg[:, -1]
                         max_gaze_flat = torch.max(max_gaze_flat, obj_gaze)
                         found_object = True

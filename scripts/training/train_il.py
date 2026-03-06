@@ -301,13 +301,26 @@ def main():
     #     replacement=True,
     # )
 
+    # ── Paths ─────────────────────────────────────────────────────────────────
+    num_iters = len(unique_eps) if (args.num_episodes is None) and (args.limit is not None) else "full"
+    vis_tag = "_vis_only" if visible_preds_only else ""
+    alpha_tag = f"_a{alpha}" if alpha is not None else ""
+    if use_gaze and unnormalized:
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_unnormalized{vis_tag}/{num_iters}_ep/{now_time}")
+    elif use_gaze:
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_normalized{vis_tag}{alpha_tag}/{num_iters}_ep/{now_time}")
+    else:
+        run_dir   = (f"trained_models/{args.env}/nsfr/{args.rules}_rules_{args.lr}_lr_{args.loss}/{num_iters}_ep/{now_time}")
+    os.makedirs(run_dir, exist_ok=True)
+    os.makedirs("out/imitation", exist_ok=True)
+
     # ── Load pre-computed valuations ─────────────────────────────────────────
+    # First, try to load from the specific run_dir's parent (the config folder)
+    config_dir = os.path.dirname(os.path.dirname(run_dir))
     valuations = None
     v_path = args.valuation_path
     if v_path is None:
-        v_path = (f"trained_models/{args.env}/grail/valuations_{args.rules}.pt"
-                  if use_gaze
-                  else f"trained_models/{args.env}/nsfr/valuations_{args.rules}.pt")
+        v_path = os.path.join(config_dir, f"valuations_{args.rules}.pt")
 
     if os.path.exists(v_path):
         print(f"Loading pre-computed valuations from {v_path}...")
@@ -336,7 +349,7 @@ def main():
             valuations = {}
             for ep_id, steps in valuations_indexed.items():
                 max_step = max(steps.keys())
-                v_list   = [torch.zeros(len(agent.model.atoms)).to(device)] * (max_step + 1)
+                v_list   = [torch.zeros(len(agent.unwrapped_model.atoms)).to(device)] * (max_step + 1)
                 for s_idx, v in steps.items():
                     v_list[s_idx] = v
                 valuations[ep_id] = v_list
@@ -344,34 +357,21 @@ def main():
         else:
             valuations = valuations_raw
     else:
-        print(f"No pre-computed valuations at {v_path}. Training from logic states.")
+        print(f"No pre-computed valuations at {v_path}. Will precompute from logic states.")
 
-    # ── Paths ─────────────────────────────────────────────────────────────────
-    num_iters = len(unique_eps) if (args.num_episodes is None) and (args.limit is not None) else "full"
-    vis_tag = "_vis_only" if visible_preds_only else ""
-    alpha_tag = f"_a{alpha}" if alpha is not None else ""
-    if use_gaze and unnormalized:
-        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_unnormalized{vis_tag}/{num_iters}_ep/{now_time}")
-    elif use_gaze:
-        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_normalized{vis_tag}{alpha_tag}/{num_iters}_ep/{now_time}")
-    else:
-        run_dir   = (f"trained_models/{args.env}/nsfr/{args.rules}_rules_{args.lr}_lr_{args.loss}/{num_iters}_ep/{now_time}")
-    os.makedirs(run_dir, exist_ok=True)
-    os.makedirs("out/imitation", exist_ok=True)
-
-    if valuations is None and (use_gaze or unnormalized):
+    if valuations is None:
         print("\n" + "="*50)
-        print("Precomputing valuations using predicted CNN gaze...")
+        print("Precomputing valuations...")
         print("="*50)
         
-        # We need gaze_predictor
-        if gaze_predictor is None:
+        # We need gaze_predictor only if we are using gaze
+        if use_gaze and gaze_predictor is None:
             from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
             print(f"Initializing Gaze Predictor for precomputation from {args.gaze_model_path}...")
             gaze_predictor = Human_Gaze_Predictor(args.env)
             gaze_predictor.init_model(args.gaze_model_path)
             gaze_predictor.model.eval()
-        gaze_predictor.model.to(device)
+            gaze_predictor.model.to(device)
             
         import gc
         data = torch.load(args.dataset, map_location='cpu', weights_only=False)
@@ -396,37 +396,41 @@ def main():
                 T_ep = len(ep_obs)
                 if T_ep == 0: continue
                 
-                # 1. Stacking
-                pad = ep_obs[0:1].expand(3, -1, -1)
-                padded_obs = torch.cat([pad, ep_obs], dim=0) # (T_ep + 3, H, W)
-                
-                stacks = []
-                for i in range(T_ep):
-                    stacks.append(padded_obs[i:i+4])
-                stacks = torch.stack(stacks, dim=0) # (T_ep, 4, H, W)
-                
-                # 2. Predict Gazes
-                batch_size_gaze = 256
-                ep_gazes = []
-                for i in range(0, T_ep, batch_size_gaze):
-                    batch_stacks = stacks[i:i+batch_size_gaze].to(device, dtype=torch.float32) / 255.0
-                    gaze_pred = gaze_predictor.predict_normalized(batch_stacks).squeeze(1) # (B, 84, 84)
-                    ep_gazes.append(gaze_pred)
-                ep_gazes_t = torch.cat(ep_gazes, dim=0) # (T_ep, 84, 84)
+                # 1. Stacking (only needed for gaze)
+                if use_gaze:
+                    pad = ep_obs[0:1].expand(3, -1, -1)
+                    padded_obs = torch.cat([pad, ep_obs], dim=0) # (T_ep + 3, H, W)
+                    
+                    stacks = []
+                    for i in range(T_ep):
+                        stacks.append(padded_obs[i:i+4])
+                    stacks = torch.stack(stacks, dim=0) # (T_ep, 4, H, W)
+                    
+                    # 2. Predict Gazes
+                    batch_size_gaze = 256
+                    ep_gazes = []
+                    for i in range(0, T_ep, batch_size_gaze):
+                        batch_stacks = stacks[i:i+batch_size_gaze].to(device, dtype=torch.float32) / 255.0
+                        gaze_pred = gaze_predictor.predict_normalized(batch_stacks).squeeze(1) # (B, 84, 84)
+                        ep_gazes.append(gaze_pred)
+                    ep_gazes_t = torch.cat(ep_gazes, dim=0) # (T_ep, 84, 84)
                 
                 # 3. Filter actions <= 5
                 valid_mask = (ep_actions <= 5)
                 valid_logic = ep_logic[valid_mask]
-                valid_gazes = ep_gazes_t[valid_mask]
                 
                 K_ep = len(valid_logic)
                 if K_ep == 0: continue
                 
                 # 4. Compute V_0
                 ep_v0 = []
+                batch_size_gaze = 256
                 for i in range(0, K_ep, batch_size_gaze):
                     b_logic = valid_logic[i:i+batch_size_gaze].to(device, dtype=torch.float32)
-                    b_gaze = valid_gazes[i:i+batch_size_gaze]
+                    b_gaze = None
+                    if use_gaze:
+                        valid_gazes = ep_gazes_t[valid_mask]
+                        b_gaze = valid_gazes[i:i+batch_size_gaze]
                     v0 = agent.unwrapped_model.fc(b_logic, agent.unwrapped_model.atoms, agent.unwrapped_model.bk, gaze=b_gaze)
                     ep_v0.append(v0.cpu())
                 ep_v0_t = torch.cat(ep_v0, dim=0) # (K_ep, num_atoms)
@@ -438,9 +442,8 @@ def main():
         del data, obs_t, logic_t, actions_t, ep_nums_t
         gc.collect()
         
-        v_base_dir = os.path.dirname(os.path.dirname(run_dir))
-        v_save_path = os.path.join(v_base_dir, f"valuations_{args.rules}.pt")
-        print(f"Saving precomputed valuations to {v_base_dir}")
+        v_save_path = os.path.join(config_dir, f"valuations_{args.rules}.pt")
+        print(f"Saving precomputed valuations to {v_save_path}")
         torch.save(valuations, v_save_path)
         print("Valuation precomputation complete.\n")
 

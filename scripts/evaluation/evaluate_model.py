@@ -94,14 +94,14 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
             else:
                 logic_state_np = np.asarray(logic_state, dtype=np.float32)
 
-            # Send (logic_state, frame_stack) — frame_stack is (4,84,84) uint8
-            # much smaller than a gaze tensor and avoids per-worker CNN inference
             if _use_gaze and frame_buffer is not None:
-                frame_np = np.stack(frame_buffer, axis=0).astype(np.float32)  # (4,84,84)
+                # Send (logic_state, frame_stack) — frame_stack is (4,84,84) uint8
+                frame_np = np.stack(frame_buffer, axis=0).astype(np.float32)  # (B,4,84,84)
+                state_q.put((worker_id, _MSG_STATE, logic_state_np, frame_np))
             else:
-                frame_np = _FRAME_ZEROS
-
-            state_q.put((worker_id, _MSG_STATE, logic_state_np, frame_np))
+                # Omit frame array for no-gaze runs to avoid huge IPC bottleneck!
+                state_q.put((worker_id, _MSG_STATE, logic_state_np))
+                
             msg = action_q.get()
             if msg[0] == _MSG_STOP:
                 return
@@ -254,8 +254,12 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
                 wid, msg_type = msg[0], msg[1]
 
                 if msg_type == _MSG_STATE:
-                    # msg = (wid, MSG_STATE, logic_state_np, gaze_np)
-                    pending[wid] = (msg[2], msg[3])
+                    if use_gaze:
+                        # msg = (wid, MSG_STATE, logic_state_np, gaze_np)
+                        pending[wid] = (msg[2], msg[3])
+                    else:
+                        # msg = (wid, MSG_STATE, logic_state_np)
+                        pending[wid] = (msg[2], None)
 
                 elif msg_type == _MSG_DONE:
                     episode_rewards.append(msg[2])

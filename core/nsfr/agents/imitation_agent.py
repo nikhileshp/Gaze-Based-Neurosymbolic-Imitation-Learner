@@ -263,12 +263,22 @@ class ImitationAgent(nn.Module):
                 idx = self.primitive_action_map[prefix]
                 action_rule_probs[idx].append(probs[:, i])
 
+        def softor(tensors, dim=0):
+            # Compute soft-or: 1 - prod(1 - p_i)
+            # Clamping to avoid exact 1.0 which can cause issues with log(1-p) if implemented that way, 
+            # though here we just do direct multiplication.
+            res = 1.0
+            for t in tensors:
+                res = res * (1.0 - t)
+            return 1.0 - res
+
         action_scores_list = []
         for idx in range(self.num_actions):
             if action_rule_probs[idx]:
-                stacked = torch.stack(action_rule_probs[idx], dim=1)
-                m, _ = torch.max(stacked, dim=1)
-                action_scores_list.append(m)
+                stacked = torch.stack(action_rule_probs[idx], dim=1) # (B, num_rules_for_action)
+                rules_list = torch.unbind(stacked, dim=1)
+                action_score = softor(rules_list, dim=0) # (B,)
+                action_scores_list.append(action_score)
             else:
                 action_scores_list.append(torch.zeros(probs.size(0), device=probs.device))
 
@@ -382,6 +392,8 @@ class ImitationAgent(nn.Module):
 
     def save(self, path):
         # Always save the underlying model weights, not the DataParallel wrapper
+        import os
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(self.unwrapped_model.state_dict(), path)
 
     def load(self, path):
