@@ -160,11 +160,11 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
         if gabril_compat:
             env = GABRILEnvWrapper(
                 base_env,
-                action_repeat_probability=0.25,
+                action_repeat_probability=0.0,
                 noop_max=30,
                 terminal_on_life_loss=True,
                 noop_action='noop',
-                frame_skip=1,
+                frame_skip=4,
             )
         else:
             env = base_env

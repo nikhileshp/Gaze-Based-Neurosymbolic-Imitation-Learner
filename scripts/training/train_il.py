@@ -613,6 +613,7 @@ def main():
                 gaze_model_path=(args.gaze_model_path if use_gaze or unnormalized else None),
                 use_gaze=use_gaze,
                 num_workers=(16 if use_gaze or unnormalized else None),
+                gabril_compat=True,
                 train_run=True
             )
             mean_reward, std_reward = np.mean(rewards), np.std(rewards)
