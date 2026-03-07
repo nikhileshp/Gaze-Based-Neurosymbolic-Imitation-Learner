@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: grail
 Version: 0.1.0
 Summary: Gaze-Based Neurosymbolic Imitation Learner
@@ -25,3 +25,8 @@ Requires-Dist: scikit-image
 Requires-Dist: keyboard
 Requires-Dist: pygame
 Requires-Dist: pyfiglet
+Dynamic: author
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary

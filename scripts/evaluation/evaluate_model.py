@@ -13,6 +13,109 @@ from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
 from nsfr.utils import make_deterministic
 
+
+# ── GABRILEnvWrapper — inlined so worker processes don't need a separate import
+class GABRILEnvWrapper:
+    """
+    Wraps NSFRBaseEnv to match GABRIL's Atari evaluation settings:
+      - frame_skip=4             repeat action 4 ALE frames, sum rewards
+      - Sticky actions           (action_repeat_probability=0.25)
+      - noop_max=30              random no-ops on reset
+      - terminal_on_life_loss    treat life loss as episode end
+      - Seed formula             handled by caller: seed + 1000 * episode_idx
+
+    All NSFRBaseEnv attributes/methods are proxied through transparently.
+    """
+
+    def __init__(self, env, action_repeat_probability=0.25, noop_max=30,
+                 terminal_on_life_loss=True, noop_action='noop', seed=42,
+                 frame_skip=1):
+        self._env                       = env
+        self.action_repeat_probability  = action_repeat_probability
+        self.noop_max                   = noop_max
+        self.terminal_on_life_loss      = terminal_on_life_loss
+        self.noop_action                = noop_action
+        self.frame_skip                 = frame_skip
+        self._rng                       = np.random.default_rng(seed)
+        self._last_action               = noop_action
+        self._lives                     = 0
+        self._ale_available             = False
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+    def _get_lives(self):
+        try:
+            return self._env.env.unwrapped.ale.lives()
+        except Exception:
+            return None
+
+    def reset(self, seed=None, options=None):
+        state             = self._env.reset(seed=seed, options=options)
+        self._last_action = self.noop_action
+        self._rng         = np.random.default_rng(seed if seed is not None else 42)
+
+        if self.noop_max > 0:
+            n_noops = int(self._rng.integers(0, self.noop_max + 1))
+            for _ in range(n_noops):
+                # noops are single ALE frames — no frame_skip during reset
+                state, _, done = self._env.step(self.noop_action)
+                if done:
+                    state = self._env.reset(seed=seed, options=options)
+
+        lives = self._get_lives()
+        if lives is not None:
+            self._lives         = lives
+            self._ale_available = True
+        else:
+            self._ale_available = False
+
+        return state
+
+    def step(self, action):
+        # Sticky action
+        if (self.action_repeat_probability > 0.0
+                and self._rng.random() < self.action_repeat_probability):
+            action = self._last_action
+        else:
+            self._last_action = action
+
+        # Frame skip: repeat action frame_skip times, accumulate reward
+        total_reward = 0.0
+        state        = None
+        done         = False
+        for _ in range(self.frame_skip):
+            state, reward, done = self._env.step(action)
+            total_reward += reward
+            if done:
+                break
+
+        # Life-loss termination check (once, after the skip block)
+        if self.terminal_on_life_loss and self._ale_available:
+            lives = self._get_lives()
+            if lives is not None and 0 < lives < self._lives:
+                done = True
+            if lives is not None:
+                self._lives = lives
+
+        return state, total_reward, done
+
+    @staticmethod
+    def gabril_seed(base_seed, episode_idx):
+        return base_seed + 1000 * episode_idx
+
+    def get_rgb_frame(self):
+        return self._env.get_rgb_frame()
+
+    def extract_logic_state(self, raw_state):
+        return self._env.extract_logic_state(raw_state)
+
+    def extract_neural_state(self, raw_state):
+        return self._env.extract_neural_state(raw_state)
+
+    def close(self):
+        self._env.close()
+
 try:
     from scripts.gaze_predictor import Human_Gaze_Predictor
 except ImportError:
@@ -33,12 +136,17 @@ _MSG_STOP  = 2
 
 
 def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
-                max_steps, send_frames=False):
+                max_steps, send_frames=False, gabril_compat=False):
     """
     Runs in a separate process. Owns one NSFRBaseEnv instance.
 
     send_frames=True  → sends (worker_id, MSG_STATE, logic_np, frame_stack_np)
     send_frames=False → sends (worker_id, MSG_STATE, logic_np)
+
+    gabril_compat=True → wraps env with GABRILEnvWrapper (sticky actions,
+                         noop_max=30, terminal_on_life_loss=True).
+                         Episode seeds must already be GABRIL-formula seeds
+                         (base + 1000*ep), computed before spawning.
 
     Gaze CNN always runs in the main process on GPU.
     Workers are CPU-only and never load the gaze model.
@@ -48,7 +156,18 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
     _sys.stdout = open(_os.devnull, 'w')
 
     try:
-        env = NSFRBaseEnv.from_name(env_name, mode='logic')
+        base_env = NSFRBaseEnv.from_name(env_name, mode='logic')
+        if gabril_compat:
+            env = GABRILEnvWrapper(
+                base_env,
+                action_repeat_probability=0.25,
+                noop_max=30,
+                terminal_on_life_loss=True,
+                noop_action='noop',
+                frame_skip=1,
+            )
+        else:
+            env = base_env
     except Exception as e:
         import sys
         print(f"  Worker {worker_id}: env init failed: {e}", file=sys.__stderr__)
@@ -111,7 +230,8 @@ def _env_worker_safe(*args, **kwargs):
 
 
 def _spawn_workers(num_workers, worker_seeds, state_q, action_qs,
-                   env_name, max_steps, send_frames, train_run):
+                   env_name, max_steps, send_frames, train_run,
+                   gabril_compat=False):
     """Spawn worker pool. Returns list of Process objects."""
     if train_run:
         ctx = mp.get_context('spawn')
@@ -126,7 +246,7 @@ def _spawn_workers(num_workers, worker_seeds, state_q, action_qs,
         p = ctx.Process(
             target=_env_worker_safe,
             args=(wid, worker_seeds[wid], state_q, action_qs[wid],
-                  env_name, max_steps, send_frames),
+                  env_name, max_steps, send_frames, gabril_compat),
             daemon=True,
         )
         p.start()
@@ -224,12 +344,19 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
 def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
                       num_workers=None, max_steps=10000,
                       gaze_predictor=None, gaze_model_path=None,
-                      use_gaze=False, train_run=False, verbose=True):
+                      use_gaze=False, train_run=False, verbose=True,
+                      gabril_compat=False):
     """
     Parallel evaluation using a multiprocessing worker pool.
 
     Workers own envs (CPU only). Gaze CNN lives in main process (GPU).
     Workers send raw frame stacks; main batches them for GPU inference.
+
+    gabril_compat=True applies GABRIL's env settings to every worker:
+      - sticky actions (p=0.25)
+      - noop_max=30 random no-ops on reset
+      - terminal_on_life_loss=True
+      - seed formula: base_seed + 1000 * episode_idx
 
     For scanning all checkpoints in a run, use evaluate_checkpoints() instead.
     """
@@ -247,9 +374,17 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
     num_workers = min(num_workers, num_episodes)
     device      = agent.device
 
+    # Compute episode seeds — GABRIL formula if gabril_compat
+    if gabril_compat:
+        episode_seeds = [GABRILEnvWrapper.gabril_seed(seed, ep)
+                         for ep in range(num_episodes)]
+    else:
+        episode_seeds = [seed + ep for ep in range(num_episodes)]
+
+    # Distribute round-robin across workers
     worker_seeds = [[] for _ in range(num_workers)]
-    for ep in range(num_episodes):
-        worker_seeds[ep % num_workers].append(seed + ep)
+    for ep, ep_seed in enumerate(episode_seeds):
+        worker_seeds[ep % num_workers].append(ep_seed)
 
     state_q   = mp.Queue()
     action_qs = [mp.Queue() for _ in range(num_workers)]
@@ -261,7 +396,8 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
             print(f"  Gaze predictor loaded on {device}")
 
     workers = _spawn_workers(num_workers, worker_seeds, state_q, action_qs,
-                             env_name, max_steps, use_gaze, train_run)
+                             env_name, max_steps, use_gaze, train_run,
+                             gabril_compat=gabril_compat)
 
     agent.model.eval()
     rewards = _run_inference_loop(
@@ -286,7 +422,8 @@ def evaluate_checkpoints(run_dir, env_name, rules, device_str='cuda',
                           max_steps=10000, use_gaze=False,
                           gaze_model_path=None, unnormalized=False,
                           visible_preds_only=False, alpha=0.1,
-                          output_csv=None, verbose=False):
+                          output_csv=None, verbose=False,
+                          gabril_compat=False):
     """
     Evaluate all saved checkpoints in a run directory.
 
@@ -335,9 +472,16 @@ def evaluate_checkpoints(run_dir, env_name, rules, device_str='cuda',
         num_workers = min(mp.cpu_count(), num_episodes)
     num_workers = min(num_workers, num_episodes)
 
+    # Compute episode seeds — GABRIL formula if gabril_compat
+    if gabril_compat:
+        episode_seeds = [GABRILEnvWrapper.gabril_seed(seed, ep)
+                         for ep in range(num_episodes)]
+    else:
+        episode_seeds = [seed + ep for ep in range(num_episodes)]
+
     worker_seeds = [[] for _ in range(num_workers)]
-    for ep in range(num_episodes):
-        worker_seeds[ep % num_workers].append(seed + ep)
+    for ep, ep_seed in enumerate(episode_seeds):
+        worker_seeds[ep % num_workers].append(ep_seed)
 
     # Load agent once — weights swapped per checkpoint
     gaze_threshold = 50.0 if use_gaze else None
@@ -367,7 +511,8 @@ def evaluate_checkpoints(run_dir, env_name, rules, device_str='cuda',
         action_qs = [mp.Queue() for _ in range(num_workers)]
         workers   = _spawn_workers(
             num_workers, worker_seeds, state_q, action_qs,
-            env_name, max_steps, use_gaze, train_run=False
+            env_name, max_steps, use_gaze, train_run=False,
+            gabril_compat=gabril_compat
         )
 
         t0      = time.perf_counter()
@@ -381,6 +526,10 @@ def evaluate_checkpoints(run_dir, env_name, rules, device_str='cuda',
             p.join(timeout=5)
             if p.is_alive():
                 p.terminate()
+
+        if not rewards:
+            print(f"  WARNING: No episodes completed for {ckpt_path} — all workers failed. Skipping.")
+            continue
 
         mean_r = np.mean(rewards)
         std_r  = np.std(rewards)
@@ -523,6 +672,10 @@ def main():
     parser.add_argument("--visible_preds_only", action="store_true")
     parser.add_argument("--alpha",              type=float, default=None)
     # ── Output ────────────────────────────────────────────────────────────────
+    parser.add_argument("--gabril_compat",      action="store_true",
+                        help="Match GABRIL eval env: sticky actions p=0.25, "
+                             "noop_max=30, terminal_on_life_loss, "
+                             "seed=base+1000*ep")
     parser.add_argument("--output_csv",         type=str, default=None)
     args = parser.parse_args()
 
@@ -551,6 +704,7 @@ def main():
             alpha=args.alpha,
             output_csv=args.output_csv,
             verbose=args.verbose,
+            gabril_compat=args.gabril_compat,
         )
         return
 
@@ -592,6 +746,7 @@ def main():
             gaze_model_path=args.gaze_model_path if args.use_gaze else None,
             use_gaze=args.use_gaze,
             verbose=args.verbose,
+            gabril_compat=args.gabril_compat,
         )
 
     mean_r, std_r = np.mean(rewards), np.std(rewards)

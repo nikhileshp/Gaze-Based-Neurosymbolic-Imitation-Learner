@@ -5,7 +5,6 @@ grail-eval-bc = scripts.evaluation.evaluate_bc_model:main
 grail-gen-atoms = scripts.preprocess.generate_valuation_atoms:main
 grail-play = scripts.play.play_il_gui:main
 grail-precompute = scripts.preprocess.precompute_valuations:main
-grail-preprocess = scripts.preprocess.preprocess_dataset:main
 grail-train = scripts.training.train_il:main
 grail-train-bc = scripts.training.train_bc:main
 grail-train-bc-pt = scripts.training.train_bc_pt:main
