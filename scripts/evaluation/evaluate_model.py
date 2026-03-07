@@ -4,6 +4,10 @@ import torch
 import numpy as np
 import multiprocessing as mp
 from collections import deque
+from pathlib import Path
+import glob
+import time
+import pandas as pd
 
 from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
@@ -23,35 +27,22 @@ from core.utils.utils import preprocess_frame
 
 
 # ── Worker message types ──────────────────────────────────────────────────────
-_MSG_STATE = 0   # worker -> main: logic state, wants action back
-_MSG_DONE  = 1   # worker -> main: episode finished, sending reward
-_MSG_STOP  = 2   # main -> worker / worker -> main: exit signal
+_MSG_STATE = 0
+_MSG_DONE  = 1
+_MSG_STOP  = 2
 
 
 def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
-                max_steps, gaze_model_path=None, gaze_env_name=None):
+                max_steps, send_frames=False):
     """
     Runs in a separate process. Owns one NSFRBaseEnv instance.
 
-    If gaze_model_path is provided, also owns a CPU gaze predictor.
-    The gaze predictor runs entirely on CPU inside this worker process —
-    no GPU required — so N workers can compute gaze in parallel.
+    send_frames=True  → sends (worker_id, MSG_STATE, logic_np, frame_stack_np)
+    send_frames=False → sends (worker_id, MSG_STATE, logic_np)
 
-    Each step sends (logic_state, gaze_tensor) to the main process.
-    The gaze_tensor is zeros if no gaze predictor is loaded.
-
-    For each assigned seed:
-      1. Reset env, initialise 4-frame gaze buffer
-      2. Compute gaze heatmap on CPU (if predictor loaded)
-      3. Send (logic_state, gaze_tensor) to main process
-      4. Wait for action, step env, update frame buffer
-      5. Send total reward when episode ends
+    Gaze CNN always runs in the main process on GPU.
+    Workers are CPU-only and never load the gaze model.
     """
-    from collections import deque
-    import numpy as np
-
-    # Suppress stdout only — keeps ALE/gaze print noise silent
-    # but preserves stderr so worker crashes are still visible.
     import sys as _sys
     import os as _os
     _sys.stdout = open(_os.devnull, 'w')
@@ -64,55 +55,43 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
         state_q.put((worker_id, _MSG_STOP, None))
         return
 
-    # Workers send raw grayscale frames to main process.
-    # Main process batches frames and runs gaze CNN on GPU — much faster
-    # than 8 separate CPU CNN calls, and avoids queue congestion from
-    # sending large gaze tensors (28KB each) over the pipe.
-    _use_gaze   = gaze_model_path is not None
-    _FRAME_ZEROS = np.zeros((4, 84, 84), dtype=np.float32)
-
     for seed in episode_seeds:
         state   = env.reset(seed=seed)
         done    = False
         total_r = 0.0
         steps   = 0
 
-        # 4-frame buffer of grayscale frames for gaze CNN
         frame_buffer = None
-        if _use_gaze:
-            from core.utils.utils import preprocess_frame
+        if send_frames:
+            from core.utils.utils import preprocess_frame as _pf
             frame_buffer = deque(maxlen=4)
-            initial_gray = preprocess_frame(env.get_rgb_frame())
+            initial_gray = _pf(env.get_rgb_frame())
             for _ in range(4):
                 frame_buffer.append(initial_gray)
 
         while not done and steps < max_steps:
             logic_state, _ = state
+            logic_np = (logic_state.cpu().numpy()
+                        if hasattr(logic_state, 'cpu')
+                        else np.asarray(logic_state, dtype=np.float32))
 
-            if hasattr(logic_state, 'cpu'):
-                logic_state_np = logic_state.cpu().numpy()
+            if send_frames and frame_buffer is not None:
+                frame_np = np.stack(frame_buffer, axis=0).astype(np.float32)
+                state_q.put((worker_id, _MSG_STATE, logic_np, frame_np))
             else:
-                logic_state_np = np.asarray(logic_state, dtype=np.float32)
+                state_q.put((worker_id, _MSG_STATE, logic_np))
 
-            if _use_gaze and frame_buffer is not None:
-                # Send (logic_state, frame_stack) — frame_stack is (4,84,84) uint8
-                frame_np = np.stack(frame_buffer, axis=0).astype(np.float32)  # (B,4,84,84)
-                state_q.put((worker_id, _MSG_STATE, logic_state_np, frame_np))
-            else:
-                # Omit frame array for no-gaze runs to avoid huge IPC bottleneck!
-                state_q.put((worker_id, _MSG_STATE, logic_state_np))
-                
             msg = action_q.get()
             if msg[0] == _MSG_STOP:
                 return
-            predicate = msg[1]
-            state, reward, done = env.step(predicate)
+
+            state, reward, done = env.step(msg[1])
             total_r += reward
             steps   += 1
 
-            if _use_gaze and frame_buffer is not None and not done:
-                from core.utils.utils import preprocess_frame
-                frame_buffer.append(preprocess_frame(env.get_rgb_frame()))
+            if send_frames and frame_buffer is not None and not done:
+                from core.utils.utils import preprocess_frame as _pf
+                frame_buffer.append(_pf(env.get_rgb_frame()))
 
         state_q.put((worker_id, _MSG_DONE, total_r))
 
@@ -120,8 +99,6 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
 
 
 def _env_worker_safe(*args, **kwargs):
-    """Wrapper that catches unhandled exceptions and reports via queue."""
-    # args[-3] is state_q, args[-4] is worker_id by position
     try:
         _env_worker(*args, **kwargs)
     except Exception as e:
@@ -133,86 +110,9 @@ def _env_worker_safe(*args, **kwargs):
         state_q.put((worker_id, _MSG_STOP, None))
 
 
-def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
-                      num_workers=None, max_steps=10000,
-                      gaze_predictor=None, gaze_model_path=None,
-                      use_gaze=False, _gaze_pred_obj=None,train_run=False):
-    """
-    Parallel evaluation using multiprocessing worker pool.
-
-    Architecture:
-      - N worker processes each own one NSFRBaseEnv (CPU only)
-      - If gaze is enabled, each worker also owns a CPU gaze predictor
-        and computes gaze heatmaps locally — no GPU needed in workers
-      - Workers send (logic_state, gaze_tensor) to main process
-      - Main process batches all pending states into ONE GPU forward pass
-      - Actions dispatched back to the correct workers
-
-    Args:
-        agent:           ImitationAgent with loaded model weights
-        env_name:        Environment name string e.g. 'seaquest'
-        num_episodes:    Total episodes to evaluate
-        seed:            Base seed — episode i uses seed+i
-        num_workers:     Parallel envs. Default: min(cpu_count, num_episodes)
-        max_steps:       Max steps per episode before forced termination
-        gaze_predictor:  Legacy — if provided, falls back to sequential eval
-        gaze_model_path: Path to gaze predictor .pth weights for parallel gaze
-        use_gaze:        Whether to pass gaze tensors to agent.predict()
-
-    Returns:
-        List of total rewards, length == num_episodes
-    """
-    # Legacy fallback: if caller passes a gaze_predictor object (GPU-bound),
-    # we cannot use it in worker processes. Fall back to sequential.
-    if gaze_predictor is not None and gaze_model_path is None:
-        print("  Warning: GPU gaze_predictor not supported in parallel eval.")
-        print("  Pass gaze_model_path instead for parallel gaze evaluation.")
-        print("  Falling back to sequential evaluation.")
-        env = NSFRBaseEnv.from_name(env_name, mode='logic')
-        return evaluate(agent, env, num_episodes=num_episodes,
-                        seed=seed, gaze_predictor=gaze_predictor,
-                        max_steps=max_steps)
-
-    if num_workers is None:
-        cpu_count   = mp.cpu_count()
-        num_workers = min(cpu_count, num_episodes)
-        if gaze_model_path:
-            print(f"  Auto-selected {num_workers} workers "
-                  f"({cpu_count} CPUs, {num_episodes} episodes, "
-                  f"CPU gaze enabled)")
-        else:
-            print(f"  Auto-selected {num_workers} workers "
-                  f"({cpu_count} CPUs, {num_episodes} episodes)")
-
-    num_workers = min(num_workers, num_episodes)
-    device      = agent.device
-
-    # Distribute episodes round-robin across workers
-    worker_seeds = [[] for _ in range(num_workers)]
-    for ep in range(num_episodes):
-        worker_seeds[ep % num_workers].append(seed + ep)
-
-    # One shared inbound queue (workers -> main)
-    # One outbound queue per worker (main -> worker)
-    state_q   = mp.Queue()
-    action_qs = [mp.Queue() for _ in range(num_workers)]
-
-    # Load gaze predictor in main process on GPU — one shared model
-    # Workers send raw frame stacks; main batches them for GPU inference
-    _gaze_model = None
-    if use_gaze and gaze_model_path is not None:
-        try:
-            from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
-            _gaze_model = Human_Gaze_Predictor(env_name)
-            _gaze_model.init_model(gaze_model_path)
-            _gaze_model.model = _gaze_model.model.to(device)
-            _gaze_model.model.eval()
-            print(f"  Gaze predictor loaded on {device} for batched inference")
-        except Exception as e:
-            print(f"  Warning: could not load gaze predictor: {e}")
-            _gaze_model = None
-
-    # Workers don't need gaze_model_path anymore — pass None
+def _spawn_workers(num_workers, worker_seeds, state_q, action_qs,
+                   env_name, max_steps, send_frames, train_run):
+    """Spawn worker pool. Returns list of Process objects."""
     if train_run:
         ctx = mp.get_context('spawn')
     else:
@@ -226,102 +126,316 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
         p = ctx.Process(
             target=_env_worker_safe,
             args=(wid, worker_seeds[wid], state_q, action_qs[wid],
-                  env_name, max_steps,
-                  gaze_model_path if use_gaze else None,  # signals worker to send frames
-                  env_name),
+                  env_name, max_steps, send_frames),
             daemon=True,
         )
         p.start()
         workers.append(p)
+    return workers
 
-    # ── Main inference loop ───────────────────────────────────────────────────
-    agent.model.eval()
+
+def _load_gaze_model(env_name, gaze_model_path, device):
+    """Load gaze predictor onto device. Returns None on failure."""
+    try:
+        from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
+        gm = Human_Gaze_Predictor(env_name)
+        gm.init_model(gaze_model_path)
+        gm.model = gm.model.to(device)
+        gm.model.eval()
+        return gm
+    except Exception as e:
+        print(f"  Warning: could not load gaze predictor: {e}")
+        return None
+
+
+def _run_inference_loop(agent, state_q, action_qs, num_workers,
+                        num_episodes, device, use_gaze, gaze_model,
+                        verbose=True):
+    """
+    Core inference loop shared by evaluate_parallel and evaluate_checkpoints.
+
+    Drain strategy:
+      - Blocking get with 2ms timeout when nothing is pending (avoids spin)
+      - Non-blocking get once work is in flight (minimises dispatch latency)
+    Batches all pending workers into a single GPU forward pass.
+
+    Returns list of episode rewards.
+    """
+    inv_map         = {v: k for k, v in agent.primitive_action_map.items()}
     episode_rewards = []
     workers_done    = 0
-    # pending: worker_id -> (logic_state_np, gaze_np)
-    pending         = {}
-    inv_map         = {v: k for k, v in agent.primitive_action_map.items()}
+    pending         = {}   # worker_id -> (logic_np, frame_np | None)
 
     with torch.no_grad():
         while workers_done < num_workers or pending:
-            # Drain queue — collect all available states before batching
+
+            # Drain all available messages
+            drained = False
             while True:
                 try:
-                    msg = state_q.get(timeout=0.005 if not pending else 0.0)
+                    timeout = 0.0 if (pending or drained) else 0.002
+                    msg     = state_q.get(timeout=timeout)
+                    drained = True
                 except Exception:
                     break
 
                 wid, msg_type = msg[0], msg[1]
 
                 if msg_type == _MSG_STATE:
-                    if use_gaze:
-                        # msg = (wid, MSG_STATE, logic_state_np, gaze_np)
-                        pending[wid] = (msg[2], msg[3])
-                    else:
-                        # msg = (wid, MSG_STATE, logic_state_np)
-                        pending[wid] = (msg[2], None)
+                    pending[wid] = (msg[2], msg[3] if use_gaze else None)
 
                 elif msg_type == _MSG_DONE:
                     episode_rewards.append(msg[2])
-                    n = len(episode_rewards)
-                    print(f"  Episode {n}/{num_episodes}: Reward = {msg[2]:.1f}")
+                    if verbose:
+                        print(f"  Episode {len(episode_rewards)}"
+                              f"/{num_episodes}: Reward = {msg[2]:.1f}")
 
                 elif msg_type == _MSG_STOP:
                     workers_done += 1
 
-            # Run batched GPU inference for all workers currently waiting
+            # Batch GPU inference for all pending workers
             if pending:
-                wids         = list(pending.keys())
-                logic_states = np.stack([pending[w][0] for w in wids])
-                frame_stacks = np.stack([pending[w][1] for w in wids])  # (B,4,84,84)
-
+                wids = list(pending.keys())
                 batch_states = torch.tensor(
-                    logic_states, dtype=torch.float32, device=device
+                    np.stack([pending[w][0] for w in wids]),
+                    dtype=torch.float32, device=device
                 )
 
-                # Run gaze CNN on GPU for the whole batch at once
                 batch_gazes = None
-                if use_gaze and _gaze_model is not None:
-                    with torch.no_grad():
-                        frames_gpu = torch.tensor(
-                            frame_stacks, dtype=torch.float32, device=device
-                        )  # (B,4,84,84)
-                        batch_gazes = _gaze_model.predict_normalized(
-                            frames_gpu
-                        ).squeeze(1)  # (B,84,84)
+                if use_gaze and gaze_model is not None:
+                    frames_gpu = torch.tensor(
+                        np.stack([pending[w][1] for w in wids]),
+                        dtype=torch.float32, device=device
+                    )
+                    batch_gazes = gaze_model.predict_normalized(
+                        frames_gpu
+                    ).squeeze(1)  # (B, 84, 84)
 
-                _, action_scores = agent.predict(
-                    batch_states,
-                    gazes=batch_gazes,
-                )
+                _, action_scores = agent.predict(batch_states, gazes=batch_gazes)
 
                 for wid, scores in zip(wids, action_scores):
-                    predicate = inv_map[scores.argmax().item()]
-                    action_qs[wid].put((_MSG_STATE, predicate))
+                    action_qs[wid].put((_MSG_STATE, inv_map[scores.argmax().item()]))
 
                 pending.clear()
 
-    # Clean up worker processes
+    return episode_rewards
+
+
+def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
+                      num_workers=None, max_steps=10000,
+                      gaze_predictor=None, gaze_model_path=None,
+                      use_gaze=False, train_run=False, verbose=True):
+    """
+    Parallel evaluation using a multiprocessing worker pool.
+
+    Workers own envs (CPU only). Gaze CNN lives in main process (GPU).
+    Workers send raw frame stacks; main batches them for GPU inference.
+
+    For scanning all checkpoints in a run, use evaluate_checkpoints() instead.
+    """
+    # Legacy fallback
+    if gaze_predictor is not None and gaze_model_path is None:
+        print("  Warning: pass gaze_model_path instead of gaze_predictor "
+              "for parallel eval. Falling back to sequential.")
+        env = NSFRBaseEnv.from_name(env_name, mode='logic')
+        return evaluate(agent, env, num_episodes=num_episodes,
+                        seed=seed, gaze_predictor=gaze_predictor,
+                        max_steps=max_steps)
+
+    if num_workers is None:
+        num_workers = min(mp.cpu_count(), num_episodes)
+    num_workers = min(num_workers, num_episodes)
+    device      = agent.device
+
+    worker_seeds = [[] for _ in range(num_workers)]
+    for ep in range(num_episodes):
+        worker_seeds[ep % num_workers].append(seed + ep)
+
+    state_q   = mp.Queue()
+    action_qs = [mp.Queue() for _ in range(num_workers)]
+
+    gaze_model = None
+    if use_gaze and gaze_model_path:
+        gaze_model = _load_gaze_model(env_name, gaze_model_path, device)
+        if gaze_model:
+            print(f"  Gaze predictor loaded on {device}")
+
+    workers = _spawn_workers(num_workers, worker_seeds, state_q, action_qs,
+                             env_name, max_steps, use_gaze, train_run)
+
+    agent.model.eval()
+    rewards = _run_inference_loop(
+        agent, state_q, action_qs, num_workers, num_episodes,
+        device, use_gaze, gaze_model, verbose=verbose
+    )
+
     for p in workers:
         p.join(timeout=5)
         if p.is_alive():
             p.terminate()
 
-    # Free gaze model from GPU memory before returning to training
-    if _gaze_model is not None:
-        del _gaze_model
+    if gaze_model is not None:
+        del gaze_model
         torch.cuda.empty_cache()
 
-    return episode_rewards
+    return rewards
+
+
+def evaluate_checkpoints(run_dir, env_name, rules, device_str='cuda',
+                          num_episodes=100, seed=42, num_workers=None,
+                          max_steps=10000, use_gaze=False,
+                          gaze_model_path=None, unnormalized=False,
+                          visible_preds_only=False, alpha=0.1,
+                          output_csv=None, verbose=False):
+    """
+    Evaluate all saved checkpoints in a run directory.
+
+    Loads the agent and gaze model once, swaps weights per checkpoint.
+    Workers are respawned per checkpoint (cheap vs GPU inference).
+
+    Usage:
+        python evaluate_model.py --run_dir trained_models/.../run_dir \\
+            --env seaquest --rules claude_extensive --episodes 100
+
+    Args:
+        run_dir:     Directory containing epoch_N.pth files
+        env_name:    Environment name
+        rules:       Ruleset name
+        device_str:  'cuda' or 'cpu'
+        num_episodes: Episodes per checkpoint
+        seed:        Base seed (episode i uses seed+i)
+        num_workers: Parallel envs (default: auto = min(cpu_count, episodes))
+        max_steps:   Max steps per episode
+        use_gaze:    Whether to use gaze predictor
+        gaze_model_path: Path to gaze predictor weights
+        unnormalized: Use unnormalized gaze sums
+        visible_preds_only: Only scale visible_ predicates
+        alpha:       Laplace smoothing alpha (legacy, currently unused)
+        output_csv:  Save results here (default: run_dir/eval_scan.csv)
+        verbose:     Print per-episode rewards
+
+    Returns:
+        pd.DataFrame with columns [checkpoint, epoch, mean_reward, std_reward,
+                                   min_reward, max_reward, n_episodes]
+    """
+    device = torch.device(device_str if torch.cuda.is_available() else 'cpu')
+
+    ckpt_paths = sorted(
+        glob.glob(os.path.join(run_dir, 'epoch_*.pth')),
+        key=lambda p: int(Path(p).stem.split('_')[1])
+    )
+    if not ckpt_paths:
+        raise FileNotFoundError(f"No epoch_*.pth files found in {run_dir}")
+
+    print(f"Found {len(ckpt_paths)} checkpoints in {run_dir}")
+    print(f"Evaluating {num_episodes} episodes per checkpoint, "
+          f"{num_workers or 'auto'} workers\n")
+
+    if num_workers is None:
+        num_workers = min(mp.cpu_count(), num_episodes)
+    num_workers = min(num_workers, num_episodes)
+
+    worker_seeds = [[] for _ in range(num_workers)]
+    for ep in range(num_episodes):
+        worker_seeds[ep % num_workers].append(seed + ep)
+
+    # Load agent once — weights swapped per checkpoint
+    gaze_threshold = 50.0 if use_gaze else None
+    agent = ImitationAgent(
+        env_name, rules, device,
+        gaze_threshold=gaze_threshold,
+        unnormalized=unnormalized,
+        visible_preds_only=visible_preds_only,
+        alpha=alpha,
+    )
+
+    # Load gaze model once
+    gaze_model = None
+    if use_gaze and gaze_model_path:
+        gaze_model = _load_gaze_model(env_name, gaze_model_path, device)
+
+    results = []
+
+    for ckpt_path in ckpt_paths:
+        epoch = int(Path(ckpt_path).stem.split('_')[1])
+        print(f"Epoch {epoch:3d}: ", end='', flush=True)
+
+        agent.load(ckpt_path)
+        agent.model.eval()
+
+        state_q   = mp.Queue()
+        action_qs = [mp.Queue() for _ in range(num_workers)]
+        workers   = _spawn_workers(
+            num_workers, worker_seeds, state_q, action_qs,
+            env_name, max_steps, use_gaze, train_run=False
+        )
+
+        t0      = time.perf_counter()
+        rewards = _run_inference_loop(
+            agent, state_q, action_qs, num_workers, num_episodes,
+            device, use_gaze, gaze_model, verbose=verbose
+        )
+        elapsed = time.perf_counter() - t0
+
+        for p in workers:
+            p.join(timeout=5)
+            if p.is_alive():
+                p.terminate()
+
+        mean_r = np.mean(rewards)
+        std_r  = np.std(rewards)
+        min_r  = np.min(rewards)
+        max_r  = np.max(rewards)
+
+        print(f"mean={mean_r:7.1f}  std={std_r:7.1f}  "
+              f"min={min_r:5.0f}  max={max_r:5.0f}  "
+              f"({num_episodes/elapsed:.1f} ep/s)")
+
+        results.append({
+            'checkpoint':  ckpt_path,
+            'epoch':       epoch,
+            'mean_reward': mean_r,
+            'std_reward':  std_r,
+            'min_reward':  min_r,
+            'max_reward':  max_r,
+            'n_episodes':  num_episodes,
+        })
+
+    if gaze_model is not None:
+        del gaze_model
+        torch.cuda.empty_cache()
+
+    df = pd.DataFrame(results).sort_values('epoch').reset_index(drop=True)
+
+    if output_csv is None:
+        output_csv = os.path.join(run_dir, 'eval_scan.csv')
+    df.to_csv(output_csv, index=False)
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("CHECKPOINT SCAN SUMMARY")
+    print("=" * 60)
+    print(f"{'Epoch':>6}  {'Mean':>8}  {'Std':>8}  {'Min':>6}  {'Max':>6}")
+    print("-" * 60)
+    best_mean = df['mean_reward'].max()
+    for _, row in df.iterrows():
+        marker = " ◄ best" if row['mean_reward'] == best_mean else ""
+        print(f"  {int(row['epoch']):4d}   {row['mean_reward']:8.1f}  "
+              f"{row['std_reward']:8.1f}  {row['min_reward']:6.0f}  "
+              f"{row['max_reward']:6.0f}{marker}")
+    print("=" * 60)
+    best = df.loc[df['mean_reward'].idxmax()]
+    print(f"\nBest: epoch {int(best['epoch'])}  "
+          f"mean={best['mean_reward']:.1f} ± {best['std_reward']:.1f}")
+    print(f"Results saved to {output_csv}\n")
+
+    return df
 
 
 def evaluate(agent, env, env_name=None, num_episodes=5, seed=42,
              gaze_predictor=None, log_interval=100, valuation_interval=50,
              max_steps=10000):
-    """
-    Original sequential evaluation. Kept for compatibility and gaze support.
-    For fast no-gaze evaluation, use evaluate_parallel() instead.
-    """
+    """Sequential evaluation. Kept for compatibility."""
     if env is None:
         env = NSFRBaseEnv.from_name(env_name, mode='logic')
 
@@ -334,7 +448,6 @@ def evaluate(agent, env, env_name=None, num_episodes=5, seed=42,
         try:
             state = env.reset(seed=seed + i) if seed is not None else env.reset()
         except TypeError:
-            print("Warning: env.reset() does not accept seed.")
             state = env.reset()
 
         done         = False
@@ -350,12 +463,11 @@ def evaluate(agent, env, env_name=None, num_episodes=5, seed=42,
 
         while not done and step_count < max_steps:
             gaze_tensor = None
-            if gaze_predictor is not None:
-                img_stack    = np.stack(frame_buffer, axis=-1)
+            if gaze_predictor is not None and frame_buffer is not None:
                 input_tensor = torch.tensor(
-                    img_stack, dtype=torch.float32,
-                    device=gaze_predictor.device
-                ).permute(2, 0, 1).unsqueeze(0)
+                    np.stack(list(frame_buffer), axis=0),
+                    dtype=torch.float32, device=agent.device
+                ).unsqueeze(0)
                 with torch.no_grad():
                     gaze_tensor = gaze_predictor.predict_normalized(
                         input_tensor
@@ -386,61 +498,90 @@ def evaluate(agent, env, env_name=None, num_episodes=5, seed=42,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path",         type=str, required=True)
+    # ── Modes ─────────────────────────────────────────────────────────────────
+    parser.add_argument("--model_path",         type=str, default=None,
+                        help="Single checkpoint .pth to evaluate")
+    parser.add_argument("--run_dir",            type=str, default=None,
+                        help="Scan all epoch_*.pth checkpoints in this dir")
+    # ── Model ─────────────────────────────────────────────────────────────────
     parser.add_argument("--env",                type=str, default="seaquest")
     parser.add_argument("--rules",              type=str, default="new")
-    parser.add_argument("--episodes",           type=int, default=50)
-    parser.add_argument("--seed",               type=int, default=42)
     parser.add_argument("--device",             type=str,
                         default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--log_interval",       type=int, default=0)
-    parser.add_argument("--valuation_interval", type=int, default=0)
-    parser.add_argument("--use_gaze",           action="store_true")
-    parser.add_argument("--gaze_threshold",     type=float, default=20.0)
-
-    parser.add_argument("--gaze_model_path",    type=str,
-                        default="seaquest_gaze_predictor_2.pth")
-    parser.add_argument("--send_email",         action="store_true")
-    parser.add_argument("--num_workers",        type=int, default=None,
-                        help="Parallel envs (default: auto from CPU count)")
-    parser.add_argument("--sequential",         action="store_true",
-                        help="Force sequential eval (required with --use_gaze)")
+    # ── Eval ──────────────────────────────────────────────────────────────────
+    parser.add_argument("--episodes",           type=int, default=100)
+    parser.add_argument("--seed",               type=int, default=42)
+    parser.add_argument("--num_workers",        type=int, default=None)
     parser.add_argument("--max_steps",          type=int, default=10000)
-    parser.add_argument("--unnormalized",       action="store_true", help="Use unnormalized gaze probabilities and multiply valuations")
-    parser.add_argument("--visible_preds_only", action="store_true", help="Only scale visible_{object} predicates with gaze")
-    parser.add_argument("--alpha",              type=float, default=None, help="Laplacian smoothing parameter for gaze normalization")
+    parser.add_argument("--sequential",         action="store_true")
+    parser.add_argument("--verbose",            action="store_true")
+    # ── Gaze ──────────────────────────────────────────────────────────────────
+    parser.add_argument("--use_gaze",           action="store_true")
+    parser.add_argument("--gaze_model_path",    type=str,
+                        default="gaze_models/seaquest/seaquest_gaze_predictor_2.pth")
+    parser.add_argument("--unnormalized",       action="store_true")
+    parser.add_argument("--visible_preds_only", action="store_true")
+    parser.add_argument("--alpha",              type=float, default=None)
+    # ── Output ────────────────────────────────────────────────────────────────
+    parser.add_argument("--output_csv",         type=str, default=None)
     args = parser.parse_args()
-    
-    # Auto-enable use_gaze if unnormalized is set
+
     if args.unnormalized:
         args.use_gaze = True
-
     if args.use_gaze and args.alpha is None and not args.unnormalized:
         args.alpha = 0.1
-    device = torch.device(args.device)
-    print(f"Using device: {device}")
 
     make_deterministic(args.seed)
 
-    gaze_threshold = args.gaze_threshold if args.use_gaze else None
-    agent = ImitationAgent(args.env, args.rules, device,
-                           gaze_threshold=gaze_threshold,
-                           unnormalized=args.unnormalized,
-                           visible_preds_only=args.visible_preds_only,
-                           alpha=args.alpha)
-
-    if not os.path.exists(args.model_path):
-        print(f"Error: Model not found at {args.model_path}")
+    # ── Checkpoint scan ───────────────────────────────────────────────────────
+    if args.run_dir is not None:
+        evaluate_checkpoints(
+            run_dir=args.run_dir,
+            env_name=args.env,
+            rules=args.rules,
+            device_str=args.device,
+            num_episodes=args.episodes,
+            seed=args.seed,
+            num_workers=args.num_workers,
+            max_steps=args.max_steps,
+            use_gaze=args.use_gaze,
+            gaze_model_path=args.gaze_model_path if args.use_gaze else None,
+            unnormalized=args.unnormalized,
+            visible_preds_only=args.visible_preds_only,
+            alpha=args.alpha,
+            output_csv=args.output_csv,
+            verbose=args.verbose,
+        )
         return
 
+    # ── Single checkpoint ─────────────────────────────────────────────────────
+    if args.model_path is None:
+        print("Error: provide --model_path or --run_dir")
+        return
+
+    device = torch.device(args.device)
+    agent  = ImitationAgent(
+        args.env, args.rules, device,
+        gaze_threshold=50.0 if args.use_gaze else None,
+        unnormalized=args.unnormalized,
+        visible_preds_only=args.visible_preds_only,
+        alpha=args.alpha,
+    )
     print(f"Loading model from {args.model_path}...")
     agent.load(args.model_path)
-    print(f"Starting evaluation: {args.episodes} episodes...")
 
-    # Parallel gaze evaluation: workers load gaze model on CPU themselves.
-    # Sequential fallback only if --sequential is explicitly requested.
-    if not args.sequential:
-        gaze_path = args.gaze_model_path if args.use_gaze else None
+    if args.sequential:
+        gaze_predictor = None
+        if args.use_gaze:
+            from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
+            gaze_predictor = Human_Gaze_Predictor(args.env)
+            gaze_predictor.init_model(args.gaze_model_path)
+            gaze_predictor.model.eval()
+        env     = NSFRBaseEnv.from_name(args.env, mode='logic')
+        rewards = evaluate(agent, env, num_episodes=args.episodes,
+                           seed=args.seed, gaze_predictor=gaze_predictor,
+                           max_steps=args.max_steps)
+    else:
         rewards = evaluate_parallel(
             agent,
             env_name=args.env,
@@ -448,54 +589,30 @@ def main():
             seed=args.seed,
             num_workers=args.num_workers,
             max_steps=args.max_steps,
-            gaze_model_path=gaze_path,
+            gaze_model_path=args.gaze_model_path if args.use_gaze else None,
             use_gaze=args.use_gaze,
-            
-        )
-    else:
-        # Sequential path — loads gaze predictor on GPU in main process
-        gaze_predictor = None
-        if args.use_gaze:
-            if Human_Gaze_Predictor is None:
-                print("Error: Could not import Human_Gaze_Predictor.")
-                return
-            print(f"Initializing Gaze Predictor from {args.gaze_model_path}...")
-            gaze_predictor = Human_Gaze_Predictor(args.env)
-            gaze_predictor.init_model(args.gaze_model_path)
-            gaze_predictor.model.eval()
-        env = NSFRBaseEnv.from_name(args.env, mode='logic')
-        rewards = evaluate(
-            agent, env,
-            num_episodes=args.episodes,
-            seed=args.seed,
-            gaze_predictor=gaze_predictor,
-            log_interval=args.log_interval,
-            valuation_interval=args.valuation_interval,
-            max_steps=args.max_steps,
+            verbose=args.verbose,
         )
 
-    mean_reward = np.mean(rewards)
-    std_reward  = np.std(rewards)
-
+    mean_r, std_r = np.mean(rewards), np.std(rewards)
     print("\n" + "=" * 40)
     print(f"Model:       {args.model_path}")
     print(f"Episodes:    {args.episodes}")
-    print(f"Mean Reward: {mean_reward:.2f}")
-    print(f"Std Dev:     {std_reward:.2f}")
+    print(f"Mean Reward: {mean_r:.2f}")
+    print(f"Std Dev:     {std_r:.2f}")
     print(f"Min / Max:   {min(rewards):.0f} / {max(rewards):.0f}")
     print("=" * 40)
 
-    if args.send_email and send_email is not None:
-        try:
-            send_email(
-                f"Eval: {args.env} | N={args.episodes}",
-                f"Mean: {mean_reward:.2f}  Std: {std_reward:.2f}\n"
-                f"Min: {min(rewards):.0f}  Max: {max(rewards):.0f}\n"
-                f"Seed: {args.seed}  Rules: {args.rules}",
-            )
-            print("Email sent.")
-        except Exception as e:
-            print(f"Email failed: {e}")
+    if args.output_csv:
+        pd.DataFrame([{
+            'checkpoint':  args.model_path,
+            'mean_reward': mean_r,
+            'std_reward':  std_r,
+            'min_reward':  min(rewards),
+            'max_reward':  max(rewards),
+            'n_episodes':  len(rewards),
+        }]).to_csv(args.output_csv, index=False)
+        print(f"Saved to {args.output_csv}")
 
 
 if __name__ == "__main__":
