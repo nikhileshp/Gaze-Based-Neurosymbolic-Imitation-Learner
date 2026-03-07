@@ -21,6 +21,30 @@ def visible_diver(diver: th.Tensor) -> th.Tensor:
     return bool_to_probs(diver[..., 0] == 1)
 
 
+def directly_above_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
+    obj_exists = enemy[..., 0] == 1  # Check if object exists/visible
+    player_y = player[..., 2]
+    obj_y = enemy[..., 2]
+    result = obj_exists & (player_y < obj_y) 
+    overlap = _horizontal_iou(player, enemy, 11, 10)
+    return bool_to_probs(result) * overlap
+
+def not_directly_above_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
+    obj_exists = enemy[..., 0] == 1
+    return bool_to_probs(obj_exists) * (1.0 - directly_above_enemy(player, enemy))
+
+def directly_below_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
+    obj_exists = enemy[..., 0] == 1  # Check if object exists/visible
+    player_y = player[..., 2]
+    obj_y = enemy[..., 2]
+    result = obj_exists & (player_y > obj_y) 
+    overlap = _horizontal_iou(player, enemy, 11, 10)
+    return bool_to_probs(result) * overlap
+
+
+def not_directly_below_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
+    obj_exists = enemy[..., 0] == 1
+    return bool_to_probs(obj_exists) * (1.0 - directly_below_enemy(player, enemy))
 
 def facing_left(player: th.Tensor) -> th.Tensor:
     # Orientation is at index 5
@@ -66,10 +90,36 @@ def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
     # Else if below -> val_below
     # Else -> val_above
     result = th.where(inside, th.tensor(1.0, device=player.device),
-                      th.where(y1_midpoint < y2_min, val_below, val_above))
+                      th.where(y1_midpoint < y2_min, val_below*2, val_above*2))
     
     return result
 
+def _horizontal_iou(player: th.Tensor, obj: th.Tensor, w1: float, w2: float) -> th.Tensor:
+    player_x = player[..., 1]
+    obj_x = obj[..., 1]
+    
+    x1_midpoint = player_x + w1/2
+    x2_min = obj_x - w1/2
+    x2_max = obj_x + w2 + w1
+    
+    # Vectorized logic
+    inside = (x1_midpoint > x2_min) & (x1_midpoint < x2_max)
+    
+    # Case: Below range (midpoint < min)
+    diff_right = (player_x + w1) - x2_min
+    val_right= th.clip(diff_right / w1, 0, 1)
+    
+    # Case: Above range (midpoint >= max)
+    diff_left = x2_max - player_x
+    val_left = th.clip(diff_left / w1, 0, 1)
+    
+    # If inside -> 1.0
+    # Else if below -> val_below
+    # Else -> val_above
+    result = th.where(inside, th.tensor(1.0, device=player.device),
+                      th.where(x1_midpoint < x2_min, val_right*2, val_left*2))
+    
+    return result
 
 # Should be 0.99 if the midpoint of player is withing the bounding box of object
 def same_depth_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -184,6 +234,31 @@ def close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     proximity = _close_by(player, obj)
     # Only return proximity if object exists, else 0
     return proximity * bool_to_probs(obj_exists)
+
+def closest_enemy(player: th.Tensor, enemy: th.Tensor, all_objects: th.Tensor = None) -> th.Tensor:
+    if all_objects is None:
+        return visible_enemy(enemy)
+        
+    # player: (B*N, F), enemy: (B*N, F), all_objects: (B*N, N_OBJ, F)
+    # Compute distance from player to target enemy
+    target_dist = th.abs(player[..., 1] - enemy[..., 1]) + th.abs(player[..., 2] - enemy[..., 2])
+    
+    # Compute distances from player to all objects
+    player_expanded = player.unsqueeze(1)
+    all_dists = th.abs(player_expanded[..., 1] - all_objects[..., 1]) + th.abs(player_expanded[..., 2] - all_objects[..., 2])
+    
+    # Identify enemies: type_id 0 (at index 6) and visible (at index 0)
+    is_enemy = (all_objects[..., 6] == 0) & (all_objects[..., 0] == 1)
+    
+    # Mask non-enemies with large distance
+    enemy_dists = th.where(is_enemy, all_dists, th.tensor(1000.0, device=all_objects.device))
+    
+    # Find minimum distance to any enemy
+    min_dist, _ = th.min(enemy_dists, dim=1)
+    
+    # Check if target enemy is the closest (using small epsilon for float comparison)
+    is_closest = (target_dist <= min_dist + 1e-3) & (enemy[..., 0] == 1)
+    return bool_to_probs(is_closest)
 
 def not_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible

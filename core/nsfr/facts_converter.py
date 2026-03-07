@@ -132,7 +132,7 @@ class FactsConverter(nn.Module):
         # (the column appended above). The guard arg.size(1) >= 8 in
         # valuation._call_val_fn ensures no scaling fires in the no-gaze case.
         for pred_name, atoms in self.atom_groups.items():
-            vals    = self.vm.batch_forward(Z, pred_name, atoms, gaze=None, all_objects=None)
+            vals    = self.vm.batch_forward(Z, pred_name, atoms, gaze=None, all_objects=Z)
             indices = self.atom_indices[pred_name]
             V[:, indices] = vals
 

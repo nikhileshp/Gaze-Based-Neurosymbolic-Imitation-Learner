@@ -114,7 +114,29 @@ class AgentWrapper:
         else:
             self.current_neural_predicates = []
         
-        action_idx = self.agent.act(state, gaze=gaze_tensor)
+        # Get best action based on aggregation
+        _, action_scores = self.agent.predict(state_input, gaze_tensor)
+        best_action_idx = action_scores[0].argmax().item()
+        
+        # Map back to primitive action name
+        inv_map = {v: k for k, v in self.agent.primitive_action_map.items()}
+        best_action_name = inv_map[best_action_idx]
+        
+        # Find the best rule index that maps to this action
+        prednames = self.actor.prednames
+        best_rule_idx = -1
+        max_rule_prob = -1.0
+        
+        for i, pred in enumerate(prednames):
+            if pred.split('_')[0] == best_action_name:
+                if probs[i] > max_rule_prob:
+                    max_rule_prob = probs[i]
+                    best_rule_idx = i
+        
+        if best_rule_idx == -1:
+            best_rule_idx = probs.argmax().item()
+            
+        action_idx = best_rule_idx
         
         # Enhanced debug output every 10 steps
         if self.debug:
