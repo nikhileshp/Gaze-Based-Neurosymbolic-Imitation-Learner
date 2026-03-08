@@ -32,6 +32,10 @@ from core.utils.utils import (
 )
 from nsfr.env import NSFRBaseEnv
 from core.utils.linear_models import Encoder, weight_init
+import random
+from torch.utils.data import TensorDataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -43,8 +47,11 @@ PRIMITIVE_ACTIONS = {0: 'noop', 1: 'fire', 2: 'up', 3: 'right', 4: 'left', 5: 'd
 
 
 def preprocess_obs(obs_batch, device):
-    """uint8 (B, H, W) → float32 (B, 1, H, W) normalised to [0, 1]."""
-    return obs_batch.float().unsqueeze(1).to(device) / 255.0
+    """uint8 (B, H, W) or (B, 1, H, W) → float32 (B, 1, H, W) normalised to [0, 1]."""
+    x = obs_batch.float().to(device) / 255.0
+    if x.ndim == 3:          # (B, H, W) — add channel dim
+        x = x.unsqueeze(1)
+    return x                 # (B, 1, H, W)
 
 
 def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
