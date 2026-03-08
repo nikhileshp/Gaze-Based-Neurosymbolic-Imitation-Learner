@@ -224,7 +224,7 @@ from core.utils.utils import get_primitive_action_map
 
 
 class ImitationAgent(nn.Module):
-    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, aggregation_method='softor'):
+    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, aggregation_method='max'):
         super().__init__()
         self.device = device
         self.env_name = env_name

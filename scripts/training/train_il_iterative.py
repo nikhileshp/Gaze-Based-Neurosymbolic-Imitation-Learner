@@ -135,6 +135,8 @@ def main():
     parser.add_argument("--unnormalized",     action="store_true")
     parser.add_argument("--visible_preds_only", action="store_true")
     parser.add_argument("--alpha",            type=float, default=None)
+    parser.add_argument("--aggregation",      type=str, default="max",
+                        choices=["softor", "max"], help="Action aggregation method")
     # ── Iterative-specific ────────────────────────────────────────────────────
     parser.add_argument("--step_pct",         type=int, default=10,
                         help="Increment step (%%): 10 means 10,20,...,100")
@@ -184,6 +186,7 @@ def main():
         unnormalized=unnormalized,
         visible_preds_only=visible_preds_only,
         alpha=alpha,
+        aggregation_method=args.aggregation,
     )
 
     if args.resume_from:
