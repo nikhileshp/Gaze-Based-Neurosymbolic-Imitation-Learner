@@ -20,6 +20,7 @@ parser.add_argument("-db", "--debug",type=bool, default=False)
 parser.add_argument("--use_gaze", action="store_true", help="Visualize gaze predictions dynamically")
 parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
 parser.add_argument("--fps", type=int, default=60, help="Frames per second for playback")
+parser.add_argument("--aggregation", type=str, default="softor", choices=["softor", "max"], help="Aggregation method for action scores")
 
 try:
     from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
@@ -433,10 +434,11 @@ def main():
         gaze_predictor.init_model(args.gaze_model_path)
         gaze_predictor.model.eval()
 
-    agent = ImitationAgent(args.game, args.rules, args.device)
+    agent = ImitationAgent(args.game, args.rules, args.device, aggregation_method=args.aggregation)
 
     print(f"Loading model from {args.agent_path}...")
-    agent.load(args.agent_path)
+    # agent.load(args.agent_path)
+    print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
     agent.model.eval()
 
     model = AgentWrapper(agent, env, debug=args.debug, gaze_predictor=gaze_predictor)

@@ -166,6 +166,18 @@ def fireable_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     return iou * bool_to_probs(obj_exists)
 
 
+def atleast_one_diver_collected(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+    """True if at least one collected diver is visible (y > 160)."""
+    if all_objects is None:
+        return th.tensor([0.01], device=dummy_player.device)
+    
+    vis = all_objects[..., 0] == 1
+    y = all_objects[..., 2]
+    is_collected = vis & (y > 160)
+    
+    any_collected = th.any(is_collected, dim=1)
+    return bool_to_probs(any_collected)
+
 def same_depth_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1
     # Player (11) vs Diver (11)
@@ -589,3 +601,19 @@ def below_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:
     
     result = player_vis & surface_vis & (player_y > surface_y)
     return bool_to_probs(result)
+
+
+def no_divers_collected(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+    """True if no collected divers are visible (y > 160)."""
+    if all_objects is None:
+        return th.tensor([0.99], device=dummy_player.device)
+    
+    vis = all_objects[..., 0] == 1
+    y = all_objects[..., 2]
+    # Collected divers are at the bottom (y > 160)
+    is_collected = vis & (y > 160)
+    
+    # If ANY collected diver is visible, it's NOT empty.
+    any_collected = th.any(is_collected, dim=1)
+    
+    return bool_to_probs(~any_collected)

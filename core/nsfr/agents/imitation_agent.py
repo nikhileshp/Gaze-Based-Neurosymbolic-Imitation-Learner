@@ -224,10 +224,11 @@ from core.utils.utils import get_primitive_action_map
 
 
 class ImitationAgent(nn.Module):
-    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1):
+    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, aggregation_method='softor'):
         super().__init__()
         self.device = device
         self.env_name = env_name
+        self.aggregation_method = aggregation_method
         self.primitive_action_map = get_primitive_action_map(env_name)
         self.num_actions = max(self.primitive_action_map.values()) + 1
 
@@ -265,20 +266,25 @@ class ImitationAgent(nn.Module):
 
         def softor(tensors, dim=0):
             # Compute soft-or: 1 - prod(1 - p_i)
-            # Clamping to avoid exact 1.0 which can cause issues with log(1-p) if implemented that way, 
-            # though here we just do direct multiplication.
             res = 1.0
             for t in tensors:
                 res = res * (1.0 - t)
             return 1.0 - res
 
+        def max_agg(tensors, dim=0):
+            # Compute max aggregation
+            stacked = torch.stack(tensors, dim=1)
+            res, _ = torch.max(stacked, dim=1)
+            return res
+
+        agg_fn = softor if self.aggregation_method == 'softor' else max_agg
+
         action_scores_list = []
         debug_info = []
         for idx in range(self.num_actions):
             if action_rule_probs[idx]:
-                stacked = torch.stack(action_rule_probs[idx], dim=1) # (B, num_rules_for_action)
-                rules_list = torch.unbind(stacked, dim=1)
-                action_score = softor(rules_list, dim=0) # (B,)
+                # action_score = softor(rules_list, dim=0) # (B,)
+                action_score = agg_fn(action_rule_probs[idx], dim=0)
                 action_scores_list.append(action_score)
                 
                 # For debugging first batch element

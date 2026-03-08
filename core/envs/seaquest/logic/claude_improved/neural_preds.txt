@@ -44,3 +44,5 @@ player_right_side:1:oplayer
 no_object:1:oplayer
 very_close_by_enemy:2:oplayer,oenemy
 fireable_enemy:2:oplayer,oenemy
+no_divers_collected:1:oplayer
+atleast_one_diver_collected:1:oplayer
