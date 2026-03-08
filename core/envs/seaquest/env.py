@@ -18,10 +18,6 @@ class NSFREnv(NSFRBaseEnv):
         'right': 3,
         'left': 4,
         'down': 5,
-        'up_right': 6,
-        'up_left': 7,
-        'down_right': 8,
-        'down_left': 9,
     }
     pred_names: Sequence
 

@@ -446,7 +446,7 @@ class InferModule(nn.Module):
         ones = torch.ones((self.C,), dtype=torch.float32) * 100
         return torch.diag(ones).to(device)
     
-    def _init_block_diagonal(self, m, C, clauses, device, target_diagonal=0.70):
+    def _init_block_diagonal(self, m, C, clauses, device, target_diagonal=0.99):
         # Block-diagonal W initialisation.
         #
         # Spreads target_diagonal weight evenly across all clauses sharing the

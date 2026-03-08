@@ -169,11 +169,10 @@ class AgentWrapper:
                     obj_type = obj.__class__.__name__
                     if obj_type != 'NoObject':
                         pos = f"({obj.x}, {obj.y})" if hasattr(obj, 'x') else "N/A"
-                        dims = f"{obj.w}x{obj.h}" if hasattr(obj, 'w') and hasattr(obj, 'h') else "N/A"
-                        non_no_objects.append((i, obj_type, pos, dims))
+                        non_no_objects.append((i, obj_type, pos))
                         
-                for idx, obj_type, pos, dims in non_no_objects:
-                    print(f"  obj{idx}: {obj_type} at {pos} size {dims}")
+                for idx, obj_type, pos in non_no_objects:
+                    print(f"  obj{idx}: {obj_type} at {pos}")
                 
                 # Also check specific object indices mentioned in predicates
                 # print(f"\nSpecific Object Indices (from predicates):")

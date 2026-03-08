@@ -1,4 +1,3 @@
-
 right_to_center(X):-below_water(P),oxygen_not_low(B),player_left_side(P),no_object(P).
 left_to_center(X):-below_water(P),oxygen_not_low(B),player_right_side(P),no_object(P).
 left_evade(X):-close_by_enemy(P,E),deeper_than_enemy(P,E),visible_enemy(E),directly_below_enemy(P,E),enemy_facing_right(E),closest_enemy(P,E).
@@ -27,7 +26,7 @@ left_to_diver(X):-right_of_diver(P,D),close_by_diver(P,D),visible_diver(D).
 right_to_diver(X):-left_of_diver(P,D),close_by_diver(P,D),visible_diver(D).
 up_to_diver(X):-deeper_than_diver(P,D),close_by_diver(P,D),visible_diver(D).
 down_to_diver(X):-higher_than_diver(P,D),close_by_diver(P,D),visible_diver(D).
-noop_divers_full(X):-divers_collected_full(D),is_collected_diver(D),above_water(P).
-up_return_divers(X):-divers_collected_full(D),is_collected_diver(D),below_water(P).
+noop_divers_full(X):-divers_collected_full(P),above_water(P).
+up_return_divers(X):-divers_collected_full(P),below_water(P).
 noop_oxygen_low(X):-oxygen_not_full(B),above_water(P).
-up_air(X):-oxygen_critical(B),below_water(P),atleast_one_diver_collected(P).
+up_air(X):-oxygen_critical(B),below_water(P),atleast_one_diver_collected(P),divers_not_full(P).

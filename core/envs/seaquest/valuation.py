@@ -96,18 +96,31 @@ def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
 
 
 def _fireable_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th.Tensor:
-    p_y = player[..., 2]
-    o_y = obj[..., 2]
+    player_y = player[..., 2]
+    obj_y = obj[..., 2]
     
-    y_fire = p_y + 0.75 * h1
-    y_target = o_y + 0.5 * h2
+    y1_midpoint = player_y + 3*h1/4
+    y2_midpoint = obj_y + h2/2
+    y2_min = y2_midpoint - h2/4
+    y2_max = y2_midpoint + h2/4
     
-    dist = th.abs(y_fire - y_target)
+    # Vectorized logic
+    inside = (y1_midpoint > y2_min) & (y1_midpoint < y2_max)
     
-    # Sharp predicate: prob=1.0 if dist < 1.0, then decay sharply to near 0.
-    # Inside 2.0 pixels: 0.99, Inside 4.0 pixels: linear decay to 0.01
-    result = th.where(dist < 1.5, th.tensor(0.99, device=player.device),
-                      th.where(dist < 4.0, 1.0 - (dist / 4.0) * 0.98, th.tensor(0.01, device=player.device)))
+    # Case: Below range (midpoint < min)
+    diff_below = (player_y + h1) - y2_min
+    val_below = th.clip(diff_below / h1, 0, 1)
+    
+    # Case: Above range (midpoint >= max)
+    diff_above = y2_max - player_y
+    val_above = th.clip(diff_above / h1, 0, 1)
+    
+    # If inside -> 1.0
+    # Else if below -> val_below
+    # Else -> val_above
+    result = th.where(inside, th.tensor(1.0, device=player.device),
+                      th.where(y1_midpoint < y2_min, val_below, val_above))
+    
     return result
 
 def _horizontal_iou(player: th.Tensor, obj: th.Tensor, w1: float, w2: float) -> th.Tensor:
@@ -159,7 +172,7 @@ def atleast_one_diver_collected(dummy_player, all_objects: th.Tensor = None) -> 
     vis = all_objects[..., 0] == 1
     y = all_objects[..., 2]
     type_ids = all_objects[..., 6]
-    # CollectedDiver is type 6. Filter by type AND position.
+    # CollectedDiver is type 6. Strictly filter by type to avoid catching OxygenBar/Surface.
     is_collected = vis & (y > 160) & (type_ids == 6)
     
     any_collected = th.any(is_collected, dim=1)
@@ -193,12 +206,11 @@ def same_depth_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'deeper than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    p_y, o_y = player[..., 2], obj[..., 2]
-    y_fire = p_y + 0.75 * 11.0 # Standard player height
-    y_target = o_y + 0.5 * 10.0 # Standard enemy height
-    
-    result = obj_exists & (y_fire > y_target)
-    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 10.0)
+    player_y = player[..., 2]
+    obj_y = obj[..., 2]
+    result = obj_exists & (player_y > obj_y) & (same_depth_enemy(player, obj) < HIGHER_BOUND)
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
     
     return bool_to_probs(result) * non_overlap
 
@@ -206,12 +218,12 @@ def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'deeper than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    p_y, o_y = player[..., 2], obj[..., 2]
-    y_fire = p_y + 0.75 * 11.0
-    y_target = o_y + 0.5 * 11.0 # Diver is same size as player usually
-    
-    result = obj_exists & (y_fire > y_target)
-    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 11.0)
+    player_y = player[..., 2]
+    obj_y = obj[..., 2]
+  
+    result = obj_exists & (player_y > obj_y) & (same_depth_diver(player, obj) < HIGHER_BOUND)
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 11)
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
 
     return bool_to_probs(result) * non_overlap
 
@@ -219,25 +231,37 @@ def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'higher than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    p_y, o_y = player[..., 2], obj[..., 2]
-    y_fire = p_y + 0.75 * 11.0
-    y_target = o_y + 0.5 * 10.0
+    player_y = player[..., 2]
+    # print("Player", player)
+    # print("Object", obj)
+    obj_y = obj[..., 2]
+    result = obj_exists & (player_y < obj_y)
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
     
-    result = obj_exists & (y_fire < y_target)
-    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 10.0)
-    
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
+
+    # print("Result", result, "Object y", obj_y, "Player y", player_y, "prox", prox)
     return bool_to_probs(result) * non_overlap
 
 
 def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'higher than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    p_y, o_y = player[..., 2], obj[..., 2]
-    y_fire = p_y + 0.75 * 11.0
-    y_target = o_y + 0.5 * 11.0
+    player_y = player[..., 2]
+    obj_y = obj[..., 2]
     
-    result = obj_exists & (y_fire < y_target)
-    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 11.0)
+    # Calculate vertical difference (obj_y - player_y)
+    # Since y increases downwards, higher means smaller y
+    # Check if higher than threshold (11px)
+    result = obj_exists & (player_y < obj_y) & (same_depth_diver(player, obj) < HIGHER_BOUND)
+    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
+    # Old Logic: Increases with distance
+    # prox = th.clip((result * (obj_y-player_y-11)/11), 0, 1)
+    
+    # New Logic: Decays with distance
+    # Starts high near threshold (11px) and decays as distance increases
+    # e.g. at 11px diff -> 1.0, at 51px diff -> 0.0
+    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
     return bool_to_probs(result) * non_overlap
 
 
@@ -396,8 +420,9 @@ def right_of_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 
 def oxygen_low(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
+    vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
-    result = oxygen_width < 16
+    result = vis & (oxygen_width < 16)
     
     return bool_to_probs(result)
 
@@ -410,11 +435,11 @@ def oxygen_full(oxygen_bar: th.Tensor) -> th.Tensor:
     return bool_to_probs(result)
 
 def oxygen_not_full(oxygen_bar: th.Tensor) -> th.Tensor:
-    """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
+    """True iff oxygen bar width is < 48 pixels."""
+    vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
-    result = oxygen_width < 48
+    result = vis & (oxygen_width < 48)
     
-    # DEBUG: Print first few calls
     return bool_to_probs(result)
 
 def in_image(zs: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -472,15 +497,37 @@ def type(obj: th.Tensor, type_oh: th.Tensor) -> th.Tensor:
 
 # NEW PREDICATES
 
-def divers_collected_full(obj: th.Tensor) -> th.Tensor:
-    """True if the 6th collected diver exists (implying full capacity)."""
-    # This predicate should be bound to the 6th collected diver slot (obj45) in neural_preds.txt
-    return bool_to_probs(obj[..., 0] == 1)
+def divers_collected_full(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+    """True if 6 divers are collected."""
+    if all_objects is None:
+        return th.tensor([0.01], device=dummy_player.device)
+    
+    vis = all_objects[..., 0] == 1
+    type_ids = all_objects[..., 6]
+    # CollectedDiver is type 6
+    is_collected = vis & (type_ids == 6)
+    
+    num_collected = th.sum(is_collected, dim=1)
+    return bool_to_probs(num_collected >= 6)
+
+def divers_not_full(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+    """True if fewer than 6 divers are collected."""
+    if all_objects is None:
+        return th.tensor([0.01], device=dummy_player.device)
+    
+    vis = all_objects[..., 0] == 1
+    type_ids = all_objects[..., 6]
+    is_collected = vis & (type_ids == 6)
+    
+    num_collected = th.sum(is_collected, dim=1)
+    return bool_to_probs(num_collected < 6)
+
 
 def oxygen_critical(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 5 pixels (critical)."""
+    vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3] # Width in pixels (index 3)
-    result = oxygen_width < 5
+    result = vis & (oxygen_width < 5)
     return bool_to_probs(result)
 
 def surface_submarine(obj: th.Tensor) -> th.Tensor:
@@ -540,8 +587,9 @@ def below_water(player: th.Tensor) -> th.Tensor:
 
 def oxygen_not_low(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is greater than 16 pixels (approximately 25% oxygen remaining)."""
+    vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
-    result = oxygen_width >= 16
+    result = vis & (oxygen_width >= 16)
     
     return bool_to_probs(result)
 

@@ -21,7 +21,7 @@ same_depth_diver:2:oplayer,odiver
 same_depth_missile:2:oplayer,omissile
 oxygen_low:1:ooxygenbar
 oxygen_critical:1:ooxygenbar
-divers_collected_full:1:osixthdiver
+divers_collected_full:1:oplayer
 surface_submarine:1:osurfacesub
 is_collected_diver:1:ocollecteddiver
 above_water:1:oplayer
@@ -46,3 +46,4 @@ very_close_by_enemy:2:oplayer,oenemy
 fireable_enemy:2:oplayer,oenemy
 no_divers_collected:1:oplayer
 atleast_one_diver_collected:1:oplayer
+divers_not_full:1:oplayer

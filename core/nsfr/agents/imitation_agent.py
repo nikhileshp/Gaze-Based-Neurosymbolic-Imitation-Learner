@@ -264,19 +264,17 @@ class ImitationAgent(nn.Module):
                 idx = self.primitive_action_map[prefix]
                 action_rule_probs[idx].append(probs[:, i])
 
+        def max_agg(tensors, dim=0):
+            # Compute max aggregation: max(p_i)
+            stacked = torch.stack(tensors, dim=1)
+            res, _ = torch.max(stacked, dim=1)
+            return res
         def softor(tensors, dim=0):
             # Compute soft-or: 1 - prod(1 - p_i)
             res = 1.0
             for t in tensors:
                 res = res * (1.0 - t)
             return 1.0 - res
-
-        def max_agg(tensors, dim=0):
-            # Compute max aggregation
-            stacked = torch.stack(tensors, dim=1)
-            res, _ = torch.max(stacked, dim=1)
-            return res
-
         agg_fn = softor if self.aggregation_method == 'softor' else max_agg
 
         action_scores_list = []
@@ -310,10 +308,10 @@ class ImitationAgent(nn.Module):
                 self._last_log_step = 0
             self._last_log_step += 1
             if self._last_log_step % 10 == 0:
-                # print(f"[DEBUG Agent] Rule Probs: {', '.join(debug_info)}")
+                print(f"[DEBUG Agent] Rule Probs: {', '.join(debug_info)}")
                 best_idx = res[0].argmax().item()
                 inv_map = {v: k for k, v in self.primitive_action_map.items()}
-                # print(f"[DEBUG Agent] Best Action: {inv_map.get(best_idx)} (score: {res[0, best_idx]:.4f})")
+                print(f"[DEBUG Agent] Best Action: {inv_map.get(best_idx)} (score: {res[0, best_idx]:.4f})")
 
         return res
 
