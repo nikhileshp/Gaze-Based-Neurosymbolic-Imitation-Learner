@@ -14,6 +14,8 @@ higher_than_enemy:2:oplayer,oenemy
 higher_than_diver:2:oplayer,odiver
 deeper_than_enemy:2:oplayer,oenemy
 deeper_than_diver:2:oplayer,odiver
+deeper_than_missile:2:oplayer,omissile
+higher_than_missile:2:oplayer,omissile
 same_depth_enemy:2:oplayer,oenemy
 same_depth_diver:2:oplayer,odiver
 same_depth_missile:2:oplayer,omissile
@@ -39,3 +41,6 @@ oxygen_not_full:1:ooxygenbar
 oxygen_not_low:1:ooxygenbar
 player_left_side:1:oplayer
 player_right_side:1:oplayer
+no_object:1:oplayer
+very_close_by_enemy:2:oplayer,oenemy
+fireable_enemy:2:oplayer,oenemy

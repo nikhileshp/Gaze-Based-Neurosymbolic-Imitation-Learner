@@ -173,7 +173,7 @@ class AgentWrapper:
             
             # Show top neural predicates with their object references
             # print(f"\nTop Neural Predicates:")
-            for pred_str, val in self.current_neural_predicates[:20]:
+            for pred_str, val in self.current_neural_predicates[:50]:
                 print(f"  {val:.3f} - {pred_str}")
             
             # Check for type predicates specifically

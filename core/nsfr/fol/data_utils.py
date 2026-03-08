@@ -85,23 +85,29 @@ class DataUtils(object):
         """Parse string to predicates.
         """
         line = line.replace('\n', '')
-        pred, arity, dtype_names_str = line.split(':')
-        dtype_names = dtype_names_str.split(',')
+        parts = line.split(':')
+        pred = parts[0]
+        arity = int(parts[1])
+        dtype_names_str = parts[2] if len(parts) > 2 else ""
+        dtype_names = dtype_names_str.split(',') if dtype_names_str else []
         dtypes = [DataType(dt) for dt in dtype_names]
-        assert int(arity) == len(
+        assert arity == len(
             dtypes), 'Invalid arity and dtypes in ' + pred + '.'
-        return Predicate(pred, int(arity), dtypes)
+        return Predicate(pred, arity, dtypes)
 
     def parse_neural_pred(self, line):
         """Parse string to predicates.
         """
         line = line.replace('\n', '')
-        pred, arity, dtype_names_str = line.split(':')
-        dtype_names = dtype_names_str.split(',')
+        parts = line.split(':')
+        pred = parts[0]
+        arity = int(parts[1])
+        dtype_names_str = parts[2] if len(parts) > 2 else ""
+        dtype_names = dtype_names_str.split(',') if dtype_names_str else []
         dtypes = [DataType(dt) for dt in dtype_names]
-        assert int(arity) == len(
+        assert arity == len(
             dtypes), 'Invalid arity and dtypes in ' + pred + '.'
-        return NeuralPredicate(pred, int(arity), dtypes)
+        return NeuralPredicate(pred, arity, dtypes)
 
     def parse_funcs(self, line):
         """Parse string to function symbols.

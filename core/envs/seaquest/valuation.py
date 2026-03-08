@@ -75,6 +75,37 @@ def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
     y2_min = obj_y
     y2_max = obj_y + h2
     
+    # Vectorized logic 
+    inside = (y1_midpoint > y2_min) & (y1_midpoint < y2_max)
+    
+    # Case: Below range (midpoint < min)
+    diff_below = (player_y + h1) - y2_min
+    val_below = th.clip(diff_below / h1, 0, 1)
+    
+    # Case: Above range (midpoint >= max)
+    diff_above = y2_max - player_y
+    val_above = th.clip(diff_above / h1, 0, 1)
+    
+    # If inside -> 1.0
+    # Else if below -> val_below
+    # Else -> val_above
+    result = th.where(inside, th.tensor(1.0, device=player.device),
+                      th.where(y1_midpoint < y2_min, val_below, val_above))
+    
+    return result
+
+
+def _fireable_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th.Tensor:
+    player_y = player[..., 2]
+    obj_y = obj[..., 2]
+    
+    y1_midpoint = player_y + 2*h1/3
+    y2_min = obj_y
+    y2_max = obj_y + h2
+    y2_midpoint = obj_y + h2/2
+    y2_min = y2_midpoint - h2/4
+    y2_max = y2_midpoint + h2/4
+    
     # Vectorized logic
     inside = (y1_midpoint > y2_min) & (y1_midpoint < y2_max)
     
@@ -126,6 +157,12 @@ def same_depth_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1
     # Player (11) vs Enemy (10)
     iou = _vertical_iou(player, obj, 11, 10)
+    return iou * bool_to_probs(obj_exists)
+
+def fireable_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+    obj_exists = obj[..., 0] == 1
+    # Player (11) vs Enemy (10)
+    iou = _fireable_iou(player, obj, 11, 10)
     return iou * bool_to_probs(obj_exists)
 
 
@@ -228,12 +265,54 @@ def not_close_by_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # Only return proximity if object exists, else 0
     return (1-proximity) * bool_to_probs(obj_exists)
 
+def left_of_missile(player: th.Tensor, missile: th.Tensor) -> th.Tensor:
+    """True iff the player is to the left of the missile."""
+    obj_exists = missile[..., 0] == 1
+    return bool_to_probs(obj_exists & (player[..., 1] < missile[..., 1]))
+
+def right_of_missile(player: th.Tensor, missile: th.Tensor) -> th.Tensor:
+    """True iff the player is to the right of the missile."""
+    obj_exists = missile[..., 0] == 1
+    return bool_to_probs(obj_exists & (player[..., 1] > missile[..., 1]))
+
+def higher_than_missile(player: th.Tensor, missile: th.Tensor) -> th.Tensor:
+    """True iff the player is vertically higher than the missile."""
+    obj_exists = missile[..., 0] == 1
+    return bool_to_probs(obj_exists & (player[..., 2] < missile[..., 2]))
+
+def deeper_than_missile(player: th.Tensor, missile: th.Tensor) -> th.Tensor:
+    """True iff the player is vertically deeper than the missile."""
+    obj_exists = missile[..., 0] == 1
+    return bool_to_probs(obj_exists & (player[..., 2] > missile[..., 2]))
+
 
 def close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
     proximity = _close_by(player, obj)
     # Only return proximity if object exists, else 0
     return proximity * bool_to_probs(obj_exists)
+
+def very_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+    """True iff the player is very close to the enemy based on edge proximity."""
+    obj_exists = obj[..., 0] == 1
+    player_x, player_y = player[..., 1], player[..., 2]
+    player_w, player_h = player[..., 3], player[..., 4]
+    obj_x, obj_y = obj[..., 1], obj[..., 2]
+    obj_w, obj_h = obj[..., 3], obj[..., 4]
+    obj_orient = obj[..., 5]
+
+    # Conditions from user:
+    # 1. enemy facing right (4) and enemy_x+enemy_width is within 5 pixels of player_x
+    cond1 = (obj_orient == 4) & (th.abs(player_x - (obj_x + obj_w)) < 5)
+    # 2. enemy facing left (12) and enemy_x is within 5 pixels of player_x + player_width
+    cond2 = (obj_orient == 12) & (th.abs(obj_x - (player_x + player_w)) < 5)
+    # 3. enemy_y is within 5 pixels of player_y + player_height
+    cond3 = th.abs(obj_y - (player_y + player_h)) < 5
+    # 4. enemy_y + enemy_height is within 5 pixels of player_y
+    cond4 = th.abs(player_y - (obj_y + obj_h)) < 5
+
+    combined = cond1 | cond2 | cond3 | cond4
+    return bool_to_probs(obj_exists & combined)
 
 def closest_enemy(player: th.Tensor, enemy: th.Tensor, all_objects: th.Tensor = None) -> th.Tensor:
     if all_objects is None:
@@ -439,6 +518,22 @@ def is_collected_diver(obj: th.Tensor) -> th.Tensor:
     #
     # I will implement `oxygen_critical` and `surface_submarine` first.
     # pass
+
+def no_object(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+    """True if there are no enemies (type 0) and no divers (type 1) visible in the scene."""
+    if all_objects is None:
+        return th.tensor([0.01], device=dummy_player.device)
+    
+    # Identify enemies and divers: visible (index 0) and type_id in {0, 1}
+    vis = all_objects[..., 0] == 1
+    type_ids = all_objects[..., 6]
+    is_target = vis & ((type_ids == 0) | (type_ids == 1))
+    
+    # Any target object exists in the scene?
+    any_target = th.any(is_target, dim=1)
+    
+    # Return probability: True if NOT any_target
+    return bool_to_probs(~any_target)
 
 def above_water(player: th.Tensor) -> th.Tensor:
     """True if player is above water (at surface, y < 55)."""
