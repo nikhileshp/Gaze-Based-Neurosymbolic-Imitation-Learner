@@ -273,16 +273,43 @@ class ImitationAgent(nn.Module):
             return 1.0 - res
 
         action_scores_list = []
+        debug_info = []
         for idx in range(self.num_actions):
             if action_rule_probs[idx]:
                 stacked = torch.stack(action_rule_probs[idx], dim=1) # (B, num_rules_for_action)
                 rules_list = torch.unbind(stacked, dim=1)
                 action_score = softor(rules_list, dim=0) # (B,)
                 action_scores_list.append(action_score)
+                
+                # For debugging first batch element
+                inv_map = {v: k for k, v in self.primitive_action_map.items()}
+                action_name = inv_map.get(idx, f"idx_{idx}")
+                
+                # Find rule names for this action
+                action_rules = [pred for pred in prednames if pred.split('_')[0] == action_name]
+                
+                for i, prob_tensor in enumerate(action_rule_probs[idx]):
+                    if i < len(action_rules):
+                        rule_name = action_rules[i]
+                        p_val = prob_tensor[0].item()
+                        if p_val > 0.05:
+                            debug_info.append(f"{rule_name}: {p_val:.4f}")
             else:
                 action_scores_list.append(torch.zeros(probs.size(0), device=probs.device))
 
-        return torch.stack(action_scores_list, dim=1)  # (B, num_actions)
+        res = torch.stack(action_scores_list, dim=1)
+        
+        if debug_info:
+            if not hasattr(self, '_last_log_step'):
+                self._last_log_step = 0
+            self._last_log_step += 1
+            if self._last_log_step % 10 == 0:
+                print(f"[DEBUG Agent] Rule Probs: {', '.join(debug_info)}")
+                best_idx = res[0].argmax().item()
+                inv_map = {v: k for k, v in self.primitive_action_map.items()}
+                print(f"[DEBUG Agent] Best Action: {inv_map.get(best_idx)} (score: {res[0, best_idx]:.4f})")
+
+        return res
 
     def update(self, states, actions, gazes=None, vT=None, loss_type='nll'):
         """

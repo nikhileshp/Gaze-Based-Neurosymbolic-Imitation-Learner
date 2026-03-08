@@ -436,8 +436,7 @@ def main():
     agent = ImitationAgent(args.game, args.rules, args.device)
 
     print(f"Loading model from {args.agent_path}...")
-    # agent.load(args.agent_path)
-    print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
+    agent.load(args.agent_path)
     agent.model.eval()
 
     model = AgentWrapper(agent, env, debug=args.debug, gaze_predictor=gaze_predictor)
