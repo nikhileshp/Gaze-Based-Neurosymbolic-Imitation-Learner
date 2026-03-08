@@ -1,0 +1,13 @@
+gymnasium
+matplotlib
+numpy<2.0.0
+opencv_python
+scikit_image
+termcolor
+seaborn
+pandas
+scikit-learn
+keyboard
+tqdm
+pygame
+pyfiglet

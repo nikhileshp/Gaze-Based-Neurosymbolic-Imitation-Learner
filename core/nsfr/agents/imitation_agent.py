@@ -361,7 +361,11 @@ class ImitationAgent(nn.Module):
             loss = nn.BCELoss()(action_scores, target_matrix)
         else:  # 'nll'
             log_action_scores = torch.log(action_scores.clamp(min=eps))
-            loss = nn.NLLLoss()(log_action_scores, actions)
+            # Clamp action targets to valid range [0, num_actions)
+            # Necessary when the dataset contains raw ALE action IDs (e.g. 5)
+            # that exceed the primitive action space for envs like Asterix (0-4).
+            actions_clamped = actions.clamp(0, self.num_actions - 1)
+            loss = nn.NLLLoss()(log_action_scores, actions_clamped)
         # Return detached copies so callers can compute accuracy without
         # accidentally holding onto the computation graph.
         return loss, probs.detach(), action_scores.detach()

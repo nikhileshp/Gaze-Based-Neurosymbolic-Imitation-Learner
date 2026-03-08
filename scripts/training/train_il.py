@@ -242,6 +242,7 @@ def main():
         use_gaze=use_gaze,
         num_episodes=args.num_episodes,
         sort_by=args.sort_by,
+        max_action=agent.num_actions - 1,
     )
     if args.limit:
         full_dataset.logic   = full_dataset.logic[:args.limit]
@@ -286,7 +287,7 @@ def main():
     else:
         train_actions = train_dataset.actions
 
-    num_classes    = 6
+    num_classes    = agent.num_actions
     class_counts   = torch.bincount(train_actions, minlength=num_classes).float().clamp(min=1)
     class_weights  = 1.0 / class_counts
     sample_weights = class_weights[train_actions]

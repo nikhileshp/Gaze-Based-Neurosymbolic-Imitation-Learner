@@ -185,7 +185,7 @@ class PtDataset(Dataset):
         step_idx    : ()                    long     step within episode (-1 if unknown)
     """
 
-    def __init__(self, pt_path: str, use_gaze: bool = False, num_episodes: int = None, sort_by: str = None):
+    def __init__(self, pt_path: str, use_gaze: bool = False, num_episodes: int = None, sort_by: str = None, max_action: int = 5):
         print(f"Loading .pt dataset from {pt_path} ...")
         data = torch.load(pt_path, map_location='cpu', weights_only=False)
 
@@ -247,8 +247,8 @@ class PtDataset(Dataset):
             if self.rewards is not None:
                 self.rewards = self.rewards[mask]
 
-        # Filter to supported actions (0-5)
-        mask = (self.actions <= 5)
+        # Filter to supported actions [0, max_action] — varies by env (e.g. 4 for Asterix, 5 for Seaquest)
+        mask = (self.actions <= max_action)
         self.logic   = self.logic[mask]
         self.actions = self.actions[mask]
         self.gaze    = self.gaze[mask]
