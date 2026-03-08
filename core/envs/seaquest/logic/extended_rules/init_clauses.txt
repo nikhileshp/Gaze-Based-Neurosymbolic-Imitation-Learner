@@ -39,5 +39,5 @@ right_go_around(X):-visible_enemy(E),enemy_facing_left(E),left_of_enemy(P,E),clo
 right_go_around(X):-visible_enemy(E),enemy_facing_left(E),left_of_enemy(P,E),closest_enemy(P,E),deeper_than_enemy(P,E).
 right_to_center(X):-below_water(P),oxygen_not_low(B),player_left_side(P),no_object(P).
 left_to_center(X):-below_water(P),oxygen_not_low(B),player_right_side(P),no_object(P).
-up_to_center(X):-below_water(P),oxygen_not_low(B),player_up_side(P),no_object(P).
-down_to_center(X):-below_water(P),oxygen_not_low(B),player_down_side(P),no_object(P).
+up_to_center(X):-below_water(P),oxygen_not_low(B),player_down_side(P),no_object(P).
+down_to_center(X):-below_water(P),oxygen_not_low(B),player_up_side(P),no_object(P).
