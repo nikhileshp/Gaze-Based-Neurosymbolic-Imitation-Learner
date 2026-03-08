@@ -164,7 +164,7 @@ def _env_worker(worker_id, episode_seeds, state_q, action_q, env_name,
                 noop_max=30,
                 terminal_on_life_loss=True,
                 noop_action='noop',
-                frame_skip=4,
+                frame_skip=1,
             )
         else:
             env = base_env
