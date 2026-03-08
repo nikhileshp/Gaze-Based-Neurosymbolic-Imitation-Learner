@@ -165,7 +165,7 @@ def get_args():
     parser.add_argument("--lr_patience", type=int, default=3, help="Reduce LR if val_acc doesn't improve for N epochs")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--use_gaze", action="store_true", help="Pipe live 84x84 gaze predictions into logic agent during testing")
-    parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
+    parser.add_argument("--gaze_model_path", type=str, default="gaze_models/seaquest/seaquest_gaze_predictor_2.pth")
     parser.add_argument("--send_email", action="store_true", help="Send email with results after evaluation")
     parser.add_argument("--run_dir", type=str, default=None, help="Custom output directory")
     return parser.parse_args()
