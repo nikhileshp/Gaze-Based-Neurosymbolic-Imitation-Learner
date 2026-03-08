@@ -206,9 +206,8 @@ def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
     player_y = player[..., 2]
     obj_y = obj[..., 2]
-    result = obj_exists & (player_y > obj_y) & (same_depth_enemy(player, obj) < HIGHER_BOUND)
-    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
-    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
+    result = obj_exists & (player_y > obj_y)
+    non_overlap = 1 - _fireable_iou(player, obj, 11, 10)
     
     return bool_to_probs(result) * non_overlap
 
@@ -219,9 +218,8 @@ def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_y = obj[..., 2]
   
-    result = obj_exists & (player_y > obj_y) & (same_depth_diver(player, obj) < HIGHER_BOUND)
-    non_overlap = 1 - _vertical_iou(player, obj, 11, 11)
-    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
+    result = obj_exists & (player_y > obj_y)
+    non_overlap = 1 - _fireable_iou(player, obj, 11, 11)
 
     return bool_to_probs(result) * non_overlap
 
@@ -230,15 +228,10 @@ def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'higher than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
     player_y = player[..., 2]
-    # print("Player", player)
-    # print("Object", obj)
     obj_y = obj[..., 2]
     result = obj_exists & (player_y < obj_y)
-    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
+    non_overlap = 1 - _fireable_iou(player, obj, 11, 10)
     
-    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
-
-    # print("Result", result, "Object y", obj_y, "Player y", player_y, "prox", prox)
     return bool_to_probs(result) * non_overlap
 
 
@@ -248,18 +241,8 @@ def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_y = obj[..., 2]
     
-    # Calculate vertical difference (obj_y - player_y)
-    # Since y increases downwards, higher means smaller y
-    # Check if higher than threshold (11px)
-    result = obj_exists & (player_y < obj_y) & (same_depth_diver(player, obj) < HIGHER_BOUND)
-    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
-    # Old Logic: Increases with distance
-    # prox = th.clip((result * (obj_y-player_y-11)/11), 0, 1)
-    
-    # New Logic: Decays with distance
-    # Starts high near threshold (11px) and decays as distance increases
-    # e.g. at 11px diff -> 1.0, at 51px diff -> 0.0
-    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
+    result = obj_exists & (player_y < obj_y)
+    non_overlap = 1 - _fireable_iou(player, obj, 11, 11)
     return bool_to_probs(result) * non_overlap
 
 
@@ -313,13 +296,13 @@ def very_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 
     # Conditions from user:
     # 1. enemy facing right (4) and enemy_x+enemy_width is within 5 pixels of player_x
-    cond1 = (obj_orient == 4) & (th.abs(player_x - (obj_x + obj_w)) < 5)
+    cond1 = (obj_orient == 4) & (th.abs(player_x - (obj_x + obj_w)) < 7)
     # 2. enemy facing left (12) and enemy_x is within 5 pixels of player_x + player_width
-    cond2 = (obj_orient == 12) & (th.abs(obj_x - (player_x + player_w)) < 5)
+    cond2 = (obj_orient == 12) & (th.abs(obj_x - (player_x + player_w)) < 7)
     # 3. enemy_y is within 5 pixels of player_y + player_height
-    cond3 = th.abs(obj_y - (player_y + player_h)) < 5
+    cond3 = th.abs(obj_y - (player_y + player_h)) < 7
     # 4. enemy_y + enemy_height is within 5 pixels of player_y
-    cond4 = th.abs(player_y - (obj_y + obj_h)) < 5
+    cond4 = th.abs(player_y - (obj_y + obj_h)) < 7
 
     combined = cond1 | cond2 | cond3 | cond4
     return bool_to_probs(obj_exists & combined)
@@ -550,7 +533,7 @@ def above_water(player: th.Tensor) -> th.Tensor:
     # Uses same threshold as surface_submarine
     vis = player[..., 0] == 1
     y = player[..., 2]
-    is_surface = y < 50
+    is_surface = y < 48
     return bool_to_probs(vis & is_surface)
 
 
@@ -558,7 +541,7 @@ def below_water(player: th.Tensor) -> th.Tensor:
     """True if player is below water (at surface, y > 55)."""
     vis = player[..., 0] == 1
     y = player[..., 2]
-    is_surface = y > 50
+    is_surface = y >= 48
     return bool_to_probs(vis & is_surface)
 
 def oxygen_not_low(oxygen_bar: th.Tensor) -> th.Tensor:
