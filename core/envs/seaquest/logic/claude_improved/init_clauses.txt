@@ -1,11 +1,13 @@
 up_air(X):-oxygen_low(B),below_water(P).
 up_air(X):-oxygen_critical(B),below_water(P).
+right_to_center(X):-below_water(P),oxygen_not_low(B),player_left_side(P).
+left_to_center(X):-below_water(P),oxygen_not_low(B),player_right_side(P).
 fire_left(X):-same_depth_enemy(P,E),visible_enemy(E),facing_left(P),right_of_enemy(P,E).
 fire_right(X):-same_depth_enemy(P,E),visible_enemy(E),facing_right(P),left_of_enemy(P,E).
 left_aim(X):-right_of_enemy(P,E),facing_right(P),same_depth_enemy(P,E),visible_enemy(E),closest_enemy(P,E).
 right_aim(X):-left_of_enemy(P,E),facing_left(P),same_depth_enemy(P,E),visible_enemy(E),closest_enemy(P,E).
-down_aim(X):-higher_than_enemy(P,E),visible_enemy(E),not_close_by_enemy(P,E),not_directly_above_enemy(P,E),closest_enemy(P,E).
-up_aim(X):-deeper_than_enemy(P,E),visible_enemy(E),not_close_by_enemy(P,E),not_directly_below_enemy(P,E),closest_enemy(P,E).
+down_aim(X):-higher_than_enemy(P,E),visible_enemy(E),closest_enemy(P,E),not_directly_above_enemy(P,E).
+up_aim(X):-deeper_than_enemy(P,E),visible_enemy(E),closest_enemy(P,E),not_directly_below_enemy(P,E).
 up_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E),higher_than_enemy(P,E),enemy_facing_left(E),left_of_enemy(P,E).
 up_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E),higher_than_enemy(P,E),enemy_facing_right(E),right_of_enemy(P,E).
 up_evade(X):-close_by_missile(P,M),same_depth_missile(P,M),visible_missile(M).
@@ -20,3 +22,4 @@ noop_divers_full(X):-divers_collected_full(D),visible_diver(D),above_water(P).
 up_return_divers(X):-divers_collected_full(D),visible_diver(D),below_water(P).
 noop_evade(X):-close_by_enemy(P,E),higher_than_enemy(P,E),visible_enemy(E),directly_above_enemy(P,E).
 noop_evade(X):-close_by_enemy(P,E),deeper_than_enemy(P,E),visible_enemy(E),directly_below_enemy(P,E).
+noop_oxygen_low(X):-oxygen_not_full(B),above_water(P).

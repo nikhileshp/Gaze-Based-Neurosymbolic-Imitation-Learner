@@ -14,3 +14,6 @@ down_to_diver:1:image
 noop_divers_full:1:image
 noop_evade:1:image
 up_return_divers:1:image
+noop_oxygen_low:1:image
+right_to_center:1:image
+left_to_center:1:image

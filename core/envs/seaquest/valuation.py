@@ -71,7 +71,7 @@ def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
     player_y = player[..., 2]
     obj_y = obj[..., 2]
     
-    y1_midpoint = player_y + h1/2
+    y1_midpoint = player_y + 2*h1/3
     y2_min = obj_y
     y2_max = obj_y + h2
     
@@ -90,7 +90,7 @@ def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
     # Else if below -> val_below
     # Else -> val_above
     result = th.where(inside, th.tensor(1.0, device=player.device),
-                      th.where(y1_midpoint < y2_min, val_below*2, val_above*2))
+                      th.where(y1_midpoint < y2_min, val_below, val_above))
     
     return result
 
@@ -335,6 +335,21 @@ def oxygen_low(oxygen_bar: th.Tensor) -> th.Tensor:
     # DEBUG: Print first few calls
     return bool_to_probs(result)
 
+def oxygen_full(oxygen_bar: th.Tensor) -> th.Tensor:
+    """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
+    oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
+    result = oxygen_width >= 48
+    
+    # DEBUG: Print first few calls
+    return bool_to_probs(result)
+
+def oxygen_not_full(oxygen_bar: th.Tensor) -> th.Tensor:
+    """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
+    oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
+    result = oxygen_width < 48
+    
+    # DEBUG: Print first few calls
+    return bool_to_probs(result)
 
 def in_image(zs: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # Check if object is visible (index 0 is 1)
@@ -430,7 +445,7 @@ def above_water(player: th.Tensor) -> th.Tensor:
     # Uses same threshold as surface_submarine
     vis = player[..., 0] == 1
     y = player[..., 2]
-    is_surface = y < 55
+    is_surface = y < 50
     return bool_to_probs(vis & is_surface)
 
 
@@ -438,8 +453,25 @@ def below_water(player: th.Tensor) -> th.Tensor:
     """True if player is below water (at surface, y > 55)."""
     vis = player[..., 0] == 1
     y = player[..., 2]
-    is_surface = y > 55
+    is_surface = y > 50
     return bool_to_probs(vis & is_surface)
+
+def oxygen_not_low(oxygen_bar: th.Tensor) -> th.Tensor:
+    """True iff oxygen bar width is greater than 16 pixels (approximately 25% oxygen remaining)."""
+    oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
+    result = oxygen_width >= 16
+    
+    return bool_to_probs(result)
+
+def player_left_side(player: th.Tensor) -> th.Tensor:
+    player_x = player[..., 1]
+    result = player_x <= 50
+    return bool_to_probs(result)
+
+def player_right_side(player: th.Tensor) -> th.Tensor:
+    player_x = player[..., 1]
+    result = player_x >= 125
+    return bool_to_probs(result)
 
 
 def above_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:
@@ -449,7 +481,7 @@ def above_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     surface_y = surface[..., 2]
     
-    result = player_vis & surface_vis & (player_y < surface_y)
+    result = player_vis & surface_vis & (player_y + 5 < surface_y)
     return bool_to_probs(result)
 
 

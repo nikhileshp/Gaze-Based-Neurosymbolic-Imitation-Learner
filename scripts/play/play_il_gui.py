@@ -19,6 +19,7 @@ parser.add_argument("-d", "--device", type=str, default="cpu")
 parser.add_argument("-db", "--debug",type=bool, default=False)
 parser.add_argument("--use_gaze", action="store_true", help="Visualize gaze predictions dynamically")
 parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
+parser.add_argument("--fps", type=int, default=60, help="Frames per second for playback")
 
 try:
     from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
@@ -443,7 +444,7 @@ def main():
 
     renderer = ILRenderer(model=model,
                           env=env,
-                          fps=15,
+                          fps=args.fps,
                           deterministic=True,
                           render_predicate_probs=not(args.no_predicates))
 

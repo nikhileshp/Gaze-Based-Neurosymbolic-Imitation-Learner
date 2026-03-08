@@ -35,3 +35,7 @@ directly_below_enemy:2:oplayer,oenemy
 not_directly_above_enemy:2:oplayer,oenemy
 not_directly_below_enemy:2:oplayer,oenemy
 closest_enemy:2:oplayer,oenemy
+oxygen_not_full:1:ooxygenbar
+oxygen_not_low:1:ooxygenbar
+player_left_side:1:oplayer
+player_right_side:1:oplayer
