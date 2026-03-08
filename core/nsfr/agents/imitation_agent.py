@@ -308,10 +308,10 @@ class ImitationAgent(nn.Module):
                 self._last_log_step = 0
             self._last_log_step += 1
             if self._last_log_step % 10 == 0:
-                print(f"[DEBUG Agent] Rule Probs: {', '.join(debug_info)}")
+                # print(f"[DEBUG Agent] Rule Probs: {', '.join(debug_info)}")
                 best_idx = res[0].argmax().item()
                 inv_map = {v: k for k, v in self.primitive_action_map.items()}
-                print(f"[DEBUG Agent] Best Action: {inv_map.get(best_idx)} (score: {res[0, best_idx]:.4f})")
+                # print(f"[DEBUG Agent] Best Action: {inv_map.get(best_idx)} (score: {res[0, best_idx]:.4f})")
 
         return res
 
