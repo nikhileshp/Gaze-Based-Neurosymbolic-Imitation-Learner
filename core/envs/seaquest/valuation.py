@@ -71,7 +71,7 @@ def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
     player_y = player[..., 2]
     obj_y = obj[..., 2]
     
-    y1_midpoint = player_y + 2*h1/3
+    y1_midpoint = player_y + 3*h1/4
     y2_min = obj_y
     y2_max = obj_y + h2
     
@@ -99,9 +99,7 @@ def _fireable_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
     player_y = player[..., 2]
     obj_y = obj[..., 2]
     
-    y1_midpoint = player_y + 2*h1/3
-    y2_min = obj_y
-    y2_max = obj_y + h2
+    y1_midpoint = player_y + 3*h1/4
     y2_midpoint = obj_y + h2/2
     y2_min = y2_midpoint - h2/4
     y2_max = y2_midpoint + h2/4

@@ -98,7 +98,7 @@ class NSFREnv(NSFRBaseEnv):
                 orientation = orientation.value if orientation is not None else 0
                 w = getattr(obj, "w", 0)
                 h = getattr(obj, "h", 0)
-                state[idx] = th.tensor([1, *obj.center, w, h, orientation, type_id])
+                state[idx] = th.tensor([1, int(obj.x), int(obj.y), w, h, orientation, type_id])
             obj_count[obj.category] += 1
 
         return state

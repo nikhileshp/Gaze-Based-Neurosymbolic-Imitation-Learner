@@ -16,7 +16,7 @@ parser.add_argument("-r", "--rules", type=str, default="default")
 parser.add_argument("-a", "--agent_path", type=str, default="out/imitation/seaquest_il.pth")
 parser.add_argument("-np", "--no_predicates", action="store_true")
 parser.add_argument("-d", "--device", type=str, default="cpu")
-parser.add_argument("-db", "--debug",type=bool, default=False)
+parser.add_argument("-db", "--debug", action="store_true", default=False)
 parser.add_argument("--use_gaze", action="store_true", help="Visualize gaze predictions dynamically")
 parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
 parser.add_argument("--fps", type=int, default=60, help="Frames per second for playback")
@@ -142,6 +142,17 @@ class AgentWrapper:
         
         # Enhanced debug output every 10 steps
         if self.debug:
+            if self.step_count % 10 == 0:
+                print(f"\n[DEBUG] Object Tensor (Logic State) at Step {self.step_count}:")
+                # state is (1, 49, 7) or (49, 7)
+                logic_state = state[0] if state.dim() == 3 else state
+                for i in range(logic_state.shape[0]):
+                    if logic_state[i, 0] > 0.5:  # Visible
+                        x, y = logic_state[i, 1].item(), logic_state[i, 2].item()
+                        w, h = logic_state[i, 3].item(), logic_state[i, 4].item()
+                        t_id = int(logic_state[i, 6].item())
+                        print(f"  obj{i:2d}: type={t_id:1d}, pos=({x:3.1f}, {y:3.1f}), size=({w:2.1f}x{h:2.1f})")
+                
             if self.step_count % 10 == 1:
                 prednames = self.actor.prednames
                 # print(f"\n{'='*60}")
@@ -158,10 +169,11 @@ class AgentWrapper:
                     obj_type = obj.__class__.__name__
                     if obj_type != 'NoObject':
                         pos = f"({obj.x}, {obj.y})" if hasattr(obj, 'x') else "N/A"
-                        non_no_objects.append((i, obj_type, pos))
+                        dims = f"{obj.w}x{obj.h}" if hasattr(obj, 'w') and hasattr(obj, 'h') else "N/A"
+                        non_no_objects.append((i, obj_type, pos, dims))
                         
-                for idx, obj_type, pos in non_no_objects:
-                    print(f"  obj{idx}: {obj_type} at {pos}")
+                for idx, obj_type, pos, dims in non_no_objects:
+                    print(f"  obj{idx}: {obj_type} at {pos} size {dims}")
                 
                 # Also check specific object indices mentioned in predicates
                 # print(f"\nSpecific Object Indices (from predicates):")
@@ -190,28 +202,28 @@ class AgentWrapper:
                 state_np = state_squeezed.detach().cpu().numpy()
                 
                 # Find all type predicates
-                for idx, atom in enumerate(atoms):
-                    atom_str = str(atom)
-                    if 'type(' in atom_str and idx < len(val_np):
-                         val = float(val_np[idx])
-                         if val > 0.3:  # Show any type with >0.3 value
-                             print(f"  {val:.3f} - {atom_str}")
+                # for idx, atom in enumerate(atoms):
+                #     atom_str = str(atom)
+                #     if 'type(' in atom_str and idx < len(val_np):
+                #          val = float(val_np[idx])
+                #          if val > 0.3:  # Show any type with >0.3 value
+                #              print(f"  {val:.3f} - {atom_str}")
 
                 # DEBUG: Specific check for close_by predicates
                 # print(f"\nClose-by Predicates Check:")
-                for idx, atom in enumerate(atoms):
-                    atom_str = str(atom)
-                    if 'higher_than' in atom_str and idx < len(val_np):
-                         val = float(val_np[idx])
-                         print(f"  {val:.3f} - {atom_str}")
+                # for idx, atom in enumerate(atoms):
+                #     atom_str = str(atom)
+                #     if 'higher_than' in atom_str and idx < len(val_np):
+                #          val = float(val_np[idx])
+                #          print(f"  {val:.3f} - {atom_str}")
 
                 # DEBUG: Specific check for close_by predicates
                 # print(f"\nClose-by Predicates Check:")
-                for idx, atom in enumerate(atoms):
-                    atom_str = str(atom)
-                    if 'close_by' in atom_str and idx < len(val_np):
-                         val = float(val_np[idx])
-                         print(f"  {val:.3f} - {atom_str}")
+                # for idx, atom in enumerate(atoms):
+                #     atom_str = str(atom)
+                #     if 'close_by' in atom_str and idx < len(val_np):
+                #          val = float(val_np[idx])
+                #          print(f"  {val:.3f} - {atom_str}")
 
                 # DEBUG: Specific check for same_depth predicates
                 # print(f"\nSame-depth Predicates Check:")
