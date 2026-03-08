@@ -96,31 +96,18 @@ def _vertical_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th
 
 
 def _fireable_iou(player: th.Tensor, obj: th.Tensor, h1: float, h2: float) -> th.Tensor:
-    player_y = player[..., 2]
-    obj_y = obj[..., 2]
+    p_y = player[..., 2]
+    o_y = obj[..., 2]
     
-    y1_midpoint = player_y + 3*h1/4
-    y2_midpoint = obj_y + h2/2
-    y2_min = y2_midpoint - h2/4
-    y2_max = y2_midpoint + h2/4
+    y_fire = p_y + 0.75 * h1
+    y_target = o_y + 0.5 * h2
     
-    # Vectorized logic
-    inside = (y1_midpoint > y2_min) & (y1_midpoint < y2_max)
+    dist = th.abs(y_fire - y_target)
     
-    # Case: Below range (midpoint < min)
-    diff_below = (player_y + h1) - y2_min
-    val_below = th.clip(diff_below / h1, 0, 1)
-    
-    # Case: Above range (midpoint >= max)
-    diff_above = y2_max - player_y
-    val_above = th.clip(diff_above / h1, 0, 1)
-    
-    # If inside -> 1.0
-    # Else if below -> val_below
-    # Else -> val_above
-    result = th.where(inside, th.tensor(1.0, device=player.device),
-                      th.where(y1_midpoint < y2_min, val_below, val_above))
-    
+    # Sharp predicate: prob=1.0 if dist < 1.0, then decay sharply to near 0.
+    # Inside 2.0 pixels: 0.99, Inside 4.0 pixels: linear decay to 0.01
+    result = th.where(dist < 1.5, th.tensor(0.99, device=player.device),
+                      th.where(dist < 4.0, 1.0 - (dist / 4.0) * 0.98, th.tensor(0.01, device=player.device)))
     return result
 
 def _horizontal_iou(player: th.Tensor, obj: th.Tensor, w1: float, w2: float) -> th.Tensor:
@@ -171,7 +158,9 @@ def atleast_one_diver_collected(dummy_player, all_objects: th.Tensor = None) -> 
     
     vis = all_objects[..., 0] == 1
     y = all_objects[..., 2]
-    is_collected = vis & (y > 160)
+    type_ids = all_objects[..., 6]
+    # CollectedDiver is type 6. Filter by type AND position.
+    is_collected = vis & (y > 160) & (type_ids == 6)
     
     any_collected = th.any(is_collected, dim=1)
     return bool_to_probs(any_collected)
@@ -204,10 +193,12 @@ def same_depth_missile(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'deeper than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    player_y = player[..., 2]
-    obj_y = obj[..., 2]
-    result = obj_exists & (player_y > obj_y)
-    non_overlap = 1 - _fireable_iou(player, obj, 11, 10)
+    p_y, o_y = player[..., 2], obj[..., 2]
+    y_fire = p_y + 0.75 * 11.0 # Standard player height
+    y_target = o_y + 0.5 * 10.0 # Standard enemy height
+    
+    result = obj_exists & (y_fire > y_target)
+    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 10.0)
     
     return bool_to_probs(result) * non_overlap
 
@@ -215,11 +206,12 @@ def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'deeper than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    player_y = player[..., 2]
-    obj_y = obj[..., 2]
-  
-    result = obj_exists & (player_y > obj_y)
-    non_overlap = 1 - _fireable_iou(player, obj, 11, 11)
+    p_y, o_y = player[..., 2], obj[..., 2]
+    y_fire = p_y + 0.75 * 11.0
+    y_target = o_y + 0.5 * 11.0 # Diver is same size as player usually
+    
+    result = obj_exists & (y_fire > y_target)
+    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 11.0)
 
     return bool_to_probs(result) * non_overlap
 
@@ -227,10 +219,12 @@ def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'higher than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    player_y = player[..., 2]
-    obj_y = obj[..., 2]
-    result = obj_exists & (player_y < obj_y)
-    non_overlap = 1 - _fireable_iou(player, obj, 11, 10)
+    p_y, o_y = player[..., 2], obj[..., 2]
+    y_fire = p_y + 0.75 * 11.0
+    y_target = o_y + 0.5 * 10.0
+    
+    result = obj_exists & (y_fire < y_target)
+    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 10.0)
     
     return bool_to_probs(result) * non_overlap
 
@@ -238,11 +232,12 @@ def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
 def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'higher than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
-    player_y = player[..., 2]
-    obj_y = obj[..., 2]
+    p_y, o_y = player[..., 2], obj[..., 2]
+    y_fire = p_y + 0.75 * 11.0
+    y_target = o_y + 0.5 * 11.0
     
-    result = obj_exists & (player_y < obj_y)
-    non_overlap = 1 - _fireable_iou(player, obj, 11, 11)
+    result = obj_exists & (y_fire < y_target)
+    non_overlap = 1 - _fireable_iou(player, obj, 11.0, 11.0)
     return bool_to_probs(result) * non_overlap
 
 
@@ -404,7 +399,6 @@ def oxygen_low(oxygen_bar: th.Tensor) -> th.Tensor:
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
     result = oxygen_width < 16
     
-    # DEBUG: Print first few calls
     return bool_to_probs(result)
 
 def oxygen_full(oxygen_bar: th.Tensor) -> th.Tensor:

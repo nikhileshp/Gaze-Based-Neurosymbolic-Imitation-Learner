@@ -33,3 +33,8 @@ up_return_divers(X):-divers_collected_full(D),is_collected_diver(D),below_water(
 noop_evade(X):-close_by_enemy(P,E),higher_than_enemy(P,E),visible_enemy(E),directly_above_enemy(P,E).
 noop_evade(X):-close_by_enemy(P,E),deeper_than_enemy(P,E),visible_enemy(E),directly_below_enemy(P,E).
 noop_oxygen_low(X):-oxygen_not_full(B),above_water(P).
+noop_base(X):-below_water(P),oxygen_not_low(B).
+up_right_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E),facing_right(P).
+up_left_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E),facing_left(P).
+down_right_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E),facing_right(P).
+down_left_evade(X):-close_by_enemy(P,E),same_depth_enemy(P,E),visible_enemy(E),facing_left(P).

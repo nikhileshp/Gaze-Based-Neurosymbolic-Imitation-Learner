@@ -31,3 +31,4 @@ down_to_diver(X):-higher_than_diver(P,D),close_by_diver(P,D),visible_diver(D).
 noop_divers_full(X):-divers_collected_full(D),is_collected_diver(D),above_water(P).
 up_return_divers(X):-divers_collected_full(D),is_collected_diver(D),below_water(P).
 noop_oxygen_low(X):-oxygen_not_full(B),above_water(P).
+noop_base(X):-below_water(P),oxygen_not_low(B).
