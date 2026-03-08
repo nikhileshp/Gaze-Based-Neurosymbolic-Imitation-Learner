@@ -46,4 +46,6 @@ very_close_by_enemy:2:oplayer,oenemy
 fireable_enemy:2:oplayer,oenemy
 no_divers_collected:1:oplayer
 atleast_one_diver_collected:1:oplayer
-divers_not_full:1:oplayer
+divers_collected_not_full:1:oplayer
+player_up_side:1:oplayer
+player_down_side:1:oplayer

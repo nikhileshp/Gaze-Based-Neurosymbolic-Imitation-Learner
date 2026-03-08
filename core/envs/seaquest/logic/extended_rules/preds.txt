@@ -21,3 +21,9 @@ right_to_center:1:image
 left_to_center:1:image
 left_enemy:1:image
 right_enemy:1:image
+up_go_around:1:image
+down_go_around:1:image
+left_go_around:1:image
+right_go_around:1:image
+up_to_center:1:image
+down_to_center:1:image

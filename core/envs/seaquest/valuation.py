@@ -422,25 +422,19 @@ def oxygen_low(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
     vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
-    result = vis & (oxygen_width < 16)
-    
-    return bool_to_probs(result)
+    return th.where(vis, th.clip(1.0 - (oxygen_width / 16.0), 0.01, 0.99), th.tensor(0.01, device=oxygen_bar.device))
 
 def oxygen_full(oxygen_bar: th.Tensor) -> th.Tensor:
-    """True iff oxygen bar width is below 16 pixels (approximately 25% oxygen remaining)."""
+    """True iff oxygen bar width is at least 48 pixels."""
+    vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
-    result = oxygen_width >= 48
-    
-    # DEBUG: Print first few calls
-    return bool_to_probs(result)
+    return th.where(vis, th.clip(oxygen_width / 48.0, 0.01, 0.99), th.tensor(0.01, device=oxygen_bar.device))
 
 def oxygen_not_full(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is < 48 pixels."""
     vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
-    result = vis & (oxygen_width < 48)
-    
-    return bool_to_probs(result)
+    return th.where(vis, th.clip(1.0 - (oxygen_width / 48.0), 0.01, 0.99), th.tensor(0.01, device=oxygen_bar.device))
 
 def in_image(zs: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # Check if object is visible (index 0 is 1)
@@ -508,12 +502,12 @@ def divers_collected_full(dummy_player, all_objects: th.Tensor = None) -> th.Ten
     is_collected = vis & (type_ids == 6)
     
     num_collected = th.sum(is_collected, dim=1)
-    return bool_to_probs(num_collected >= 6)
+    return bool_to_probs(num_collected == 6)
 
-def divers_not_full(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+def divers_collected_not_full(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
     """True if fewer than 6 divers are collected."""
     if all_objects is None:
-        return th.tensor([0.01], device=dummy_player.device)
+        return th.tensor([0.99], device=dummy_player.device)
     
     vis = all_objects[..., 0] == 1
     type_ids = all_objects[..., 6]
@@ -527,8 +521,7 @@ def oxygen_critical(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is below 5 pixels (critical)."""
     vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3] # Width in pixels (index 3)
-    result = vis & (oxygen_width < 5)
-    return bool_to_probs(result)
+    return th.where(vis, th.clip(1.0 - (oxygen_width / 5.0), 0.01, 0.99), th.tensor(0.01, device=oxygen_bar.device))
 
 def surface_submarine(obj: th.Tensor) -> th.Tensor:
     """True if object is the Surface Submarine."""
@@ -589,19 +582,27 @@ def oxygen_not_low(oxygen_bar: th.Tensor) -> th.Tensor:
     """True iff oxygen bar width is greater than 16 pixels (approximately 25% oxygen remaining)."""
     vis = oxygen_bar[..., 0] == 1
     oxygen_width = oxygen_bar[..., 3]  # Width in pixels (index 3)
-    result = vis & (oxygen_width >= 16)
-    
-    return bool_to_probs(result)
+    return th.where(vis, th.clip(oxygen_width / 16.0, 0.01, 0.99), th.tensor(0.01, device=oxygen_bar.device))
 
 def player_left_side(player: th.Tensor) -> th.Tensor:
     player_x = player[..., 1]
-    result = player_x <= 50
-    return bool_to_probs(result)
+    # Linear decay: 1.0 at x=0, 0.5 at x=80, 0.01 at x=160
+    return th.clip(1.0 - (player_x / 160.0), 0.01, 0.99)
 
 def player_right_side(player: th.Tensor) -> th.Tensor:
     player_x = player[..., 1]
-    result = player_x >= 125
-    return bool_to_probs(result)
+    # Linear increase: 0.01 at x=0, 0.5 at x=80, 1.0 at x=160
+    return th.clip(player_x / 160.0, 0.01, 0.99)
+
+def player_up_side(player: th.Tensor) -> th.Tensor:
+    player_y = player[..., 2]
+    # Linear decay: 1.0 at y=0, 0.5 at y=130, 0.01 at y=260
+    return th.clip(1.0 - (player_y / 260.0), 0.01, 0.99)
+
+def player_down_side(player: th.Tensor) -> th.Tensor:
+    player_y = player[..., 2]
+    # Linear increase: 0.01 at y=0, 0.5 at y=130, 1.0 at y=260
+    return th.clip(player_y / 260.0, 0.01, 0.99)
 
 
 def above_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:

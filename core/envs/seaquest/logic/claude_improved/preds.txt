@@ -22,3 +22,5 @@ left_to_center:1:image
 left_enemy:1:image
 right_enemy:1:image
 noop_base:1:image
+player_up_side:1:image
+player_down_side:1:image

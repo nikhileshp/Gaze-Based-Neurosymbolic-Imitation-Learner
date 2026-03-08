@@ -1,5 +1,4 @@
-right_to_center(X):-below_water(P),oxygen_not_low(B),player_left_side(P),no_object(P).
-left_to_center(X):-below_water(P),oxygen_not_low(B),player_right_side(P),no_object(P).
+
 left_evade(X):-close_by_enemy(P,E),deeper_than_enemy(P,E),visible_enemy(E),directly_below_enemy(P,E),enemy_facing_right(E),closest_enemy(P,E).
 right_evade(X):-close_by_enemy(P,E),deeper_than_enemy(P,E),visible_enemy(E),directly_below_enemy(P,E),enemy_facing_left(E),closest_enemy(P,E).
 left_evade(X):-close_by_enemy(P,E),higher_than_enemy(P,E),visible_enemy(E),directly_above_enemy(P,E),enemy_facing_right(E),closest_enemy(P,E).
@@ -29,4 +28,16 @@ down_to_diver(X):-higher_than_diver(P,D),close_by_diver(P,D),visible_diver(D).
 noop_divers_full(X):-divers_collected_full(P),above_water(P).
 up_return_divers(X):-divers_collected_full(P),below_water(P).
 noop_oxygen_low(X):-oxygen_not_full(B),above_water(P).
-up_air(X):-oxygen_critical(B),below_water(P),atleast_one_diver_collected(P),divers_not_full(P).
+up_air(X):-oxygen_critical(B),below_water(P),atleast_one_diver_collected(P),divers_collected_not_full(P).
+left_go_around(X):-visible_enemy(E),enemy_facing_right(E),right_of_enemy(P,E),closest_enemy(P,E),higher_than_enemy(P,E).
+left_go_around(X):-visible_enemy(E),enemy_facing_right(E),right_of_enemy(P,E),closest_enemy(P,E),deeper_than_enemy(P,E).
+down_go_around(X):-visible_enemy(E),enemy_facing_right(E),left_of_enemy(P,E),closest_enemy(P,E),higher_than_enemy(P,E).
+down_go_around(X):-visible_enemy(E),enemy_facing_left(E),right_of_enemy(P,E),closest_enemy(P,E),higher_than_enemy(P,E).
+up_go_around(X):-visible_enemy(E),enemy_facing_left(E),left_of_enemy(P,E),closest_enemy(P,E),deeper_than_enemy(P,E).
+up_go_around(X):-visible_enemy(E),enemy_facing_left(E),left_of_enemy(P,E),closest_enemy(P,E),deeper_than_enemy(P,E).
+right_go_around(X):-visible_enemy(E),enemy_facing_left(E),left_of_enemy(P,E),closest_enemy(P,E),higher_than_enemy(P,E).
+right_go_around(X):-visible_enemy(E),enemy_facing_left(E),left_of_enemy(P,E),closest_enemy(P,E),deeper_than_enemy(P,E).
+right_to_center(X):-below_water(P),oxygen_not_low(B),player_left_side(P),no_object(P).
+left_to_center(X):-below_water(P),oxygen_not_low(B),player_right_side(P),no_object(P).
+up_to_center(X):-below_water(P),oxygen_not_low(B),player_up_side(P),no_object(P).
+down_to_center(X):-below_water(P),oxygen_not_low(B),player_down_side(P),no_object(P).
