@@ -350,6 +350,39 @@ def closest_enemy(player: th.Tensor, enemy: th.Tensor, all_objects: th.Tensor = 
     # Check if target enemy is the closest (using small epsilon for float comparison)
     is_closest = (target_dist <= min_dist + 1e-3) & (enemy[..., 0] == 1)
     return bool_to_probs(is_closest)
+def closest_diver(player: th.Tensor, diver: th.Tensor, all_objects: th.Tensor = None) -> th.Tensor:
+    if all_objects is None:
+        return visible_diver(diver)
+        
+    # player: (B*N, F), diver: (B*N, F), all_objects: (B*N, N_OBJ, F)
+    target_dist = th.abs(player[..., 1] - diver[..., 1]) + th.abs(player[..., 2] - diver[..., 2])
+    player_expanded = player.unsqueeze(1)
+    all_dists = th.abs(player_expanded[..., 1] - all_objects[..., 1]) + th.abs(player_expanded[..., 2] - all_objects[..., 2])
+    
+    # Identify divers: type_id 1 and visible
+    is_diver = (all_objects[..., 6] == 1) & (all_objects[..., 0] == 1)
+    
+    # Mask non-divers with large distance
+    diver_dists = th.where(is_diver, all_dists, th.tensor(1000.0, device=all_objects.device))
+    min_dist, _ = th.min(diver_dists, dim=1)
+    is_closest = (target_dist <= min_dist + 1e-3) & (diver[..., 0] == 1)
+    return bool_to_probs(is_closest)
+
+def closest_missile(player: th.Tensor, missile: th.Tensor, all_objects: th.Tensor = None) -> th.Tensor:
+    if all_objects is None:
+        return visible_missile(missile)
+        
+    target_dist = th.abs(player[..., 1] - missile[..., 1]) + th.abs(player[..., 2] - missile[..., 2])
+    player_expanded = player.unsqueeze(1)
+    all_dists = th.abs(player_expanded[..., 1] - all_objects[..., 1]) + th.abs(player_expanded[..., 2] - all_objects[..., 2])
+    
+    # Identify missiles: type_id 5 and visible
+    is_missile = (all_objects[..., 6] == 5) & (all_objects[..., 0] == 1)
+    
+    missile_dists = th.where(is_missile, all_dists, th.tensor(1000.0, device=all_objects.device))
+    min_dist, _ = th.min(missile_dists, dim=1)
+    is_closest = (target_dist <= min_dist + 1e-3) & (missile[..., 0] == 1)
+    return bool_to_probs(is_closest)
 
 def not_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
@@ -546,21 +579,21 @@ def is_collected_diver(obj: th.Tensor) -> th.Tensor:
     # I will implement `oxygen_critical` and `surface_submarine` first.
     # pass
 
-def no_object(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
-    """True if there are no enemies (type 0) and no divers (type 1) visible in the scene."""
+def few_objects(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+    """Probabilistic version of no_object: 1/(n+1) where n is num of targets."""
     if all_objects is None:
-        return th.tensor([0.01], device=dummy_player.device)
+        return th.tensor([0.99], device=dummy_player.device)
     
     # Identify enemies and divers: visible (index 0) and type_id in {0, 1}
     vis = all_objects[..., 0] == 1
     type_ids = all_objects[..., 6]
     is_target = vis & ((type_ids == 0) | (type_ids == 1))
     
-    # Any target object exists in the scene?
-    any_target = th.any(is_target, dim=1)
+    # Count target objects: (B,)
+    n = th.sum(is_target.float(), dim=1)
     
-    # Return probability: True if NOT any_target
-    return bool_to_probs(~any_target)
+    # Probability = 1 / (n + 1)
+    return 1.0 / (n**2 + 1.0)
 
 def above_water(player: th.Tensor) -> th.Tensor:
     """True if player is above water (at surface, y < 55)."""
@@ -641,3 +674,34 @@ def no_divers_collected(dummy_player, all_objects: th.Tensor = None) -> th.Tenso
     any_collected = th.any(is_collected, dim=1)
     
     return bool_to_probs(~any_collected)
+def danger_diver(diver: th.Tensor, all_objects: th.Tensor = None) -> th.Tensor:
+    """True if there is an enemy in a 5 pixel radius to diver (using centers)."""
+    if all_objects is None:
+        return th.tensor([0.01], device=diver.device)
+    
+    # Identify enemies: type_id 0 and visible
+    is_enemy = (all_objects[..., 6] == 0) & (all_objects[..., 0] == 1)
+    
+    # Compute centers
+    diver_cx = diver[..., 1] + diver[..., 3] / 2.0
+    diver_cy = diver[..., 2] + diver[..., 4] / 2.0
+    
+    obj_cx = all_objects[..., 1] + all_objects[..., 3] / 2.0
+    obj_cy = all_objects[..., 2] + all_objects[..., 4] / 2.0
+    
+    # Euclidean distance between centers
+    dx = diver_cx.unsqueeze(1) - obj_cx
+    dy = diver_cy.unsqueeze(1) - obj_cy
+    dist_sq = dx**2 + dy**2
+    
+    # Radius 5 pixels -> dist_sq < 25 (slightly more lenient than 3 to account for jitter)
+    is_near_enemy = is_enemy & (dist_sq < 25)
+    
+    # If ANY enemy is near this diver
+    any_danger = th.any(is_near_enemy, dim=1)
+    
+    return bool_to_probs(any_danger)
+
+def not_danger_diver(diver: th.Tensor, all_objects: th.Tensor = None) -> th.Tensor:
+    """Negation of danger_diver."""
+    return 1.0 - danger_diver(diver, all_objects)

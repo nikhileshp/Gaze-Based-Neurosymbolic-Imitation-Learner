@@ -41,7 +41,7 @@ oxygen_not_full:1:ooxygenbar
 oxygen_not_low:1:ooxygenbar
 player_left_side:1:oplayer
 player_right_side:1:oplayer
-no_object:1:oplayer
+few_objects:1:oplayer
 very_close_by_enemy:2:oplayer,oenemy
 fireable_enemy:2:oplayer,oenemy
 no_divers_collected:1:oplayer
@@ -49,3 +49,7 @@ atleast_one_diver_collected:1:oplayer
 divers_collected_not_full:1:oplayer
 player_up_side:1:oplayer
 player_down_side:1:oplayer
+danger_diver:1:odiver
+not_danger_diver:1:odiver
+closest_diver:2:oplayer,odiver
+closest_missile:2:oplayer,omissile
