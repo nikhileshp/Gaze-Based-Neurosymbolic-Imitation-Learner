@@ -25,9 +25,20 @@ def directly_above_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
     obj_exists = enemy[..., 0] == 1  # Check if object exists/visible
     player_y = player[..., 2]
     obj_y = enemy[..., 2]
-    result = obj_exists & (player_y < obj_y) 
-    overlap = _horizontal_iou(player, enemy, 11, 10)
-    return bool_to_probs(result) * overlap
+    is_above = player_y < obj_y
+    
+    player_left = player[..., 1]
+    player_right = player[..., 1] + player[..., 3]
+    enemy_left = enemy[..., 1]
+    enemy_right = enemy[..., 1] + enemy[..., 3]
+    
+    dist_left = th.clamp(enemy_left - player_right, min=0.0)
+    dist_right = th.clamp(player_left - enemy_right, min=0.0)
+    dist = th.maximum(dist_left, dist_right)
+    
+    overlap_prob = th.clamp(0.99 * (1.0 - dist / 3.0), min=0.0, max=0.99)
+    result = obj_exists & is_above
+    return bool_to_probs(result) * overlap_prob
 
 def not_directly_above_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
     obj_exists = enemy[..., 0] == 1
@@ -37,9 +48,20 @@ def directly_below_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
     obj_exists = enemy[..., 0] == 1  # Check if object exists/visible
     player_y = player[..., 2]
     obj_y = enemy[..., 2]
-    result = obj_exists & (player_y > obj_y) 
-    overlap = _horizontal_iou(player, enemy, 11, 10)
-    return bool_to_probs(result) * overlap
+    is_below = player_y > obj_y
+    
+    player_left = player[..., 1]
+    player_right = player[..., 1] + player[..., 3]
+    enemy_left = enemy[..., 1]
+    enemy_right = enemy[..., 1] + enemy[..., 3]
+    
+    dist_left = th.clamp(enemy_left - player_right, min=0.0)
+    dist_right = th.clamp(player_left - enemy_right, min=0.0)
+    dist = th.maximum(dist_left, dist_right)
+    
+    overlap_prob = th.clamp(0.99 * (1.0 - dist / 3.0), min=0.0, max=0.99)
+    result = obj_exists & is_below
+    return bool_to_probs(result) * overlap_prob
 
 
 def not_directly_below_enemy(player: th.Tensor, enemy: th.Tensor) -> th.Tensor:
@@ -209,10 +231,7 @@ def deeper_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
     obj_y = obj[..., 2]
     result = obj_exists & (player_y > obj_y) & (same_depth_enemy(player, obj) < HIGHER_BOUND)
-    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
-    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1)
-    
-    return bool_to_probs(result) * non_overlap
+    return bool_to_probs(result)
 
 
 def deeper_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -232,16 +251,9 @@ def higher_than_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     """True iff the player is (significantly) 'higher than' the object."""
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
     player_y = player[..., 2]
-    # print("Player", player)
-    # print("Object", obj)
     obj_y = obj[..., 2]
     result = obj_exists & (player_y < obj_y)
-    non_overlap = 1 - _vertical_iou(player, obj, 11, 10)
-    
-    # prox = th.clip((obj_y-player_y)/(100), LOWER_BOUND, 1) 
-
-    # print("Result", result, "Object y", obj_y, "Player y", player_y, "prox", prox)
-    return bool_to_probs(result) * non_overlap
+    return bool_to_probs(result)
 
 
 def higher_than_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
@@ -313,18 +325,26 @@ def very_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_w, obj_h = obj[..., 3], obj[..., 4]
     obj_orient = obj[..., 5]
 
-    # Conditions from user:
-    # 1. enemy facing right (4) and enemy_x+enemy_width is within 5 pixels of player_x
-    cond1 = (obj_orient == 4) & (th.abs(player_x - (obj_x + obj_w)) < 7)
-    # 2. enemy facing left (12) and enemy_x is within 5 pixels of player_x + player_width
-    cond2 = (obj_orient == 12) & (th.abs(obj_x - (player_x + player_w)) < 7)
-    # 3. enemy_y is within 5 pixels of player_y + player_height
-    cond3 = th.abs(obj_y - (player_y + player_h)) < 7
-    # 4. enemy_y + enemy_height is within 5 pixels of player_y
-    cond4 = th.abs(player_y - (obj_y + obj_h)) < 7
+    # Calculate horizontal distances to edges based on facing direction
+    # Enemy facing right (4): check distance from enemy right edge to player left edge
+    dist1 = th.abs(player_x - (obj_x + obj_w))
+    # Enemy facing left (12): check distance from enemy left edge to player right edge
+    dist2 = th.abs(obj_x - (player_x + player_w))
+    
+    # Use the appropriate distance based on orientation
+    dist = th.where(obj_orient == 4, dist1, dist2)
+    
+    # Calculate vertical overlap (relaxing the strict 4-pixel tolerance to a gentle probability curve)
+    vert_dist = th.abs((player_y + player_h/2) - (obj_y + obj_h/2))
+    vert_prob = th.clip(1.0 - (vert_dist / 14.0), 0.0, 1.0)
+    
+    # Calculate continuous proximity probability
+    # If distance is 0, prob is 1.0. Decays to 0 at distance 16.
+    max_dist = 16.0
+    horiz_prob = th.clip(1.0 - (dist / max_dist), 0.0, 1.0)
 
-    combined = cond1 | cond2 | cond3 | cond4
-    return bool_to_probs(obj_exists & combined)
+    result = obj_exists & (horiz_prob > 0) & (vert_prob > 0)
+    return horiz_prob * vert_prob * bool_to_probs(result)
 
 def closest_enemy(player: th.Tensor, enemy: th.Tensor, all_objects: th.Tensor = None) -> th.Tensor:
     if all_objects is None:
@@ -390,8 +410,28 @@ def not_close_by_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     # Only return proximity if object exists, else 0
     return (1-proximity) * bool_to_probs(obj_exists)
 
+def horizontally_far_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
+    """Continuous probability of being horizontally far from the enemy. 
+    Returns 0.0 when same X, up to 1.0 when X distance > 50px."""
+    obj_exists = obj[..., 0] == 1
+    player_x = player[..., 1]
+    obj_x = obj[..., 1]
+    
+    dist_x = th.abs(player_x - obj_x)
+    
+    prob = th.clip(dist_x / 50.0, 0.0, 1.0)
+    return prob * bool_to_probs(obj_exists)
 
-
+def horizontally_close_enemy(player: th.Tensor, obj: th,Tensor) -> th.Tensor:
+    obj_exists = obj[..., 0] == 1
+    player_x = player[..., 1]
+    obj_x = obj[..., 1]
+    
+    dist_x = th.abs(player_x - obj_x)
+    
+    prob = th.clip(1 - (dist_x / 50.0), 0.0, 1.0)
+    return prob * bool_to_probs(obj_exists)
+    
 def close_by_diver(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1  # Check if object exists/visible
     proximity = _close_by(player, obj)
@@ -524,30 +564,49 @@ def type(obj: th.Tensor, type_oh: th.Tensor) -> th.Tensor:
 
 # NEW PREDICATES
 
+# Global memory to prevent sprite flickering from dropping the "full" status
+_divers_full_latch = False
+_frames_above_water = 0
+
 def divers_collected_full(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
-    """True if 6 divers are collected."""
-    if all_objects is None:
-        return th.tensor([0.01], device=dummy_player.device)
+    """True if 6 divers are collected. Uses a strict global latch to prevent flickering."""
+    global _divers_full_latch, _frames_above_water
+    device = dummy_player.device
     
+    if all_objects is None:
+        return th.tensor([0.01], device=device)
+        
     vis = all_objects[..., 0] == 1
     type_ids = all_objects[..., 6]
-    # CollectedDiver is type 6
     is_collected = vis & (type_ids == 6)
     
-    num_collected = th.sum(is_collected, dim=1)
-    return bool_to_probs(num_collected == 6)
+    num_collected = th.sum(is_collected, dim=1) # Shape: (B,)
+    
+    # Check if player is above water (use the first batch element for the global latch)
+    # y < 48 means above water (matching above_water predicate).
+    player_y = dummy_player[0, 2]
+    
+    # Update global latch with hysteresis (5 frames)
+    if player_y < 48:
+        _frames_above_water += 1
+        if _frames_above_water > 5:
+            _divers_full_latch = False
+    else:
+        _frames_above_water = 0
+        if num_collected[0].item() >= 6:
+            _divers_full_latch = True
+            
+    # Broadcast the global latch to the batch dimension
+    batch_size = num_collected.shape[0]
+    result = th.full((batch_size,), _divers_full_latch, dtype=th.bool, device=device)
+    
+    return bool_to_probs(result)
 
 def divers_collected_not_full(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
-    """True if fewer than 6 divers are collected."""
-    if all_objects is None:
-        return th.tensor([0.99], device=dummy_player.device)
-    
-    vis = all_objects[..., 0] == 1
-    type_ids = all_objects[..., 6]
-    is_collected = vis & (type_ids == 6)
-    
-    num_collected = th.sum(is_collected, dim=1)
-    return bool_to_probs(num_collected < 6)
+    """True if fewer than 6 divers are collected. Inverse of full."""
+    # We use the full probability and invert it exactly to maintain consistency
+    prob_full = divers_collected_full(dummy_player, all_objects)
+    return 1.0 - prob_full + 0.02 # Offset to map 0.99 -> 0.01 and 0.01 -> 0.99
 
 
 def oxygen_critical(oxygen_bar: th.Tensor) -> th.Tensor:
@@ -595,6 +654,23 @@ def few_objects(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
     # Probability = 1 / (n^2 + 1)
     return (1.0 / (n**2 + 1.0)).to(th.float32)
 
+def no_object(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
+    """Probabilistic version of no_object: 1/(n+1) where n is num of targets."""
+    if all_objects is None:
+        return th.tensor([0.99], device=dummy_player.device)
+    
+    # Identify enemies and divers: visible (index 0) and type_id in {0, 1}
+    vis = all_objects[..., 0] == 1
+    type_ids = all_objects[..., 6]
+    is_target = vis & ((type_ids == 0) | (type_ids == 1))
+    
+    # Count target objects: (B,)
+    n = th.sum(is_target.float(), dim=1)
+    
+    # If there are no objects, return 1.0 use bool_to_probs
+    return bool_to_probs(n == 0)
+
+
 def above_water(player: th.Tensor) -> th.Tensor:
     """True if player is above water (at surface, y < 55)."""
     # Uses same threshold as surface_submarine
@@ -627,15 +703,19 @@ def player_right_side(player: th.Tensor) -> th.Tensor:
     # Linear increase: 0.01 at x=0, 0.5 at x=80, 1.0 at x=160
     return th.clip(player_x / 160.0, 0.01, 0.99)
 
-def player_up_side(player: th.Tensor) -> th.Tensor:
-    player_y = player[..., 2]
-    # Linear decay: 1.0 at y=0, 0.5 at y=130, 0.01 at y=260
-    return th.clip(1.0 - (player_y / 260.0), 0.01, 0.99)
-
 def player_down_side(player: th.Tensor) -> th.Tensor:
     player_y = player[..., 2]
+    player_y = th.where(player_y < 50, 50, player_y)
+    player_y = th.where(player_y > 110, 110, player_y)
+    # Linear decay: 1.0 at y=0, 0.5 at y=130, 0.01 at y=260
+    return th.clip(1.0 - (player_y-50 / 1.0), 0.01, 0.99)
+
+def player_up_side(player: th.Tensor) -> th.Tensor:
+    player_y = player[..., 2]
+    player_y = th.where(player_y < 50, 50, player_y)
+    player_y = th.where(player_y > 90, 90, player_y)
     # Linear increase: 0.01 at y=0, 0.5 at y=130, 1.0 at y=260
-    return th.clip(player_y / 260.0, 0.01, 0.99)
+    return th.clip((player_y-50) / 110.0, 0.01, 0.99)
 
 
 def above_surface(player: th.Tensor, surface: th.Tensor) -> th.Tensor:

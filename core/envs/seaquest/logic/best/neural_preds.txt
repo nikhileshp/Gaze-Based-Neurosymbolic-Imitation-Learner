@@ -44,12 +44,10 @@ player_right_side:1:oplayer
 few_objects:1:oplayer
 very_close_by_enemy:2:oplayer,oenemy
 fireable_enemy:2:oplayer,oenemy
-closest_diver:2:oplayer,odiver
-closest_missile:2:oplayer,omissile
 no_divers_collected:1:oplayer
 atleast_one_diver_collected:1:oplayer
 divers_collected_not_full:1:oplayer
 player_up_side:1:oplayer
 player_down_side:1:oplayer
-not_danger_diver:1:odiver
+no_object:1:oplayer
 horizontally_far_enemy:2:oplayer,oenemy

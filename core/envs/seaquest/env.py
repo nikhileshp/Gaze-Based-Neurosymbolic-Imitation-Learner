@@ -18,18 +18,6 @@ class NSFREnv(NSFRBaseEnv):
         'right': 3,
         'left': 4,
         'down': 5,
-        'up_right': 6,
-        'up_left': 7,
-        'down_right': 8,
-        'down_left': 9,
-        'up_fire': 10,
-        'right_fire': 11,
-        'left_fire': 12,
-        'down_fire': 13,
-        'up_right_fire': 14,
-        'up_left_fire': 15,
-        'down_right_fire': 16,
-        'down_left_fire': 17
     }
     pred_names: Sequence
 
