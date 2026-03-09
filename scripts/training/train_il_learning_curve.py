@@ -74,7 +74,7 @@ def get_args():
     # Dataset
     p.add_argument("--dataset",         type=str, required=True,
                    help="Path to the .pt dataset file.")
-    p.add_argument("--env",             type=str, default="seaquest")
+    p.add_argument("--env",             type=str, default=None)
     p.add_argument("--rules",           type=str, default="new")
     # Training
     p.add_argument("--epochs",          type=int, default=20)
@@ -178,6 +178,8 @@ def build_vT_batch(ep_nums, step_idxs, valuations, agent, device):
 
 def main():
     args = get_args()
+    if args.env is None:
+        raise ValueError("--env must be specified")
 
     # ── Gaze flags (mirrors train_il.py) ─────────────────────────────────────
     unnormalized       = args.unnormalized
