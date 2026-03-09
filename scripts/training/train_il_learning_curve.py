@@ -266,7 +266,15 @@ def main():
     if args.valuation_path:
         v_path = args.valuation_path
     else:
-        config_dir = os.path.join("trained_models", args.env, "nsfr",
+        if args.use_gaze:
+            tag = "grail_normalized"
+            if unnormalized:
+                tag = "grail_unnormalized"
+            if visible_preds_only:
+                tag = "grail_normalized_vis_only"
+        else:
+            tag = "nsfr"
+        config_dir = os.path.join("trained_models", args.env, tag,
                                   f"{args.rules}_rules_{args.lr}_lr_{args.loss}")
         v_path = os.path.join(config_dir, f"valuations_{args.rules}.pt")
     print(f"Valuation path: {v_path}")
