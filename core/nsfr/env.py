@@ -43,12 +43,14 @@ class NSFRBaseEnv(ABC):
         if self.mode == 'ppo':
             return model_action + 1
         else:  # logic
-            pred_names = list(self.pred2action.keys())
+            # Sort predicate names by length descending to match longest valid prefixes
+            # first (e.g., 'up_right' before 'up').
+            pred_names = sorted(list(self.pred2action.keys()), key=len, reverse=True)
             for pred_name in pred_names:
-                if pred_name in model_action:
+                if model_action.startswith(pred_name):
                     return self.pred2action[pred_name]
             raise ValueError(f"Invalid predicate '{model_action}' provided. "
-                             f"Must contain any of {pred_names}.")
+                             f"Must start with any of {pred_names}.")
 
     def n_actions(self) -> int:
         return len(list(set(self.pred2action.items())))

@@ -102,7 +102,18 @@ def above_row(z_1, z_2):
     result = player_mask & obj_mask & (diff > 4) & (diff < 23)
     return bool_to_probs(result)
  
+
+def above(z_1, z_2):
+    player_mask = is_player(z_1)
+    obj_mask = is_present(z_2)
+    c_1 = z_1[:, -1]
+    c_2 = z_2[:, -1]
+    diff = c_2 - c_1 # Player above Object -> Obj.y > Player.y
+    result = player_mask & obj_mask & (diff > 4)
+    return bool_to_probs(result)
  
+ 
+
 def below_row(z_1, z_2):
     player_mask = is_player(z_1)
     obj_mask = is_present(z_2)
@@ -112,6 +123,14 @@ def below_row(z_1, z_2):
     result = player_mask & obj_mask & (diff > 4) & (diff < 23)
     return bool_to_probs(result)
  
+def below(z1,z2):
+    player_mask = is_player(z1)
+    obj_mask = is_present(z2)
+    c1 = z1[:, -1]
+    c2 = z2[:, -1]
+    diff = c1 - c2 # Player below Object -> Player.y > Obj.y
+    result = player_mask & obj_mask & (diff > 4)
+    return bool_to_probs(result)
  
 def on_even(z_1):
     obj_mask = is_present(z_1)

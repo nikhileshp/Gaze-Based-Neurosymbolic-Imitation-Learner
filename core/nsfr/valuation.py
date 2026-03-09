@@ -187,7 +187,7 @@ class ValuationModule(nn.Module, ABC):
                     scale = torch.clamp(self.gaze_threshold / dist, max=1.0)
                     val = val * scale
         
-        return val
+        return val.to(torch.float32)
 
     def ground_to_tensor(self, const: Const, zs: torch.Tensor):
         """Ground constant (term) into tensor representations.

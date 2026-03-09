@@ -592,8 +592,8 @@ def few_objects(dummy_player, all_objects: th.Tensor = None) -> th.Tensor:
     # Count target objects: (B,)
     n = th.sum(is_target.float(), dim=1)
     
-    # Probability = 1 / (n + 1)
-    return 1.0 / (n**2 + 1.0)
+    # Probability = 1 / (n^2 + 1)
+    return (1.0 / (n**2 + 1.0)).to(th.float32)
 
 def above_water(player: th.Tensor) -> th.Tensor:
     """True if player is above water (at surface, y < 55)."""

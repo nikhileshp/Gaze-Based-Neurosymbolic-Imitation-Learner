@@ -108,11 +108,11 @@ class AgentWrapper:
             val_np = valuation.detach().cpu().numpy()
             
             # The valuation is a 1D tensor of probabilities (0-1) for each atom
-            # Find predicates with values > 0.5 and store top 15
-            high_value_indices = [(i, float(val_np[i])) for i in range(min(len(val_np), len(atoms))) if float(val_np[i]) > 0.1]
+            # Find predicates with values > 0.5 and store them all
+            high_value_indices = [(i, float(val_np[i])) for i in range(min(len(val_np), len(atoms))) if float(val_np[i]) > 0.5]
             high_value_indices.sort(key=lambda x: x[1], reverse=True)
             
-            self.current_neural_predicates = [(str(atoms[idx]), val) for idx, val in high_value_indices[:25]]
+            self.current_neural_predicates = [(str(atoms[idx]), val) for idx, val in high_value_indices]
         else:
             self.current_neural_predicates = []
         
@@ -185,7 +185,7 @@ class AgentWrapper:
             
             # Show top neural predicates with their object references
             # print(f"\nTop Neural Predicates:")
-            for pred_str, val in self.current_neural_predicates[:50]:
+            for pred_str, val in self.current_neural_predicates:
                 print(f"  {val:.3f} - {pred_str}")
             
             # Check for type predicates specifically

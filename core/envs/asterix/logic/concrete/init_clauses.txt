@@ -6,6 +6,8 @@ down_dodge_right(X):-on_left(O1,O2),type(O1,player),type(O2,enemy),same_row(O1,O
 up_bonus_left(X):-on_right(O1,O2),type(O1,player),type(O2,bonus),below_row(O1,O2),closeby(O1,O2),visible(O2).
 up_bonus_right(X):-on_left(O1,O2),type(O1,player),type(O2,bonus),below_row(O1,O2),closeby(O1,O2),visible(O2).
 down_bonus_left(X):-on_right(O1,O2),type(O1,player),type(O2,bonus),above_row(O1,O2),closeby(O1,O2),visible(O2).
+down_bonus_left(X):-on_right(O1,O2),type(O1,player),type(O2,bonus),above(O1,O2),closest(O1,O2),visible(O2).
+down_bonus_right(X):-on_left(O1,O2),type(O1,player),type(O2,bonus),above(O1,O2),closest(O1,O2),visible(O2).
 down_bonus_right(X):-on_left(O1,O2),type(O1,player),type(O2,bonus),above_row(O1,O2),closeby(O1,O2),visible(O2).
 right_bonus(X):-on_left(O1,O2),type(O1,player),type(O2,bonus),same_row(O1,O2),closeby(O1,O2),visible(O2).
 left_bonus(X):-on_right(O1,O2),type(O1,player),type(O2,bonus),same_row(O1,O2),closeby(O1,O2),visible(O2).

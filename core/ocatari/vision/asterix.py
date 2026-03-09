@@ -144,6 +144,43 @@ class Reward500(GameObject):
 # MAX_NB_OBJECTS_HUD = {"Player" :  1, "Enemy": 8, "Reward" : 8, "Consumable" : 8, "Score" : 1, "Lives": 1}
 
 
+def match_heterogenous_objects(prev_objects, items_list, start_idx, max_obj):
+    from ocatari.vision.utils import compute_cm
+    from scipy.optimize import linear_sum_assignment
+    from ocatari.vision.game_objects import NoObject
+    if len(items_list) == 0:
+        for i in range(max_obj):
+            if prev_objects[start_idx+i]:
+                prev_objects[start_idx+i] = NoObject()
+        return
+
+    objects_bb = [x[0] for x in items_list]
+    
+    if all([not(obj) for obj in prev_objects[start_idx: start_idx+max_obj]]): # no existing objects
+        for i in range(min(max_obj, len(objects_bb))):
+            try:
+                ObjClass = items_list[i][1]
+                prev_objects[start_idx+i] = ObjClass(*objects_bb[i])
+            except IndexError:
+                raise IndexError
+    else:
+        try:
+            cost_matrix = compute_cm(prev_objects[start_idx: start_idx+max_obj], objects_bb)
+            obj_idx, bbs_idx = linear_sum_assignment(cost_matrix)
+            for i in range(max_obj):
+                if i not in obj_idx and prev_objects[start_idx+i]:
+                    prev_objects[start_idx+i] = NoObject()
+            for i, j in zip(obj_idx, bbs_idx):
+                ObjClass = items_list[j][1]
+                if prev_objects[start_idx+i] and type(prev_objects[start_idx+i]) == ObjClass:   
+                    prev_objects[start_idx+i].xywh = objects_bb[j][:4]
+                    if len(objects_bb[j]) > 4:
+                        prev_objects[start_idx+i].rgb = objects_bb[j][4]
+                else:
+                    prev_objects[start_idx+i] = ObjClass(*objects_bb[j])
+        except Exception as e:
+            raise(e)
+
 def _detect_objects(objects, obs, hud=False):
     player = objects[0]
     player_bb = find_objects(
@@ -158,55 +195,57 @@ def _detect_objects(objects, obs, hud=False):
 
     reward50 = find_mc_objects(obs, objects_colors["reward_50"], min_distance=3, closing_dist=4, miny=24, maxy=151,
                                tol_s=3, size=(6, 11))
-    match_objects(objects, reward50, 9, 8, Reward50)
-
     reward100 = find_mc_objects(obs, objects_colors["reward_100"], min_distance=3, closing_dist=3, miny=24, maxy=151,
                                 size=(8, 11), tol_s=2)
-    match_objects(objects, reward100, 9, 8, Reward100)
     reward200 = find_mc_objects(obs, objects_colors["reward_200"], min_distance=3, closing_dist=3, miny=24, maxy=151,
                                 size=(8, 11), tol_s=3)
-    match_objects(objects, reward200, 9, 8, Reward200)
     reward300 = find_mc_objects(obs, objects_colors["reward_300"], min_distance=3, closing_dist=3, miny=24, maxy=151,
                                 size=(8, 11), tol_s=3)
-    match_objects(objects, reward300, 9, 8, Reward300)
     reward400 = find_mc_objects(obs, objects_colors["reward_400"], min_distance=3, closing_dist=3, miny=24, maxy=151,
                                 size=(8, 11), tol_s=3)
-    match_objects(objects, reward400, 9, 8, Reward400)
     reward500 = find_mc_objects(obs, objects_colors["reward_500"], min_distance=3, closing_dist=3, miny=24, maxy=151,
                                 size=(8, 11), tol_s=3)
-    match_objects(objects, reward500, 9, 8, Reward500)
+
+    rewards_list = []
+    for bb in reward50: rewards_list.append((bb, Reward50))
+    for bb in reward100: rewards_list.append((bb, Reward100))
+    for bb in reward200: rewards_list.append((bb, Reward200))
+    for bb in reward300: rewards_list.append((bb, Reward300))
+    for bb in reward400: rewards_list.append((bb, Reward400))
+    for bb in reward500: rewards_list.append((bb, Reward500))
+    match_heterogenous_objects(objects, rewards_list, 9, 8)
 
     cauldron = find_mc_objects(
-        obs, objects_colors["cauldron"], closing_dist=2, size=(7, 10), tol_s=2)
-    match_objects(objects, cauldron, 17, 8, Cauldron)
+        obs, objects_colors["cauldron"], closing_dist=2, size=(7, 10), tol_s=2, all_colors=False)
     helmet = find_mc_objects(obs, objects_colors["helmet"], closing_dist=1, min_distance=1, size=(7, 11),
-                             tol_s=2, miny=24, maxy=151)
-    match_objects(objects, helmet, 17, 8, Helmet)
+                             tol_s=2, miny=24, maxy=151, all_colors=False)
     shield = find_objects(obs, objects_colors["shield"], closing_dist=1, size=(5, 11), tol_s=1, min_distance=2,
                           miny=24, maxy=151)
-    match_objects(objects, shield, 17, 8, Shield)
     no_shield = len(shield) == 0
-
     lamp = find_mc_objects(obs, objects_colors["lamp"], closing_dist=4, size=(
-        8, 11), tol_s=1, miny=24, maxy=151)
-    match_objects(objects, lamp, 17, 8, Lamp)
-
+        8, 11), tol_s=1, miny=24, maxy=151, all_colors=False)
     apple = find_mc_objects(obs, objects_colors["apple"], closing_dist=2, min_distance=2, size=(8, 11),
-                            tol_s=1, miny=24, maxy=151, )
-    match_objects(objects, apple, 17, 8, Apple)
-
+                            tol_s=1, miny=24, maxy=151, all_colors=False)
     fish = find_objects(obs, objects_colors["fish"], closing_dist=1, min_distance=1,
                         size=(8, 5), tol_s=2, miny=24, maxy=151)
-    match_objects(objects, fish, 17, 8, Fish)
-
-    meat = find_mc_objects(obs, objects_colors["meat"], closing_dist=1, min_distance=1, size=(5, 11),
-                           tol_s=2, miny=24, maxy=151)
     if no_shield:
-        match_objects(objects, meat, 17, 8, Meat)
-
+        meat = find_mc_objects(obs, objects_colors["meat"], closing_dist=1, min_distance=1, size=(5, 11),
+                               tol_s=2, miny=24, maxy=151, all_colors=False)
+    else:
+        meat = []
     mug = find_mc_objects(obs, objects_colors["mug"], closing_dist=2, min_distance=2, size=(7, 11),
-                          tol_s=1, miny=24, maxy=151)
-    match_objects(objects, mug, 17, 8, Mug)
+                          tol_s=1, miny=24, maxy=151, all_colors=False)
+
+    consumables_list = []
+    for bb in cauldron: consumables_list.append((bb, Cauldron))
+    for bb in helmet: consumables_list.append((bb, Helmet))
+    for bb in shield: consumables_list.append((bb, Shield))
+    for bb in lamp: consumables_list.append((bb, Lamp))
+    for bb in apple: consumables_list.append((bb, Apple))
+    for bb in fish: consumables_list.append((bb, Fish))
+    for bb in meat: consumables_list.append((bb, Meat))
+    for bb in mug: consumables_list.append((bb, Mug))
+    match_heterogenous_objects(objects, consumables_list, 17, 8)
 
     # if hud:
     #     lives = find_objects(obs, objects_colors["lives"], min_distance=1, miny=160, maxy=181)
