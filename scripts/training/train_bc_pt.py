@@ -37,7 +37,7 @@ from torch.utils.data import TensorDataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import pandas as pd
-
+from scripts.evaluation.evaluate_model import GABRILEnvWrapper
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Helpers
@@ -244,7 +244,7 @@ def main():
     results_log = []
     # ── Environment for evaluation ────────────────────────────────────────────
     env = NSFRBaseEnv.from_name(args.env, mode='logic')
-
+    # env = GABRILEnvWrapper(env, frame_skip=4, gabril_compat=True)
     # Determine episodes to loop over
     if args.incremental:
         # We need to know max episodes. We can peek at the dataset.

@@ -57,7 +57,7 @@ class GABRILEnvWrapper:
             n_noops = int(self._rng.integers(0, self.noop_max + 1))
             for _ in range(n_noops):
                 # noops are single ALE frames — no frame_skip during reset
-                state, _, done = self._env.step(self.noop_action)
+                state, _, done = self._env.step(self.noop_action, is_mapped=True)
                 if done:
                     state = self._env.reset(seed=seed, options=options)
 
@@ -233,7 +233,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
             terminal_on_life_loss=True,
             noop_action=0,   # integer — BC steps with is_mapped=True
             seed=seed,
-            frame_skip=4,
+            frame_skip=1,
         )
         print("  GABRILEnvWrapper applied: sticky=0.25, noop_max=30, "
               "terminal_on_life_loss=True, frame_skip=4")
@@ -282,7 +282,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
                          else {0: 'noop', 1: 'fire', 2: 'up',
                                3: 'right', 4: 'left', 5: 'down'})
         action_counts = {}
-
+        action_idx_counts = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0}
         # ── GABRIL step cap: 5000 ─────────────────────────────────────────────
         while not done and step_count < 5000:
             step_count += 1
@@ -319,6 +319,9 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
                 logits     = actor(pre_actor(z))
                 action_idx = logits.argmax(dim=1).item()
 
+            
+            if action_idx in action_idx_counts.keys():
+                action_idx_counts[action_idx] = action_idx_counts[action_idx] + 1
             action_str = valid_actions.get(action_idx, "noop")
             action_counts[action_str] = action_counts.get(action_str, 0) + 1
 
@@ -346,12 +349,10 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
         rewards.append(total_r)
         print(f"Episode {i+1}/{num_episodes} — Reward: {total_r}  Steps: {step_count}")
         print(f"  Action Distribution: {action_counts}")
-
+        print(f"  Action Index Distribution: {action_idx_counts}")
     return rewards
 
-
-# ── CLI ───────────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
+def main():
     import argparse
     from nsfr.env import NSFRBaseEnv
 
@@ -394,3 +395,7 @@ if __name__ == "__main__":
     print(f"\nFinal Evaluation over {args.episodes} episodes:")
     print(f"Mean Reward: {np.mean(eval_rewards):.2f} ± {np.std(eval_rewards):.2f}")
     print(f"Min / Max:   {min(eval_rewards):.0f} / {max(eval_rewards):.0f}")
+    
+# ── CLI ───────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    main()
