@@ -242,17 +242,115 @@ def main():
     print(f"Total samples in dataset: {total_samples}")
 
     # ── Resolve valuation path ────────────────────────────────────────────────
-    # We need a temporary agent just to find the atom count for vT zeros.
-    # We will create proper agents inside the loop.
     if args.valuation_path:
         v_path = args.valuation_path
     else:
-        # Mirror train_il.py: look two levels above a hypothetical run_dir
-        # Use a stable config dir = trained_models/<env>/nsfr/<rules>_rules_<lr>_lr_<loss>/
         config_dir = os.path.join("trained_models", args.env, "nsfr",
                                   f"{args.rules}_rules_{args.lr}_lr_{args.loss}")
         v_path = os.path.join(config_dir, f"valuations_{args.rules}.pt")
     print(f"Valuation path: {v_path}")
+
+    # ── Precompute valuations if not found ────────────────────────────────────
+    if not os.path.exists(v_path):
+        print(f"\n{'='*50}")
+        print("Valuation file not found — precomputing from full dataset ...")
+        print(f"{'='*50}")
+
+        # Build a temporary agent for access to fc / atoms
+        _tmp_agent = ImitationAgent(
+            args.env, args.rules, device,
+            gaze_threshold=(args.gaze_threshold if use_gaze else None),
+            unnormalized=unnormalized,
+            visible_preds_only=visible_preds_only,
+            alpha=alpha,
+            aggregation_method=args.aggregation,
+        )
+
+        # Initialise gaze predictor if needed for precompute
+        _pre_gaze_predictor = None
+        if use_gaze and gaze_predictor is None:
+            try:
+                from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
+                print(f"Initializing Gaze Predictor for precomputation from {args.gaze_model_path} ...")
+                _pre_gaze_predictor = Human_Gaze_Predictor(args.env)
+                _pre_gaze_predictor.init_model(args.gaze_model_path)
+                _pre_gaze_predictor.model.eval()
+                _pre_gaze_predictor.model.to(device)
+            except ImportError:
+                print("Warning: Could not import Human_Gaze_Predictor for precomputation.")
+        elif use_gaze:
+            _pre_gaze_predictor = gaze_predictor
+
+        _data = torch.load(args.dataset, map_location='cpu', weights_only=False)
+        obs_t     = _data['observations']
+        if not isinstance(obs_t, torch.Tensor):     obs_t     = torch.tensor(obs_t)
+        logic_t   = _data['logic_state']
+        if not isinstance(logic_t, torch.Tensor):   logic_t   = torch.tensor(logic_t)
+        actions_t = _data['actions']
+        if not isinstance(actions_t, torch.Tensor): actions_t = torch.tensor(actions_t)
+        ep_nums_t = _data.get('episode_number', torch.zeros(len(obs_t), dtype=torch.long))
+        if not isinstance(ep_nums_t, torch.Tensor): ep_nums_t = torch.tensor(ep_nums_t)
+
+        valuations_precomp = {}
+        with torch.no_grad():
+            unique_eps_pre = torch.unique(ep_nums_t).numpy()
+            for ep in tqdm(unique_eps_pre, desc="Precomputing valuations"):
+                mask      = (ep_nums_t == ep)
+                ep_obs    = obs_t[mask]
+                ep_logic  = logic_t[mask]
+                ep_act    = actions_t[mask]
+                T_ep      = len(ep_obs)
+                if T_ep == 0:
+                    continue
+
+                # 1. Gaze stacking (only if using gaze)
+                ep_gazes_t = None
+                if use_gaze and _pre_gaze_predictor is not None:
+                    pad = ep_obs[0:1].expand(3, -1, -1)
+                    padded_obs = torch.cat([pad, ep_obs], dim=0)
+                    stacks = torch.stack([padded_obs[i:i+4] for i in range(T_ep)], dim=0)
+
+                    batch_sz_g = 256
+                    ep_gazes = []
+                    for i in range(0, T_ep, batch_sz_g):
+                        bs = stacks[i:i+batch_sz_g].to(device, dtype=torch.float32) / 255.0
+                        gp = _pre_gaze_predictor.predict_normalized(bs).squeeze(1)
+                        ep_gazes.append(gp)
+                    ep_gazes_t = torch.cat(ep_gazes, dim=0)
+
+                # 2. Filter valid actions
+                valid_mask = (ep_act <= 5)
+                valid_logic = ep_logic[valid_mask]
+                K_ep = len(valid_logic)
+                if K_ep == 0:
+                    continue
+
+                # 3. Compute v0 (batched)
+                ep_v0 = []
+                batch_sz_v = 256
+                for i in range(0, K_ep, batch_sz_v):
+                    b_logic = valid_logic[i:i+batch_sz_v].to(device, dtype=torch.float32)
+                    b_gaze  = None
+                    if use_gaze and ep_gazes_t is not None:
+                        valid_gazes = ep_gazes_t[valid_mask]
+                        b_gaze = valid_gazes[i:i+batch_sz_v]
+                    v0 = _tmp_agent.unwrapped_model.fc(
+                        b_logic,
+                        _tmp_agent.unwrapped_model.atoms,
+                        _tmp_agent.unwrapped_model.bk,
+                        gaze=b_gaze,
+                    )
+                    ep_v0.append(v0.cpu())
+                ep_v0_t = torch.cat(ep_v0, dim=0)
+                valuations_precomp[int(ep)] = [ep_v0_t[i] for i in range(K_ep)]
+
+        del _data, obs_t, logic_t, actions_t, ep_nums_t, _tmp_agent
+        gc.collect()
+
+        os.makedirs(os.path.dirname(v_path), exist_ok=True)
+        torch.save(valuations_precomp, v_path)
+        print(f"Valuations saved to {v_path}\n")
+        del valuations_precomp
 
     # ── Results accumulator ───────────────────────────────────────────────────
     results_log = []
@@ -323,11 +421,11 @@ def main():
         else:
             print(f"  Single GPU / CPU — DataParallel not applied.")
 
-        # ── Load pre-computed valuations ──────────────────────────────────────
+        # ── Load pre-computed valuations (guaranteed by precompute block above) ─
         valuations = load_valuations(v_path, agent, device)
         if valuations is None:
-            print(f"  WARNING: No valuations found at {v_path}. "
-                  f"Will use zero vT tensors (slower / less accurate).")
+            print(f"  WARNING: Valuations still not found at {v_path}. "
+                  f"Will use zero vT tensors — check precompute step.")
 
         # ── Optimizer / Scheduler ─────────────────────────────────────────────
         optimizer = torch.optim.Adam(agent.unwrapped_model.parameters(), lr=args.lr)
