@@ -229,6 +229,25 @@ def main():
     os.makedirs(base_run_dir, exist_ok=True)
     print(f"Base output dir: {base_run_dir}")
 
+    # ── Probe agent to get the correct max_action for this environment ────────
+    # (mirrors train_il.py which does: max_action=agent.num_actions - 1)
+    # Must be done before loading PtDataset so actions outside the valid range
+    # are filtered out immediately — otherwise NLLLoss raises an out-of-range
+    # CUDA assertion (e.g. Asterix has 5 actions 0-4, not 6 like Seaquest).
+    print("\nProbing ImitationAgent to determine action count ...")
+    _probe_agent = ImitationAgent(
+        args.env, args.rules, device,
+        gaze_threshold=(args.gaze_threshold if use_gaze else None),
+        unnormalized=unnormalized,
+        visible_preds_only=visible_preds_only,
+        alpha=alpha,
+        aggregation_method=args.aggregation,
+    )
+    max_action = _probe_agent.num_actions - 1
+    print(f"  num_actions={_probe_agent.num_actions}  →  max_action={max_action}")
+    del _probe_agent
+    gc.collect()
+
     # ── Load full dataset once to know total sample count ────────────────────
     print("\nLoading full dataset ...")
     full_dataset = PtDataset(
@@ -236,7 +255,7 @@ def main():
         use_gaze=use_gaze,
         num_episodes=None,
         sort_by=None,
-        max_action=5,   # will be overridden per-agent below but 5 is safe for Seaquest
+        max_action=max_action,   # env-specific, e.g. 4 for Asterix, 5 for Seaquest
     )
     total_samples = len(full_dataset)
     print(f"Total samples in dataset: {total_samples}")
