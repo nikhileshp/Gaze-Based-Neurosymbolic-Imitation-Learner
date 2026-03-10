@@ -177,7 +177,7 @@ class ValuationModule(nn.Module, ABC):
                     val = val * max_gaze_flat
 
         # Gaze-based valuation scaling (Old Logic for points)
-        if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and gaze.shape[1] == 2 and pred_name.startswith("visible_"):
+        if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and gaze.shape[1] == 2 and (pred_name == "visible" or pred_name.startswith("visible_")):
              if len(args) > 0:
                 obj_tensor = args[0]
                 if obj_tensor.shape[0] == gaze.shape[0]:

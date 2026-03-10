@@ -17,8 +17,7 @@ def get_nsfr_model(env_name: str, rules: str, device: str, train=False, gaze_thr
     # Pass gaze_threshold to ValuationModule if it accepts it.
     # We need to update ValuationModule __init__ as well.
     val_module = ValuationModule(val_fn_path, lang, device, gaze_threshold=gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha)
-
-    FC = FactsConverter(lang=lang, valuation_module=val_module, device=device)
+    FC = FactsConverter(lang=lang, valuation_module=val_module, device=device, env_name=env_name)
     prednames = []
     for clause in clauses:
         if clause.head.pred.name not in prednames:

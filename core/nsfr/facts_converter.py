@@ -9,13 +9,14 @@ class FactsConverter(nn.Module):
     FactsConverter converts the output fromt the perception module to the valuation vector.
     """
 
-    def __init__(self, lang, valuation_module, device=None):
+    def __init__(self, lang, valuation_module, device=None, env_name=None):
         super(FactsConverter, self).__init__()
         self.e = 0
         self.d = 0
         self.lang = lang
         self.vm = valuation_module  # valuation functions
         self.device = device
+        self.env_name = env_name
         self.atom_groups = None  # Cache for atom grouping
 
     def __str__(self):
@@ -70,9 +71,17 @@ class FactsConverter(nn.Module):
                     -1, N_OBJ, -1, -1
                 ).reshape(B_size * N_OBJ, gaze_integral.shape[1], gaze_integral.shape[2])
 
+                if self.env_name == "asterix":
+                    # Asterix: [P, E, B, R, ?, X, Y] -> indices 5, 6. Width/Height hardcoded 8x11.
+                    cx, cy = flat_Z[:, 5], flat_Z[:, 6]
+                    w,  h  = torch.ones_like(cx) * 8.0, torch.ones_like(cy) * 11.0
+                else:
+                    # Seaquest/Default: [vis, x, y, w, h, ...]
+                    cx, cy, w, h = flat_Z[:, 1], flat_Z[:, 2], flat_Z[:, 3], flat_Z[:, 4]
+
                 sx, sy = 84.0 / 160.0, 84.0 / 210.0
-                cx, cy, w, h = flat_Z[:, 1], flat_Z[:, 2], flat_Z[:, 3], flat_Z[:, 4]
-                x,  y  = ((cx - w / 2) * sx).long(), ((cy - h / 2) * sy).long()
+                # Coordinates are TOP-LEFT in OCAtari.
+                x,  y  = (cx * sx).long(), (cy * sy).long()
                 dw, dh = (w * sx).long().clamp(min=1), (h * sy).long().clamp(min=1)
                 x1, y1 = x.clamp(0, 84), y.clamp(0, 84)
                 x2, y2 = (x + dw).clamp(0, 84), (y + dh).clamp(0, 84)
