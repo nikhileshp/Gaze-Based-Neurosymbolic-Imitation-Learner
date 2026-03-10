@@ -1,8 +1,8 @@
 """
 convert_trajectories_to_pt.py
-
+ 
 Converts trajectory session folders (PNG frames + txt/csv gaze+action files) into a .pt dataset:
-
+ 
   observations:      (N, 84, 84)   uint8   - grayscale frames
   gaze_information:  (N, 3)        float64 - [x_norm, y_norm, global_step_id]
   gaze_image:        (N, 84, 84)   float32 - temporally-aggregated gaze saliency map (±k_window frames)
@@ -13,13 +13,13 @@ Converts trajectory session folders (PNG frames + txt/csv gaze+action files) int
   terminateds:       (N,)          bool    - True when unclipped_reward < 0 or last frame
   truncateds:        (N,)          bool    - always False
   steps:             (E,)          int32   - number of steps per episode
-
+ 
 Usage:
   cd scripts
   python convert_trajectories_to_pt.py
   python convert_trajectories_to_pt.py --traj_dir ../data/seaquest/trajectories --output ../data/seaquest/my_dataset.pt
 """
-
+ 
 import argparse
 import os
 import glob
@@ -30,55 +30,94 @@ import numpy as np
 import torch
 from tqdm import tqdm
 from collections import defaultdict
-
+ 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+ 
 from ocatari.vision.extract_vision_info import detect_objects_vision
 from ocatari.core import OCAtari
-from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_ESSENTIAL_OBJECTS
+from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_NB_SEAQUEST
+from ocatari.ram.asterix import MAX_NB_OBJECTS as MAX_NB_ASTERIX
 
-IMG_W = 160   # Seaquest game width (pixels)
-IMG_H = 210   # Seaquest game height (pixels)
-N_FEATURES = 7
-# Compute N_OBJECTS dynamically from MAX_ESSENTIAL_OBJECTS (mirrors the EnemyMissile
-# override applied in extract_logic_state so the count is always in sync with seaquest.py)
-_obj_counts = dict(MAX_ESSENTIAL_OBJECTS)
-_obj_counts['EnemyMissile'] = 8   # same override used in extract_logic_state
-N_OBJECTS = sum(_obj_counts.values())
+IMG_W = 160   # Game width (pixels)
+IMG_H = 210   # Game height (pixels)
+
+# Environment-specific configurations
+ENV_CONFIGS = {
+    "Seaquest": {
+        "TYPE_MAP": {
+            'Shark': 0, 'Submarine': 0, 'SurfaceSubmarine': 0,
+            'Diver': 1, 'CollectedDiver': 6,
+            'OxygenBar': 2,
+            'Player': 3,
+            'EnemyMissile': 5, 'PlayerMissile': 5,
+            'Surface': 7
+        },
+        "CANONICAL_SIZES": {
+            'Shark': (8, 7),
+            'Diver': (8, 10),
+        },
+        "MAX_ESSENTIAL_OBJECTS": MAX_NB_SEAQUEST.copy(),
+        "N_FEATURES": 7,
+        "N_OBJECTS": None, # Computed at runtime
+        "TRAJ_DIR": 'data/seaquest/trajectories'
+    },
+    "Asterix": {
+        "TYPE_MAP": {
+            'Player': 0,
+            'Enemy': 1,
+            'Consumable': 2,
+            'Reward': 3
+        },
+        "CANONICAL_SIZES": {
+            'Player': (8, 11),
+            'Enemy': (7, 11),
+            'Consumable': (7, 11),
+            'Reward': (8, 11)
+        },
+        "MAX_ESSENTIAL_OBJECTS": MAX_NB_ASTERIX.copy(),
+        "N_FEATURES": 7,
+        "N_OBJECTS": 25, # Match nudge env.py
+        "TRAJ_DIR": 'data/asterix/trajectories'
+    }
+}
+# Override for Seaquest
+ENV_CONFIGS["Seaquest"]["MAX_ESSENTIAL_OBJECTS"]["EnemyMissile"] = 8
+ENV_CONFIGS["Seaquest"]["N_OBJECTS"] = sum(ENV_CONFIGS["Seaquest"]["MAX_ESSENTIAL_OBJECTS"].values())
+
 GAZE_IMG_SIZE = 84
-GAZE_SIGMA = 5.0          # Base Gaussian sigma (pixels in 84×84 space)
+GAZE_SIGMA = 10.0          # Base Gaussian sigma (pixels in 84×84 space)
 GAZE_K_WINDOW = 10         # Symmetric temporal window (±k frames)
 GAZE_COEF = 0.7           # Alpha: weight decay per frame of distance
 GAZE_VARIANCE_EXP = 0.99  # Beta: sigma shrinks as distance decreases (closer = tighter)
-
-
+ 
+ 
 # ─── Object Tracker (from extract_gaze_goals.py) ───────────────────────────
-
+ 
 def get_distance(p1, p2):
     return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-
+ 
 class TrackedObject:
     def __init__(self, obj, obj_id):
         self.obj = obj
         self.id = obj_id
         self.missing_frames = 0
-
+ 
     @property
     def center(self):
         return (self.obj.x + self.obj.w / 2, self.obj.y + self.obj.h / 2)
-
+ 
     def update(self, new_obj):
         self.obj = new_obj
         self.missing_frames = 0
-
+ 
 class ObjectTracker:
     def __init__(self, max_missing_frames=5, match_dist_threshold=30):
         self.next_id = 0
         self.tracked_objects = []
         self.max_missing_frames = max_missing_frames
         self.match_dist_threshold = match_dist_threshold
-
+ 
     def update(self, detections):
         current_tracked = []
         unmatched = list(detections)
@@ -102,73 +141,85 @@ class ObjectTracker:
             self.next_id += 1
         self.tracked_objects = current_tracked
         return self.tracked_objects
-
-
+ 
+ 
 # ─── Logic State Extraction ─────────────────────────────────────────────────
-
-TYPE_MAP = {
-    'Shark': 0, 'Submarine': 0, 'SurfaceSubmarine': 0,
-    'Diver': 1, 'CollectedDiver': 6,
-    'OxygenBar': 2,
-    'Player': 3,
-    'EnemyMissile': 5, 'PlayerMissile': 5,
-    'Surface': 7
-}
-
-# Known canonical sprite sizes for objects that flicker in detected size.
-# The center is reliable; width/height are not. These are used to stabilize the logic state.
-CANONICAL_SIZES = {
-    'Shark':  (8, 7),   # width=8, height=7
-    'Diver':  (8, 10),   # width=8, height=10
-}
-
-def extract_logic_state(tracked_objects):
+ 
+def extract_logic_state(tracked_objects, env_name="Seaquest"):
     """
     Convert list of TrackedObjects → (N_OBJECTS, N_FEATURES) int32 tensor.
-    Features: [present, x_or_width, y, width, height, orientation, type_id]
+    Format varies by environment to match nudge env.py / valuation.py
     """
-    state = np.zeros((N_OBJECTS, N_FEATURES), dtype=np.int32)
-    relevant = MAX_ESSENTIAL_OBJECTS.copy()
-    if 'EnemyMissile' in relevant:
-        relevant['EnemyMissile'] = 8
+    cfg = ENV_CONFIGS[env_name]
+    n_objects = cfg["N_OBJECTS"]
+    n_features = cfg["N_FEATURES"]
+    state = np.zeros((n_objects, n_features), dtype=np.int32)
+    type_map = cfg["TYPE_MAP"]
+    canonical_sizes = cfg["CANONICAL_SIZES"]
 
-    offsets, obj_count = {}, {}
-    off = 0
-    for cat, max_c in relevant.items():
-        offsets[cat] = off
-        obj_count[cat] = 0
-        off += max_c
+    if env_name == "Seaquest":
+        relevant = cfg["MAX_ESSENTIAL_OBJECTS"]
+        offsets, obj_count = {}, {}
+        off = 0
+        for cat, max_c in relevant.items():
+            offsets[cat] = off
+            obj_count[cat] = 0
+            off += max_c
 
-    for tr in tracked_objects:
-        obj = tr.obj
-        cat = obj.category
-        if cat not in relevant or obj_count.get(cat, 0) >= relevant[cat]:
-            continue
-        idx = offsets[cat] + obj_count[cat]
-        type_id = TYPE_MAP.get(cat, 0)
+        for tr in tracked_objects:
+            obj = tr.obj
+            cat = obj.category
+            if cat not in relevant or obj_count.get(cat, 0) >= relevant[cat]:
+                continue
+            idx = offsets[cat] + obj_count[cat]
+            type_id = type_map.get(cat, 0)
 
-        if cat == 'OxygenBar':
-            state[idx] = [1, int(obj.x), int(obj.y), int(obj.w), int(obj.h), 0, type_id]
-        else:
-            orient = 0
-            if hasattr(obj, 'orientation') and obj.orientation is not None:
-                orient = obj.orientation.value if hasattr(obj.orientation, 'value') else int(obj.orientation)
-            # Use canonical size if available to prevent flickering
-            if cat in CANONICAL_SIZES:
-                w, h = CANONICAL_SIZES[cat]
+            if cat == 'OxygenBar':
+                state[idx] = [1, int(obj.x), int(obj.y), int(obj.w), int(obj.h), 0, type_id]
             else:
-                w = getattr(obj, "w", 0)
-                h = getattr(obj, "h", 0)
-            cx, cy = getattr(obj, 'center', (int(obj.x + obj.w / 2), int(obj.y + obj.h / 2)))
-            state[idx] = [1, cx, cy, int(w), int(h), orient, type_id]
+                orient = 0
+                if hasattr(obj, 'orientation') and obj.orientation is not None:
+                    orient = obj.orientation.value if hasattr(obj.orientation, 'value') else int(obj.orientation)
+                # Use canonical size if available to prevent flickering
+                if cat in canonical_sizes:
+                    w, h = canonical_sizes[cat]
+                else:
+                    w = getattr(obj, "w", 0)
+                    h = getattr(obj, "h", 0)
+                cx, cy = getattr(obj, 'center', (int(obj.x + obj.w / 2), int(obj.y + obj.h / 2)))
+                state[idx] = [1, cx, cy, int(w), int(h), orient, type_id]
 
-        obj_count[cat] += 1
+            obj_count[cat] += 1
+    
+    elif env_name == "Asterix":
+        # Format: [Player, Enemy, Consumable, Reward, Unused, X, Y]
+        obj_idx = 1 # Start from 1 as in nudge env.py
+        for tr in tracked_objects:
+            if obj_idx >= n_objects:
+                break
+            obj = tr.obj
+            cat = obj.category
+            if cat == "NoObject": continue
+
+            if cat == "Player":
+                state[obj_idx][0] = 1
+            elif cat == "Enemy":
+                state[obj_idx][1] = 1
+            elif "Bonus" in cat or cat == "Consumable":
+                state[obj_idx][2] = 1
+            elif "Reward" in cat:
+                state[obj_idx][3] = 1
+            
+            cx, cy = getattr(obj, 'center', (int(obj.x + obj.w / 2), int(obj.y + obj.h / 2)))
+            state[obj_idx][5] = cx
+            state[obj_idx][6] = cy
+            obj_idx += 1
 
     return state
-
-
+ 
+ 
 # ─── Gaze Heatmap (temporally aggregated) ───────────────────────────────────
-
+ 
 class GazeToMask:
     """
     Pre-builds a lookup of 2D Gaussian masks (one per distance index).
@@ -182,7 +233,7 @@ class GazeToMask:
         self.coeficients = coeficients or [1.0]
         assert len(self.sigmas) == len(self.coeficients)
         self.masks = self._initialize()  # (n_slots, 2N, 2N) torch.float32
-
+ 
     def _initialize(self):
         N = self.N
         maps = []
@@ -194,14 +245,14 @@ class GazeToMask:
             g = g / g.max()
             maps.append(coef * g)
         return torch.stack(maps, 0)
-
+ 
     def find_suitable_map(self, index, mean_x, mean_y):
         Nx2 = self.N * 2
         start_x = max(0, min(int((1 - mean_x) * self.N), self.N))
         start_y = max(0, min(int((1 - mean_y) * self.N), self.N))
         return self.masks[index][start_y:start_y + self.N, start_x:start_x + self.N]
-
-
+ 
+ 
 def build_episode_gaze_images(
     episode_gaze_pts,           # list[list[(x_norm, y_norm)]], one entry per frame
     k_window=GAZE_K_WINDOW,
@@ -216,13 +267,13 @@ def build_episode_gaze_images(
     Returns list of (84, 84) float32 numpy arrays.
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+ 
     n_slots = k_window + 1
     saliency_sigmas = [sigma / (variance_exp ** d) for d in range(n_slots)]
     coeficients     = [coef ** d                   for d in range(n_slots)]
     MASK = GazeToMask(GAZE_IMG_SIZE, saliency_sigmas, coeficients)
     MASK.masks = MASK.masks.to(device)   # move lookup table to GPU once
-
+ 
     T = len(episode_gaze_pts)
     result = []
     for i in tqdm(range(T), desc="  gaze post-pass", leave=False):
@@ -235,17 +286,17 @@ def build_episode_gaze_images(
             accumulated = accumulated / accumulated.max()
         result.append(accumulated.cpu().numpy().astype(np.float32))
     return result
-
-
+ 
+ 
 # ─── Frame Preprocessing ─────────────────────────────────────────────────────
-
+ 
 def preprocess_frame(bgr_img):
     gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
     return cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)  # uint8
-
-
+ 
+ 
 # ─── Gaze File Parsing ───────────────────────────────────────────────────────
-
+ 
 def parse_gaze_file(filepath):
     """
     Returns: { frame_int_id -> (x_norm, y_norm, action, reward, terminated) }
@@ -271,7 +322,7 @@ def parse_gaze_file(filepath):
             except (ValueError, IndexError):
                 action = 0
             terminated = reward < 0.0
-
+ 
             raw = []
             for v in parts[6:]:
                 v = v.strip()
@@ -280,7 +331,7 @@ def parse_gaze_file(filepath):
                         raw.append(float(v))
                     except ValueError:
                         pass
-
+ 
             pts = [
                 (max(0.0, min(1.0, raw[i] / IMG_W)),
                  max(0.0, min(1.0, raw[i+1] / IMG_H)))
@@ -292,15 +343,15 @@ def parse_gaze_file(filepath):
             else:
                 pts = [(0.5, 0.5)]
                 x_n, y_n = 0.5, 0.5
-
+ 
             result[fid] = (pts, x_n, y_n, action, reward, terminated)
     return result
-
-
+ 
+ 
 # ─── Episode Processing ──────────────────────────────────────────────────────
-
-def process_episode(ep_folder, traj_dir, global_step_offset, ep_number_start, oc,
-                    gaze_sigma=GAZE_SIGMA, gaze_k_window=GAZE_K_WINDOW):
+ 
+def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
+                    gaze_sigma=GAZE_SIGMA, gaze_k_window=GAZE_K_WINDOW, objects_per_class=None, env_name="Seaquest"):
     """
     Process one trajectory folder, which may contain multiple episodes
     (a new episode begins after any frame with negative reward).
@@ -318,7 +369,7 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number_start, oc
         print(f"  Gaze data: {len(gaze_map)} frames from {os.path.basename(gaze_files[0])}")
     else:
         print(f"  Warning: no gaze/action file for {folder_name} in {traj_dir}")
-
+ 
     png_files = sorted(
         glob.glob(os.path.join(ep_folder, '*.png')),
         key=lambda p: int(os.path.basename(p).rsplit('_', 1)[-1].split('.')[0])
@@ -326,103 +377,84 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number_start, oc
     if not png_files:
         print(f"  Warning: no PNG files in {ep_folder}. Skipping.")
         return [], [], [], [], [], [], [], [], [], []
-
+ 
     tracker = ObjectTracker(match_dist_threshold=40)
-
+ 
     obs_l, gaze_l, logic_l, epnum_l = [], [], [], []
     act_l, rew_l, term_l, trunc_l = [], [], [], []
     raw_pts_l = []   # list[list[(x_norm, y_norm)]] — for windowed post-pass
-
-    sub_ep_steps = []     # frame count per sub-episode within this folder
-    current_ep_start = 0  # frame index where the current sub-episode started
-    current_ep_num = ep_number_start
-    ep_prev_px, ep_prev_py = 0.0, 0.0  # track last known player position
-
-    for png_path in tqdm(png_files, desc=f"  folder{ep_number_start}", leave=False):
+ 
+    for png_path in tqdm(png_files, desc=f"  folder{ep_number}", leave=False):
         try:
             fid = int(os.path.basename(png_path).rsplit('_', 1)[-1].split('.')[0])
         except (ValueError, IndexError):
             fid = len(obs_l)
-
+ 
         bgr = cv2.imread(png_path)
         if bgr is None:
             continue
-
-        # 1. Observations (84x84 grayscale)
-        obs_l.append(preprocess_frame(bgr))
-
+ 
         # 2. Logic state via Ocatari vision
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         try:
             # hud=False is much faster. We detect death via player teleportation instead.
-            detect_objects_vision(oc.objects, rgb, "Seaquest", hud=False)
+            detect_objects_vision(oc.objects, rgb, env_name, hud=False)
             valid = [o for o in oc.objects if o.category != 'NoObject' and o.w > 0]
+
+            # 2a. Optional object count filtering
+            if objects_per_class is not None:
+                if env_name == "Seaquest":
+                    enemy_count = sum(1 for o in valid if o.category in ['Shark', 'Submarine', 'SurfaceSubmarine'])
+                    diver_count = sum(1 for o in valid if o.category == 'Diver')
+                    if enemy_count > objects_per_class or diver_count > objects_per_class:
+                        continue  # skip this frame
+                elif env_name == "Asterix":
+                    enemy_count = sum(1 for o in valid if o.category == 'Enemy')
+                    consumable_count = sum(1 for o in valid if 'Bonus' in o.category or o.category == 'Consumable')
+                    if enemy_count > objects_per_class or consumable_count > objects_per_class:
+                        continue  # skip this frame
+
             active = tracker.update(valid)
         except Exception:
             active = tracker.tracked_objects
-        logic_l.append(extract_logic_state(active))
 
+        # 1. Observations (84x84 grayscale) - added after filter
+        obs_l.append(preprocess_frame(bgr))
+        logic_l.append(extract_logic_state(active, env_name=env_name))
+ 
         # 3. Gaze info — store raw points; heatmap built after loop
         if fid in gaze_map:
             pts, x_n, y_n, action, reward, _ = gaze_map[fid]
         else:
             pts, x_n, y_n, action, reward, _ = [(0.5, 0.5)], 0.5, 0.5, 0, 0.0
-
+ 
         global_step = global_step_offset + len(obs_l) - 1
         gaze_l.append([x_n, y_n, float(global_step)])   # mean coord for GABRIL compatibility
         raw_pts_l.append(pts)
-
+ 
         act_l.append(action)
         rew_l.append(reward)
         
-
-        # Detect death: if Player teleports > 30 pixels in a single frame (respawn)
-        player_obj = next((tr.obj for tr in active if tr.obj.category == 'Player' and tr.obj.y > 30), None)
-        if player_obj is not None:
-            curr_px, curr_py = player_obj.x + player_obj.w / 2.0, player_obj.y + player_obj.h / 2.0
-            if len(obs_l) - current_ep_start == 1:
-                ep_prev_px, ep_prev_py = curr_px, curr_py
-                terminated = False
-            else:
-                dist = ((curr_px - ep_prev_px)**2 + (curr_py - ep_prev_py)**2)**0.5
-                terminated = dist > 30.0
-                ep_prev_px, ep_prev_py = curr_px, curr_py
-        else:
-            terminated = False
-            
-        term_l.append(terminated)
+ 
+        term_l.append(False)
         trunc_l.append(False)
-        epnum_l.append(current_ep_num)
-
-        # End of sub-episode: player died
-        if terminated:
-            sub_ep_steps.append(len(obs_l) - current_ep_start)
-            current_ep_start = len(obs_l)
-            current_ep_num += 1
-            tracker = ObjectTracker(match_dist_threshold=40)  # reset tracker on death
-            # Note: ep_prev_px will be reset correctly at start of next sub-ep
-
-    # Close any open sub-episode at end of folder
-    if current_ep_start < len(obs_l):
+        epnum_l.append(ep_number)
+ 
+    if term_l:
         term_l[-1] = True  # mark last frame as terminal
-        sub_ep_steps.append(len(obs_l) - current_ep_start)
-
-    # Build gaze images per sub-episode so the ±k_window never crosses a death boundary
-    gaze_img_l = []
-    ptr = 0
-    for ep_len in sub_ep_steps:
-        chunk = raw_pts_l[ptr:ptr + ep_len]
-        gaze_img_l.extend(build_episode_gaze_images(chunk, k_window=gaze_k_window, sigma=gaze_sigma))
-        ptr += ep_len
-
-    return obs_l, gaze_l, gaze_img_l, logic_l, epnum_l, act_l, rew_l, term_l, trunc_l, sub_ep_steps
-
-
+ 
+    # Build gaze images for the entire folder at once
+    gaze_img_l = build_episode_gaze_images(raw_pts_l, k_window=gaze_k_window, sigma=gaze_sigma)
+ 
+    return obs_l, gaze_l, gaze_img_l, logic_l, epnum_l, act_l, rew_l, term_l, trunc_l
+ 
+ 
 # ─── Main ────────────────────────────────────────────────────────────────────
-
+ 
 def main():
     parser = argparse.ArgumentParser(description="Convert trajectory PNG+txt folders to .pt dataset.")
-    parser.add_argument('--traj_dir', type=str, default='data/seaquest/trajectories')
+    parser.add_argument('--traj_dir', type=str, default=None)
+    parser.add_argument('--env', type=str, default='Seaquest')
     parser.add_argument('--output', type=str, default=None,
                         help='Output .pt path. Auto-generated from params if omitted.')
     parser.add_argument('--max_folders', type=int, default=None)
@@ -430,12 +462,20 @@ def main():
                         help='Gaussian sigma for gaze heatmap (in 84px space)')
     parser.add_argument('--sliding_window', type=int, default=GAZE_K_WINDOW,
                         help='Sliding window size for gaze heatmap')
+    parser.add_argument('--objects_per_class', type=int, default=None,
+                        help='Max allowed objects of type enemy/diver per frame.')
     args = parser.parse_args()
-
-    traj_dir = os.path.abspath(args.traj_dir)
+ 
+    env_name = args.env # e.g. "Seaquest" or "Asterix"
+    if env_name not in ENV_CONFIGS:
+        print(f"Error: Unsupported environment {env_name}"); sys.exit(1)
+    
+    cfg = ENV_CONFIGS[env_name]
+    traj_dir = args.traj_dir or cfg["TRAJ_DIR"]
+    traj_dir = os.path.abspath(traj_dir)
     if not os.path.isdir(traj_dir):
         print(f"Error: {traj_dir} not found."); sys.exit(1)
-
+ 
     ep_folders = sorted([
         os.path.join(traj_dir, d) for d in os.listdir(traj_dir)
         if os.path.isdir(os.path.join(traj_dir, d))
@@ -444,56 +484,56 @@ def main():
         print("Error: no episode subfolders found."); sys.exit(1)
     if args.max_folders:
         ep_folders = ep_folders[:args.max_folders]
-
+ 
     num_episodes = len(ep_folders)
-
+ 
     # Auto-generate output filename if not provided — filled in after processing
     # when we know the actual episode count
-
+ 
     print(f"Found {len(ep_folders)} folder(s). Initializing Ocatari...\n")
-    oc = OCAtari("Seaquest", mode="vision", render_mode="rgb_array")
-
+    oc = OCAtari(env_name, mode="vision", render_mode="rgb_array")
+ 
     all_obs, all_gaze, all_gaze_img, all_logic = [], [], [], []
     all_epnum, all_act, all_rew, all_term, all_trunc = [], [], [], [], []
     steps_per_ep = []
     global_step = 0
-
-    # ep_number_start tracks the global episode index across folders
-    ep_number_start = 0
-
+ 
     for folder_idx, ep_folder in enumerate(ep_folders):
         print(f"\nFolder {folder_idx}: {os.path.basename(ep_folder)}")
-        out = process_episode(ep_folder, traj_dir, global_step, ep_number_start, oc,
+        out = process_episode(ep_folder, traj_dir, global_step, folder_idx, oc,
                               gaze_sigma=args.gaze_sigma,
-                              gaze_k_window=args.sliding_window)
-        obs, gaze, gaze_img, logic, epnum, act, rew, term, trunc, sub_ep_steps = out
+                              gaze_k_window=args.sliding_window,
+                              objects_per_class=args.objects_per_class,
+                              env_name=env_name)
+        obs, gaze, gaze_img, logic, epnum, act, rew, term, trunc = out
         if not obs:
             continue
-
+ 
         all_obs.extend(obs);       all_gaze.extend(gaze)
         all_gaze_img.extend(gaze_img); all_logic.extend(logic)
         all_epnum.extend(epnum);   all_act.extend(act)
         all_rew.extend(rew);       all_term.extend(term)
         all_trunc.extend(trunc)
-        steps_per_ep.extend(sub_ep_steps)   # one entry per actual episode, not per folder
-        ep_number_start += len(sub_ep_steps)
+        steps_per_ep.append(len(obs))   # one entry per folder
         global_step += len(obs)
-        print(f"  → {len(obs)} frames, {len(sub_ep_steps)} episode(s)")
-
+        print(f"  → {len(obs)} frames")
+ 
     if not all_obs:
         print("Error: no frames collected."); sys.exit(1)
-
+ 
     num_episodes = len(steps_per_ep)  # actual episode count (deaths = episode boundaries)
-
+ 
     # Auto-generate output filename now that we know actual episode count
     if args.output is None:
         sigma_str = f"{args.gaze_sigma:.1f}".replace('.', 'p')
-        fname = (f"full_data_{num_episodes}_episodes"
+        n_objects = cfg["N_OBJECTS"]
+        obj_suffix = f"_obj_limit_{args.objects_per_class}" if args.objects_per_class else f"_obj_{n_objects}"
+        fname = (f"{env_name}_full_data_{num_episodes}_episodes"
                  f"_{sigma_str}_sigma"
                  f"_win_{args.sliding_window}"
-                 f"_obj_{N_OBJECTS}.pt")
+                 f"{obj_suffix}.pt")
         args.output = os.path.join(os.path.dirname(traj_dir), fname)
-
+ 
     N = len(all_obs)
     dataset = {
         'observations':    np.array(all_obs,      dtype=np.uint8),    # (N, 84, 84)
@@ -503,22 +543,23 @@ def main():
         'episode_number':  np.array(all_epnum,    dtype=np.int32),    # (N,)
         'actions':         np.array(all_act,      dtype=np.int32),    # (N,)
         'episode-rewards': np.array(all_rew,      dtype=np.float64),  # (N,)
-        'terminateds':     np.array(all_term,     dtype=bool),  Gaze-Based-Neurosymbolic-Imitation-Learner/run_bc_incremental_sweep.sh      # (N,)
+        'terminateds':     np.array(all_term,     dtype=bool),        # (N,)
         'truncateds':      np.array(all_trunc,    dtype=bool),        # (N,) all False
         'steps':           np.array(steps_per_ep, dtype=np.int32),    # (E,)
     }
-
+ 
     print("\nDataset summary:")
     for k, v in dataset.items():
         print(f"  {k}: shape={v.shape}, dtype={v.dtype}")
-
+ 
     out_path = os.path.abspath(args.output)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     print(f"\nSaving → {out_path}")
     torch.save(dataset, out_path, _use_new_zipfile_serialization=True, pickle_protocol=4)
     print("Done!")
-    print(f"  episodes={num_episodes}, gaze_sigma={args.gaze_sigma}, sliding_window={args.sliding_window}, n_objects={N_OBJECTS}")
-
-
+    n_objects = cfg["N_OBJECTS"]
+    print(f"  episodes={num_episodes}, gaze_sigma={args.gaze_sigma}, sliding_window={args.sliding_window}, n_objects={n_objects}")
+ 
+ 
 if __name__ == '__main__':
     main()
