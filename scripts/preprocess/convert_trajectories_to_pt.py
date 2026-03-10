@@ -47,7 +47,7 @@ _obj_counts = dict(MAX_ESSENTIAL_OBJECTS)
 _obj_counts['EnemyMissile'] = 8   # same override used in extract_logic_state
 N_OBJECTS = sum(_obj_counts.values())
 GAZE_IMG_SIZE = 84
-GAZE_SIGMA = 10.0          # Base Gaussian sigma (pixels in 84×84 space)
+GAZE_SIGMA = 5.0          # Base Gaussian sigma (pixels in 84×84 space)
 GAZE_K_WINDOW = 10         # Symmetric temporal window (±k frames)
 GAZE_COEF = 0.7           # Alpha: weight decay per frame of distance
 GAZE_VARIANCE_EXP = 0.99  # Beta: sigma shrinks as distance decreases (closer = tighter)

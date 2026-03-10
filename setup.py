@@ -65,6 +65,7 @@ setup(
             # Play / visualisation
             'grail-play           = scripts.play.play_il_gui:main',
             'grail-visualize      = scripts.visualization.visualize_trajectory:main',
+            'grail-visualize-pt   = scripts.visualization.visualize_pt:main',
         ],
     },
 
