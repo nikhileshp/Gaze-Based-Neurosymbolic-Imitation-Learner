@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 # Load the NSFR valuations (unscaled)
-nsfr_path = "trained_models/seaquest/nsfr_td_0.99/best_rules_0.01_lr_nll/valuations_best.pt"
+nsfr_path = "trained_models/seaquest/nsfr/best_rules_0.01_lr_nll/valuations_best.pt"
 nsfr_vals = torch.load(nsfr_path, map_location='cpu', weights_only=False)
 
 # Load the GRAIL Normalized Visible Only valuations
