@@ -6,7 +6,7 @@ from nsfr.nsfr import NSFReasoner
 from nsfr.valuation import ValuationModule
 
 
-def get_nsfr_model(env_name: str, rules: str, device: str, train=False, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1):
+def get_nsfr_model(env_name: str, rules: str, device: str, train=False, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, target_diagonal=0.99):
     current_path = os.path.dirname(__file__)
     lark_path = os.path.join(current_path, 'lark/exp.lark')
     lang_base_path = f"core/envs/{env_name}/logic/"
@@ -25,7 +25,7 @@ def get_nsfr_model(env_name: str, rules: str, device: str, train=False, gaze_thr
             prednames.append(clause.head.pred.name)
     m = len(prednames)
     # m = 5
-    IM = build_infer_module(clauses, atoms, lang, m=m, infer_step=2, train=train, device=device)
+    IM = build_infer_module(clauses, atoms, lang, m=m, infer_step=2, train=train, device=device, target_diagonal=target_diagonal)
     # Neuro-Symbolic Forward Reasoner
     NSFR = NSFReasoner(facts_converter=FC, infer_module=IM, atoms=atoms, bk=bk, clauses=clauses, train=train)
     return NSFR

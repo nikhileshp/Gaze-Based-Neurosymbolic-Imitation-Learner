@@ -30,11 +30,11 @@ def get_lang(lark_path, lang_base_path, dataset, use_limited_consts=False):
 
 
 
-def build_infer_module(clauses, atoms, lang, device, m=3, infer_step=3, train=False):
-    te = TensorEncoder(lang, atoms, clauses, device=device)
-    I = te.encode()
-    im = InferModule(I, m=m, infer_step=infer_step, device=device, train=train, clauses=clauses)
-    return im
+def build_infer_module(clauses, atoms, lang, device, m=3, infer_step=3, train=False, target_diagonal=0.99):
+        te = TensorEncoder(lang, atoms, clauses, device=device)
+        I = te.encode()
+        im = InferModule(I, m=m, infer_step=infer_step, device=device, train=train, clauses=clauses, target_diagonal=target_diagonal)
+        return im
 
 
 def generate_atoms(lang):

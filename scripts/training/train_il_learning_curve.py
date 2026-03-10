@@ -89,6 +89,8 @@ def get_args():
                    choices=["nll", "bce"])
     p.add_argument("--aggregation",     type=str, default="max",
                    choices=["softor", "max"])
+    p.add_argument("--target_diagonal", type=float, default=0.99,
+                   help="Initial confidence for clauses in block diagonal initialization.")
     # Gaze
     p.add_argument("--use_gaze",        action="store_true")
     p.add_argument("--gaze_threshold",  type=float, default=50.0)
@@ -186,6 +188,7 @@ def main():
     visible_preds_only = args.visible_preds_only
     alpha              = args.alpha
     use_gaze           = args.use_gaze
+    target_diagonal    = args.target_diagonal
     if unnormalized or visible_preds_only:
         use_gaze = True
     if use_gaze and alpha is None and not unnormalized:
@@ -218,11 +221,11 @@ def main():
         base_run_dir = args.run_dir
     else:
         if use_gaze and unnormalized:
-            tag = f"grail_unnormalized{vis_tag}"
+            tag = f"grail_unnormalized{vis_tag}_td_{args.target_diagonal}"
         elif use_gaze:
-            tag = f"grail_normalized{vis_tag}{alpha_tag}"
+            tag = f"grail_normalized{vis_tag}{alpha_tag}_td_{args.target_diagonal}"
         else:
-            tag = "nsfr"
+            tag = f"nsfr_td_{args.target_diagonal}"
         base_run_dir = (
             f"trained_models/{args.env}/{tag}_learning_curve"
             f"_{args.rules}_rules_{args.lr}_lr_{args.loss}"
@@ -244,6 +247,7 @@ def main():
         visible_preds_only=visible_preds_only,
         alpha=alpha,
         aggregation_method=args.aggregation,
+        target_diagonal=target_diagonal,
     )
     max_action = _probe_agent.num_actions - 1
     print(f"  num_actions={_probe_agent.num_actions}  →  max_action={max_action}")
@@ -293,6 +297,7 @@ def main():
             visible_preds_only=visible_preds_only,
             alpha=alpha,
             aggregation_method=args.aggregation,
+            target_diagonal=target_diagonal,
         )
 
         # Initialise gaze predictor if needed for precompute
@@ -384,6 +389,27 @@ def main():
     # ── Results accumulator ───────────────────────────────────────────────────
     results_log = []
 
+    # ── Graceful interrupt handler ────────────────────────────────────────────
+    def _emergency_save(signum, frame):
+        print(f"\n\n[INTERRUPTED] Signal {signum} received. Saving learning curve summary...")
+        try:
+            if results_log:
+                df = pd.DataFrame(results_log)
+                summary_csv = os.path.join(base_run_dir, "learning_curve_summary.csv")
+                df.to_csv(summary_csv, index=False)
+                print(f"  Saved partial summary to {summary_csv}")
+                print("\nNSFR Learning Curve Summary (Partial):")
+                print(df.to_string(index=False))
+            else:
+                print("  No completed percentage subsets to save.")
+        except Exception as e:
+            print(f"  WARNING: Could not save summary CSV: {e}")
+        print("[INTERRUPTED] Exiting.")
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGINT,  _emergency_save)
+    signal.signal(signal.SIGTERM, _emergency_save)
+
     # ── Learning-curve loop ───────────────────────────────────────────────────
     for pct in args.percentages:
         n_samples = max(1, int(total_samples * pct / 100))
@@ -440,7 +466,8 @@ def main():
             unnormalized=unnormalized,
             visible_preds_only=visible_preds_only,
             alpha=alpha,
-            aggregation_method=args.aggregation
+            aggregation_method=args.aggregation,
+            target_diagonal=target_diagonal,
         )
 
         num_gpus = torch.cuda.device_count()

@@ -181,12 +181,14 @@ def main():
     parser.add_argument("--visible_preds_only", action="store_true", help="Only scale visible_{object} predicates with gaze")
     parser.add_argument("--alpha", type=float, default=None, help="Laplacian smoothing parameter for gaze normalization")
     parser.add_argument("--aggregation", type=str, default="max", choices=["softor", "max"], help="Aggregation method for action scores")
+    parser.add_argument("--target_diagonal", type=float, default=0.99, help="Initial confidence for clauses in block diagonal initialization.")
     args = parser.parse_args()
     
     unnormalized = args.unnormalized
     visible_preds_only = args.visible_preds_only
     alpha = args.alpha
     use_gaze = args.use_gaze
+    target_diagonal = args.target_diagonal
     # Auto-enable use_gaze if unnormalized is set
     if unnormalized or visible_preds_only:
         use_gaze = True
@@ -221,7 +223,7 @@ def main():
 
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
     agent_gaze_threshold = args.gaze_threshold if use_gaze else None
-    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, aggregation_method=args.aggregation)
+    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, aggregation_method=args.aggregation, target_diagonal=target_diagonal)
 
         # Multi-GPU: DataParallel splits the batch evenly across all visible GPUs.
     # Each GPU processes batch/N samples independently — no cross-GPU communication

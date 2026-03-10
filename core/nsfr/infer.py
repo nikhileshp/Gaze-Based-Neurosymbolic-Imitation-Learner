@@ -403,7 +403,7 @@ class InferModule(nn.Module):
     A class of differentiable forward-chaining inference.
     """
 
-    def __init__(self, I, m, infer_step, gamma=0.01, device=None, train=False, clauses=None):
+    def __init__(self, I, m, infer_step, gamma=0.01, device=None, train=False, clauses=None, target_diagonal=0.99):
         super(InferModule, self).__init__()
         self.register_buffer('I', I)  # buffer: DataParallel moves to each GPU
         self.infer_step = infer_step
@@ -431,7 +431,7 @@ class InferModule(nn.Module):
 
         else:
             self.W = nn.Parameter(
-                self._init_block_diagonal(m, I.size(0), clauses, device)
+                self._init_block_diagonal(m, I.size(0), clauses, device, target_diagonal)
             )
             
         # nn.ModuleList so DataParallel can see and replicate these submodules

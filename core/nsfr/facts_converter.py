@@ -97,7 +97,7 @@ class FactsConverter(nn.Module):
                     # Normalized: max-normalize so peak attended object = 1.0
                     gaze_max  = gaze_sums.max(dim=1, keepdim=True).values.clamp(min=1e-8)
                     gaze_sums = gaze_sums / gaze_max
-                    gaze_sums = torch.max(gaze_sums, is_present * 0.05)
+                    gaze_sums = torch.max(gaze_sums, is_present * 0.5)
 
                 # Append per-object gaze score as last feature: Z becomes (B, N_OBJ, F+1)
                 Z = torch.cat([Z, gaze_sums.unsqueeze(-1)], dim=-1)
