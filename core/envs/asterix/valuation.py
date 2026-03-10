@@ -175,7 +175,7 @@ def at_right(z_1):
  
  
 def visible(z_1, gaze=None):
-    result = z_1[:, 0:4].sum(dim=1) > 0.5
+    result = z_1[:, 0] > 0.5
     val = bool_to_probs(result)
     if gaze is not None and len(gaze.shape) > 2:
         gaze_val = _get_gaze_value(z_1, gaze)
@@ -260,8 +260,8 @@ def _get_gaze_value(obj: th.Tensor, gaze: th.Tensor, height: int = 10) -> th.Ten
     # Scale to [0.01, 0.99] probability range
     gaze_prob = th.clamp(0.99 * attention_ratio, 0.5, 0.99)
     
-    # Mask out invisible objects (any type bit 0-3 <= 0.5)
-    vis_mask = (obj[:, 0:4].sum(dim=1) > 0.5).float()
+    # Mask out invisible objects (index 0 <= 0.5)
+    vis_mask = (obj[:, 0] > 0.5).float()
     
     return gaze_prob * vis_mask
  
