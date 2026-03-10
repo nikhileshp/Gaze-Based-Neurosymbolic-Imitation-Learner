@@ -21,6 +21,8 @@ parser.add_argument("--use_gaze", action="store_true", help="Visualize gaze pred
 parser.add_argument("--gaze_model_path", type=str, default="seaquest_gaze_predictor_2.pth")
 parser.add_argument("--fps", type=int, default=60, help="Frames per second for playback")
 parser.add_argument("--aggregation", type=str, default="max", choices=["softor", "max"], help="Aggregation method for action scores")
+parser.add_argument("--unnormalized", action="store_true", help="Use unnormalized gaze maps")
+parser.add_argument("--visible_preds_only", action="store_true", help="Only apply gaze scaling to visible_ predicates")
 
 try:
     from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
@@ -445,11 +447,18 @@ def main():
         gaze_predictor.init_model(args.gaze_model_path)
         gaze_predictor.model.eval()
 
-    agent = ImitationAgent(args.game, args.rules, args.device, aggregation_method=args.aggregation)
+    agent = ImitationAgent(
+        args.game, 
+        args.rules, 
+        args.device, 
+        aggregation_method=args.aggregation,
+        unnormalized=args.unnormalized,
+        visible_preds_only=args.visible_preds_only
+    )
 
     print(f"Loading model from {args.agent_path}...")
-    # agent.load(args.agent_path)
-    print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
+    agent.load(args.agent_path)
+    # print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
     agent.model.eval()
 
     model = AgentWrapper(agent, env, debug=args.debug, gaze_predictor=gaze_predictor)
