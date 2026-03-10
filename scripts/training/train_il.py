@@ -245,6 +245,7 @@ def main():
         num_episodes=args.num_episodes,
         sort_by=args.sort_by,
         max_action=agent.num_actions - 1,
+        env_name=args.env,
     )
     if args.limit:
         full_dataset.logic   = full_dataset.logic[:args.limit]

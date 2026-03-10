@@ -65,16 +65,21 @@ class NSFREnv(NSFRBaseEnv):
             if category == "NoObject":
                 continue
             
+            # Index 0: Visibility
+            logic_state[obj_idx][0] = 1
+
+            # Indices 1-4: One-hot Type
             if category == "Player":
-                logic_state[obj_idx][0] = 1
-            elif category == "Enemy":
                 logic_state[obj_idx][1] = 1
-            elif category in consumable_names or "Bonus" in category or category == "Consumable":
+            elif category == "Enemy":
                 logic_state[obj_idx][2] = 1
-            elif "Reward" in category:
+            elif category in consumable_names or "Bonus" in category or category == "Consumable":
                 logic_state[obj_idx][3] = 1
+            elif "Reward" in category:
+                logic_state[obj_idx][4] = 1
                 
-            logic_state[obj_idx][-2:] = entity.xy
+            # Coordinates at the end
+            logic_state[obj_idx][5:7] = entity.xy
             obj_idx += 1
  
         return logic_state

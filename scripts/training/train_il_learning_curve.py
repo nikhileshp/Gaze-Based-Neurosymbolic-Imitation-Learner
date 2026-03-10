@@ -262,6 +262,7 @@ def main():
         num_episodes=None,
         sort_by=None,
         max_action=max_action,   # env-specific, e.g. 4 for Asterix, 5 for Seaquest
+        env_name=args.env,
     )
     total_samples = len(full_dataset)
     print(f"Total samples in dataset: {total_samples}")

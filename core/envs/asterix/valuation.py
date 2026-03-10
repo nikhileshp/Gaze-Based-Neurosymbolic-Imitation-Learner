@@ -2,16 +2,16 @@ from nsfr.utils.common import bool_to_probs
 import torch as th
  
 def type(z, a):
-    z_type = z[:, 0:4]  # [1, 0, 0, 0] * [1.0, 0, 0, 0] .sum = 0.0  type(obj1, key):0.0
+    z_type = z[:, 1:5]  # [1, 0, 0, 0] * [1.0, 0, 0, 0] .sum = 0.0  type(obj1, key):0.0
     prob = (a * z_type).sum(dim=1)
     return bool_to_probs(prob > 0.5)
  
  
 def is_player(z):
-    return (z[:, 0] > 0.5)
+    return (z[:, 1] > 0.5)
  
 def is_present(z):
-    return (z[:, 0:4].sum(dim=1) > 0.5)
+    return (z[:, 0] > 0.5)
  
 def closest(z_1, z_2):
     """Returns bool_to_probs(True) iff z_2 is the closest present object to z_1 (player).

@@ -185,7 +185,7 @@ class PtDataset(Dataset):
         step_idx    : ()                    long     step within episode (-1 if unknown)
     """
 
-    def __init__(self, pt_path: str, use_gaze: bool = False, num_episodes: int = None, sort_by: str = None, max_action: int = 5):
+    def __init__(self, pt_path: str, use_gaze: bool = False, num_episodes: int = None, sort_by: str = None, max_action: int = 5, env_name: str = None):
         print(f"Loading .pt dataset from {pt_path} ...")
         data = torch.load(pt_path, map_location='cpu', weights_only=False)
 
@@ -205,6 +205,18 @@ class PtDataset(Dataset):
         self.actions = actions.long()
         self.ep_nums = ep_nums.long() if ep_nums is not None else None
         self.rewards = rewards.float() if rewards is not None else None
+
+        # ── Environment-Specific Action Mapping ───────────────────────────────
+        if env_name == 'asterix':
+            # Mapping from ALE (dataset) to Asterix NSFR primitive actions:
+            # ALE: 0=noop, 1=fire, 2=up, 3=right, 4=left, 5=down
+            # Asterix NSFR: 0=noop, 1=up, 2=right, 3=left, 4=down
+            mapping = {0: 0, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4}
+            print(f"  Applying {env_name} action mapping: {mapping}")
+            new_actions = self.actions.clone()
+            for k, v in mapping.items():
+                new_actions[self.actions == k] = v
+            self.actions = new_actions
 
         if use_gaze and gaze is not None:
             if not isinstance(gaze, torch.Tensor): gaze = torch.from_numpy(gaze)

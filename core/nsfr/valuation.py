@@ -159,7 +159,7 @@ class ValuationModule(nn.Module, ABC):
             if self.visible_preds_only:
                 should_scale = pred_name == "visible" or pred_name.startswith("visible_")
 
-            if should_scale and gaze is not None:
+            if should_scale:
                 found_object = False
                 # Flattened max_gaze per evaluation instance (batch*atoms)
                 max_gaze_flat = torch.zeros(val.shape[0], device=self.device)
