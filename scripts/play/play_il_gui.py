@@ -320,8 +320,11 @@ class ILRenderer(Renderer):
             target_size = (self.env_render_shape[1], self.env_render_shape[0]) 
             heatmap = cv2.resize(gaze_map, target_size)
             
-            # Normalize map to 0-255 (intensify by 2.0x for visibility)
-            heatmap_norm = np.clip(heatmap * 255.0 * 2.5, 0, 255).astype(np.uint8)
+            # Normalize map to 0-1 based on the peak value, then scale to 255 for visibility
+            h_max = heatmap.max()
+            if h_max > 0:
+                heatmap = heatmap / h_max
+            heatmap_norm = (heatmap * 255.0).astype(np.uint8)
             colored_heatmap = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
             colored_heatmap = cv2.cvtColor(colored_heatmap, cv2.COLOR_BGR2RGB)
             
