@@ -103,6 +103,9 @@ class AgentWrapper:
                 valuation = self.agent.model.V_0.squeeze(0)  # Remove batch dimension
             else:
                 valuation = None
+            
+            # Save the probabilities for the GUI side-panel rendering
+            self.latest_probs = probs.cpu().numpy()
         
         # Extract high-value neural predicates from VALUATION tensor (not input state!)
         if valuation is not None and hasattr(self.actor, 'atoms'):
@@ -340,7 +343,23 @@ class ILRenderer(Renderer):
         anchor = (self.env_render_shape[0] + 10, 25)
         
         nsfr = self.nsfr_reasoner
-        pred_vals = {pred: nsfr.get_predicate_valuation(pred, initial_valuation=False) for pred in nsfr.prednames}
+        
+        # Read directly from the newly evaluated V_T to get gaze-scaled probabilities 
+        if hasattr(self.model.agent.model, 'V_T') and self.model.agent.model.V_T is not None:
+            v_t = self.model.agent.model.V_T.squeeze(0).cpu().numpy()
+            pred_vals = {}
+            for i, pred in enumerate(nsfr.prednames):
+                target_index = nsfr.get_prednames().index(pred) if pred in nsfr.get_prednames() else None
+                # V_T has shape (B, num_predicates), but we need to map predname to index
+                # Actually V_T maps to rules. Let's use probs directly from self.model if possible.
+                # The rule probabilities are evaluated in AgentWrapper.act and we can just store them.
+        
+        # Fallback to older method if not available
+        if not hasattr(self.model, 'latest_probs') or self.model.latest_probs is None:
+            pred_vals = {pred: nsfr.get_predicate_valuation(pred, initial_valuation=False) for pred in nsfr.prednames}
+        else:
+            pred_vals = {pred: float(self.model.latest_probs[i]) for i, pred in enumerate(nsfr.prednames)}
+            
         i_max = np.argmax(list(pred_vals.values()))
         
         # Render action probabilities
