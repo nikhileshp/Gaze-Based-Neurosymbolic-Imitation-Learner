@@ -206,18 +206,7 @@ class PtDataset(Dataset):
         self.ep_nums = ep_nums.long() if ep_nums is not None else None
         self.rewards = rewards.float() if rewards is not None else None
 
-        # ── Environment-Specific Action Mapping ───────────────────────────────
-        if env_name == 'asterix':
-            # Mapping from ALE (dataset) to Asterix NSFR primitive actions:
-            # ALE: 0=noop, 1=fire, 2=up, 3=right, 4=left, 5=down
-            # Asterix NSFR: 0=noop, 1=up, 2=right, 3=left, 4=down
-            mapping = {0: 0, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4}
-            print(f"  Applying {env_name} action mapping: {mapping}")
-            new_actions = self.actions.clone()
-            for k, v in mapping.items():
-                new_actions[self.actions == k] = v
-            self.actions = new_actions
-
+        
         if use_gaze and gaze is not None:
             if not isinstance(gaze, torch.Tensor): gaze = torch.from_numpy(gaze)
             self.gaze = gaze.float()
