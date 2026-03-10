@@ -422,7 +422,7 @@ def horizontally_far_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     prob = th.clip(dist_x / 50.0, 0.0, 1.0)
     return prob * bool_to_probs(obj_exists)
 
-def horizontally_close_enemy(player: th.Tensor, obj: th,Tensor) -> th.Tensor:
+def horizontally_close_enemy(player: th.Tensor, obj: th.Tensor) -> th.Tensor:
     obj_exists = obj[..., 0] == 1
     player_x = player[..., 1]
     obj_x = obj[..., 1]

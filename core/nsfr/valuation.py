@@ -157,7 +157,7 @@ class ValuationModule(nn.Module, ABC):
             # Check if we should apply gaze scaling based on the visible_preds_only flag
             should_scale = True
             if self.visible_preds_only:
-                should_scale = pred_name.startswith("visible_")
+                should_scale = pred_name == "visible" or pred_name.startswith("visible_")
 
             if should_scale and gaze is not None:
                 found_object = False
