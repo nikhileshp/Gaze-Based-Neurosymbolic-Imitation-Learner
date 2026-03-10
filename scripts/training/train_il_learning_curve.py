@@ -302,7 +302,7 @@ def main():
 
         # Initialise gaze predictor if needed for precompute
         _pre_gaze_predictor = None
-        if use_gaze and gaze_predictor is None:
+        if use_gaze:
             try:
                 from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
                 print(f"Initializing Gaze Predictor for precomputation from {args.gaze_model_path} ...")
