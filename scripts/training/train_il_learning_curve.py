@@ -57,6 +57,10 @@ from nsfr.utils import make_deterministic
 from nsfr.env import NSFRBaseEnv
 from scripts.evaluation.evaluate_model import evaluate, evaluate_parallel
 
+# Free unused memory
+torch.cuda.empty_cache()
+gc.collect()
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Constants
 # ═══════════════════════════════════════════════════════════════════════════════

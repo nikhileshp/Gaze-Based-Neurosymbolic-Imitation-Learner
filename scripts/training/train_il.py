@@ -20,6 +20,7 @@ from core.utils.utils import (
     set_seed_everywhere, format_results_table,
     send_run_update, load_pt_dataset
 )
+import gc
 from scripts.evaluation.evaluate_model import evaluate, evaluate_parallel
 import time
 import signal
@@ -30,6 +31,10 @@ try:
      mp.set_start_method('spawn', force=True)
 except RuntimeError:
     pass
+
+# Free unused memory
+torch.cuda.empty_cache()
+gc.collect()
 
 def run_diagnostics(agent, epoch_loader, device, args, warmup_batches=30, measure_batches=50):
     """
