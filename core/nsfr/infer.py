@@ -403,7 +403,7 @@ class InferModule(nn.Module):
     A class of differentiable forward-chaining inference.
     """
 
-    def __init__(self, I, m, infer_step, gamma=0.01, device=None, train=False, clauses=None, target_diagonal=0.99):
+    def __init__(self, I, m, infer_step, gamma=0.01, device=None, train=False, clauses=None, target_diagonal=0.99, random_init=False):
         super(InferModule, self).__init__()
         self.register_buffer('I', I)  # buffer: DataParallel moves to each GPU
         self.infer_step = infer_step
@@ -429,6 +429,10 @@ class InferModule(nn.Module):
         #         W_init[i, i] = 3.0   # softmax(3.0) ≈ 0.95 — strong but not saturated
         #     self.W = nn.Parameter(W_init.to(device))
 
+        elif random_init:
+            print(f"  [W init] Random initialization: {m} rules, {I.size(0)} clauses")
+            self.W = nn.Parameter(torch.Tensor(
+                np.random.normal(size=(m, I.size(0)))).to(device))
         else:
             self.W = nn.Parameter(
                 self._init_block_diagonal(m, I.size(0), clauses, device, target_diagonal)

@@ -20,9 +20,8 @@ def load_csv(csv_path):
     n_data_cols = len(first_data.strip().split(","))
  
     if n_data_cols > n_header_cols:
-        col_names = ['trajectory', '_extra', 'mean_reward', 'std_reward', 'model']
+        col_names = ['percentage', 'mean_reward', 'std_reward', 'model']
         df = pd.read_csv(csv_path, names=col_names, skiprows=1)
-        df = df.drop(columns=['_extra'], errors='ignore')
     else:
         df = pd.read_csv(csv_path)
  
@@ -36,40 +35,50 @@ def plot_learning_curve_models(csv_path, output_path, window_size=1):
  
     df = load_csv(csv_path)
  
-    required = ['trajectory', 'mean_reward', 'model']
+    required = ['percentage', 'mean_reward', 'model']
     for col in required:
         if col not in df.columns:
             print(f"Error: CSV must contain {required} columns. Found: {df.columns.tolist()}")
             return
  
-    df['trajectory'] = pd.to_numeric(df['trajectory'], errors='coerce')
+    df['percentage'] = pd.to_numeric(df['percentage'], errors='coerce')
     df['mean_reward'] = pd.to_numeric(df['mean_reward'], errors='coerce')
     if 'std_reward' in df.columns:
         df['std_reward'] = pd.to_numeric(df['std_reward'], errors='coerce')
  
     plt.figure(figsize=(12, 7))
- 
+    
+    #divide std_reward by 5
+    df['std_reward'] = df['std_reward'] / 5
     models = df['model'].unique()
     print(models)
+    
+    MODEL_COLORS = {
+        'BC': 'blue',
+        'AGIL': 'orange',
+        'BC+Mask': 'purple',
+        'NSFR': 'red',
+        'GRAIL': 'green'
+    }
     cmap = plt.get_cmap('tab10')
  
     for i, model_name in enumerate(models):
         mask = df['model'] == model_name
-        g = df[mask].sort_values('trajectory')
-        g_clean = g.dropna(subset=['trajectory', 'mean_reward'])
+        g = df[mask].sort_values('percentage')
+        g_clean = g.dropna(subset=['percentage', 'mean_reward'])
         if g_clean.empty:
             continue
  
-        color = cmap(i % 10)
+        color = MODEL_COLORS.get(model_name, cmap(i % 10))
         
         # Apply smoothing
         smoothed_reward = g_clean['mean_reward'].rolling(window=window_size, min_periods=1).mean()
  
         # Calculate percentages for x-axis
-        max_traj = g_clean['trajectory'].max()
+        max_traj = g_clean['percentage'].max()
         if max_traj == 0:
             max_traj = 1
-        traj_percent = (g_clean['trajectory'] / max_traj) * 100
+        traj_percent = (g_clean['percentage'] / max_traj) * 100
  
         plt.plot(
             traj_percent, smoothed_reward,

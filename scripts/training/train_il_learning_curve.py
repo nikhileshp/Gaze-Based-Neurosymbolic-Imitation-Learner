@@ -96,6 +96,8 @@ def get_args():
                    choices=["softor", "max"])
     p.add_argument("--target_diagonal", type=float, default=0.99,
                    help="Initial confidence for clauses in block diagonal initialization.")
+    p.add_argument("--random_init", action="store_true",
+                   help="Initialize weights randomly instead of target_diagonal.")
     # Gaze
     p.add_argument("--use_gaze",        action="store_true")
     p.add_argument("--gaze_threshold",  type=float, default=50.0)
@@ -257,6 +259,7 @@ def main():
         alpha=alpha,
         aggregation_method=args.aggregation,
         target_diagonal=target_diagonal,
+        random_init=args.random_init,
     )
     max_action = _probe_agent.num_actions - 1
     print(f"  num_actions={_probe_agent.num_actions}  →  max_action={max_action}")
@@ -308,6 +311,7 @@ def main():
             alpha=alpha,
             aggregation_method=args.aggregation,
             target_diagonal=target_diagonal,
+            random_init=args.random_init,
         )
 
         # Initialise gaze predictor if needed for precompute
@@ -478,6 +482,7 @@ def main():
             alpha=alpha,
             aggregation_method=args.aggregation,
             target_diagonal=target_diagonal,
+            random_init=args.random_init,
         )
 
         num_gpus = torch.cuda.device_count()
