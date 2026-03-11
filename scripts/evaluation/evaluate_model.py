@@ -301,12 +301,12 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
                     timeout = 0.0 if (pending or drained) else 0.002
                     msg     = state_q.get(timeout=timeout)
                     drained = True
-            except Exception:
-                break
+                except Exception:
+                    break
 
-            wid, msg_type = msg[0], msg[1]
+                wid, msg_type = msg[0], msg[1]
 
-            if msg_type == _MSG_STATE:
+                if msg_type == _MSG_STATE:
                 pending[wid] = (msg[2], msg[3] if use_gaze else None)
 
             elif msg_type == _MSG_DONE:
