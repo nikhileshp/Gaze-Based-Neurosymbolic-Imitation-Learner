@@ -231,12 +231,13 @@ def main():
     if args.run_dir:
         base_run_dir = args.run_dir
     else:
+        init_tag = "random_init" if args.random_init else f"td_{args.target_diagonal}"
         if use_gaze and unnormalized:
-            tag = f"grail_unnormalized{vis_tag}_td_{args.target_diagonal}"
+            tag = f"grail_unnormalized{vis_tag}_{init_tag}"
         elif use_gaze:
-            tag = f"grail_normalized{vis_tag}{alpha_tag}_td_{args.target_diagonal}"
+            tag = f"grail_normalized{vis_tag}{alpha_tag}_{init_tag}"
         else:
-            tag = f"nsfr_td_{args.target_diagonal}"
+            tag = f"nsfr_{init_tag}"
         base_run_dir = (
             f"trained_models/{args.env}/{tag}_learning_curve"
             f"_{args.rules}_rules_{args.lr}_lr_{args.loss}"

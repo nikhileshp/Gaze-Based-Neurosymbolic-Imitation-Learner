@@ -320,12 +320,14 @@ def main():
     num_iters = len(unique_eps) if (args.num_episodes is None) and (args.limit is not None) else "full"
     vis_tag = "_vis_only" if visible_preds_only else ""
     alpha_tag = f"_a{alpha}" if alpha is not None else ""
+    init_tag = "random_init" if args.random_init else f"td_{args.target_diagonal}"
+    
     if use_gaze and unnormalized:
-        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_unnormalized{vis_tag}/{num_iters}_ep/{now_time}")
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_unnormalized{vis_tag}_{init_tag}/{num_iters}_ep/{now_time}")
     elif use_gaze:
-        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_normalized{vis_tag}{alpha_tag}/{num_iters}_ep/{now_time}")
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_normalized{vis_tag}_{init_tag}/{num_iters}_ep/{now_time}")
     else:
-        run_dir   = (f"trained_models/{args.env}/nsfr/{args.rules}_rules_{args.lr}_lr_{args.loss}/{num_iters}_ep/{now_time}")
+        run_dir   = (f"trained_models/{args.env}/nsfr/{args.rules}_rules_{args.lr}_lr_{args.loss}_{init_tag}/{num_iters}_ep/{now_time}")
     os.makedirs(run_dir, exist_ok=True)
     os.makedirs("out/imitation", exist_ok=True)
 
