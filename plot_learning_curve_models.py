@@ -51,7 +51,8 @@ def plot_learning_curve_models(csv_path, output_path, window_size=1):
 
     models = df['model'].unique()
     print(models)
-    cmap = plt.get_cmap('tab10')
+    # Custom color list: first is green, second is red. The rest are other distinct colors from tab10.
+    colors = ['green', 'red', 'blue', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
     for i, model_name in enumerate(models):
         mask = df['model'] == model_name
@@ -60,7 +61,13 @@ def plot_learning_curve_models(csv_path, output_path, window_size=1):
         if g_clean.empty:
             continue
 
-        color = cmap(i % 10)
+        if not (g_clean['trajectory'] == 0).any():
+            zero_row = pd.DataFrame({'trajectory': [0.0], 'mean_reward': [0.0]})
+            if 'std_reward' in df.columns:
+                zero_row['std_reward'] = [0.0]
+            g_clean = pd.concat([zero_row, g_clean], ignore_index=True).sort_values('trajectory')
+
+        color = colors[i % len(colors)]
         
         # Apply smoothing
         smoothed_reward = g_clean['mean_reward'].rolling(window=window_size, min_periods=1).mean()
@@ -87,10 +94,12 @@ def plot_learning_curve_models(csv_path, output_path, window_size=1):
             )
 
     plt.xticks(range(0, 101, 10), [f"{x}%" for x in range(0, 101, 10)])
+    plt.xlim(0, 100)
+    plt.ylim(0, 550)
 
-    plt.title('Learning Curve by Model')
+
     plt.xlabel('Percentage of Dataset (%)')
-    plt.ylabel('Mean Reward')
+    plt.ylabel('Mean Game Score')
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
