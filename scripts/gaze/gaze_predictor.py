@@ -112,6 +112,9 @@ class Human_Gaze_Predictor:
         
         if gaze_model_file:
             print(f"Loading model weights from {gaze_model_file}")
+            import traceback
+            traceback.print_stack()
+
             try:
                 self.model.load_state_dict(torch.load(gaze_model_file, map_location=self.device))
                 print("Loaded successfully.")
