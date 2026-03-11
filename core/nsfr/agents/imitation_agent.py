@@ -257,11 +257,7 @@ class ImitationAgent(nn.Module):
         action_rule_probs = {idx: [] for idx in range(self.num_actions)}
         # unwrapped_model: works whether or not DataParallel is wrapping self.model
         prednames = self.unwrapped_model.get_prednames()
-        print(f"[DEBUG] prednames: {prednames}")
-        print(f"[DEBUG] primitive_action_map: {self.primitive_action_map}")
-        for i, pred in enumerate(prednames):
-            prefix = pred.split('_')[0]
-            print(f"  {pred} → prefix='{prefix}' → {'action ' + str(self.primitive_action_map[prefix]) if prefix in self.primitive_action_map else 'NOT IN MAP ← PROBLEM'}")
+    
         for i, pred in enumerate(prednames):
             prefix = pred.split('_')[0]
             if prefix in self.primitive_action_map:
