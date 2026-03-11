@@ -93,7 +93,12 @@ class FactsConverter(nn.Module):
                     - flat_gaze[idx, y2, x1]
                     + flat_gaze[idx, y1, x1]
                 ).clamp(min=0.0)
+                
 
+                # ADD THIS — normalize by box area to keep values in [0, 1]
+                box_area = (dw * dh).float().clamp(min=1)
+                sums = sums / box_area    
+                
                 # Zero out absent objects
                 is_present = (Z[:, :, 0] > 0.5).float()          # (B, N_OBJ)
                 sums       = sums * (flat_Z[:, 0] > 0.5).float()
