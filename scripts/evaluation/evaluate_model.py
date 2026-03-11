@@ -332,7 +332,7 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
                         frames_gpu
                     ).squeeze(1)  # (B, 84, 84)
 
-                _, action_scores = agent.predict(batch_states, gaze=batch_gazes)
+                _, action_scores = agent.predict(batch_states, gazes=batch_gazes)
 
                 for wid, scores in zip(wids, action_scores):
                     action_qs[wid].put((_MSG_STATE, inv_map[scores.argmax().item()]))
@@ -401,17 +401,6 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
                              gabril_compat=gabril_compat)
 
     agent.model.eval()
-
-    print(f"[EVAL DEBUG] use_gaze={use_gaze}, gaze_model loaded={gaze_model is not None}")
-
-# Monkey-patch agent.act or agent.predict to log whether gaze arrives
-    original_predict = agent.predict
-    def debug_predict(states, gaze=None, vT=None):
-        if use_gaze:
-            print(f"  [EVAL DEBUG] agent.predict called | gaze={'NOT None' if gaze is not None else 'NONE ← BUG'}")
-        return original_predict(states, gaze=gaze, vT=vT)
-    agent.predict = debug_predict
-
     rewards = _run_inference_loop(
         agent, state_q, action_qs, num_workers, num_episodes,
         device, use_gaze, gaze_model, verbose=verbose

@@ -620,8 +620,6 @@ def main():
 
         # ── Environment Evaluation ────────────────────────────────────────────
         if (epoch + 1) % args.eval_interval == 0:
-            import inspect
-            print(inspect.signature(agent.predict))
             rewards = evaluate_parallel(
                 agent, env_name=args.env,
                 num_episodes=args.num_eval_episodes, seed=args.seed,
