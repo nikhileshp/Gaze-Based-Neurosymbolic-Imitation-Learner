@@ -307,7 +307,7 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
                 wid, msg_type = msg[0], msg[1]
 
                 if msg_type == _MSG_STATE:
-                pending[wid] = (msg[2], msg[3] if use_gaze else None)
+                    pending[wid] = (msg[2], msg[3] if use_gaze else None)
 
             elif msg_type == _MSG_DONE:
                 episode_rewards.append(msg[2])
