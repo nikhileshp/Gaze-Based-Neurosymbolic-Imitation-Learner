@@ -289,72 +289,23 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
 
     # 1. ADD Counter init before the main while loop
     from collections import Counter
-    action_counts = Counter()  # ← ADD HERE
+    action_counts = Counter()  # ← initialize BEFORE the while loop
 
     with torch.no_grad():
         while workers_done < num_workers or pending:
 
-            # Drain all available messages
-            while True:
-                try:
-                    timeout = 0.0 if (pending or drained) else 0.002
-                    msg     = state_q.get(timeout=timeout)
-                    drained = True
-                except Exception:
-                    break
-
-                wid, msg_type = msg[0], msg[1]
-
-                if msg_type == _MSG_STATE:
-                    pending[wid] = (msg[2], msg[3] if use_gaze else None)
-
-                elif msg_type == _MSG_DONE:
-                    episode_rewards.append(msg[2])
-                    if verbose:
-                        print(f"  Episode {len(episode_rewards)}"
-                              f"/{num_episodes}: Reward = {msg[2]:.1f}")
-                    # 2. ADD HERE — print and reset after each episode
-                    print(f"  Action distribution: {dict(action_counts)}")
-                    action_counts.clear()  # ← ADD HERE
-
-                elif msg_type == _MSG_STOP:
-                    workers_done += 1
-
-            # Batch GPU inference
-            if pending:
-                wids = list(pending.keys())
-                batch_states = torch.tensor(
-                    np.stack([pending[w][0] for w in wids]),
-                    dtype=torch.float32, device=device
-                )
-
-                batch_gazes = None
-                if use_gaze and gaze_model is not None:
-                    frames_gpu = torch.tensor(
-                        np.stack([pending[w][1] for w in wids]),
-                        dtype=torch.float32, device=device
-                    )
-                    batch_gazes = gaze_model.predict_normalized(
-                        frames_gpu
-                    ).squeeze(1)  # (B, 84, 84)
-
-                _, action_scores = agent.predict(batch_states, gazes=batch_gazes)
-                action_counts = Counter()
-                for wid, scores in zip(wids, action_scores):
-                    # 3. ADD HERE — count each selected action
-                    action_counts[scores.argmax().item()] += 1  # ← ADD HERE
-                    action_qs[wid].put((_MSG_STATE, inv_map[scores.argmax().item()]))
-
-                pending.clear()
-
-    return episode_rewards
-
-
-    while workers_done < num_workers or pending:
-
         # Drain all available messages
+        drained = False
         while True:
-            ...
+            try:
+                timeout = 0.0 if (pending or drained) else 0.002
+                msg     = state_q.get(timeout=timeout)
+                drained = True
+            except Exception:
+                break
+
+            wid, msg_type = msg[0], msg[1]
+
             if msg_type == _MSG_STATE:
                 pending[wid] = (msg[2], msg[3] if use_gaze else None)
 
@@ -363,27 +314,39 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
                 if verbose:
                     print(f"  Episode {len(episode_rewards)}"
                           f"/{num_episodes}: Reward = {msg[2]:.1f}")
-                # 2. ADD HERE — print and reset after each episode
                 print(f"  Action distribution: {dict(action_counts)}")
-                action_counts.clear()  # ← ADD HERE
+                action_counts.clear()  # reset per episode
 
             elif msg_type == _MSG_STOP:
                 workers_done += 1
 
         # Batch GPU inference
         if pending:
-            ...
+            wids = list(pending.keys())
+            batch_states = torch.tensor(
+                np.stack([pending[w][0] for w in wids]),
+                dtype=torch.float32, device=device
+            )
+
+            batch_gazes = None
+            if use_gaze and gaze_model is not None:
+                frames_gpu = torch.tensor(
+                    np.stack([pending[w][1] for w in wids]),
+                    dtype=torch.float32, device=device
+                )
+                batch_gazes = gaze_model.predict_normalized(
+                    frames_gpu
+                ).squeeze(1)
+
             _, action_scores = agent.predict(batch_states, gazes=batch_gazes)
 
             for wid, scores in zip(wids, action_scores):
-                # 3. ADD HERE — count each selected action
-                action_counts[scores.argmax().item()] += 1  # ← ADD HERE
+                action_counts[scores.argmax().item()] += 1  # ← inside loop
                 action_qs[wid].put((_MSG_STATE, inv_map[scores.argmax().item()]))
 
             pending.clear()
 
-
-    return episode_rewards
+return episode_rewards  # ← only once, delete the duplicate code below this
 
 
 def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
