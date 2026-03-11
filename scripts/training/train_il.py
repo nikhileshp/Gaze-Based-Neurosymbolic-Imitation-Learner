@@ -10,7 +10,7 @@ import pandas as pd
 import datetime
 from pathlib import Path
 from tqdm import tqdm
-from core.utils.utils import get_primitive_action_map
+from core.utils.utils import get_primitive_action_map, get_gaze_model_path
 from core.utils.utils import PtDataset
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
 from nsfr.agents.imitation_agent import ImitationAgent
@@ -168,7 +168,7 @@ def main():
     parser.add_argument("--gaze_threshold", type=float, default=50.0, help="Gaze valuation threshold")
     parser.add_argument("--use_gaze", action="store_true", help="Use full gaze map")
     parser.add_argument("--gaze_model_path", type=str,
-                        default="gaze_models/seaquest/seaquest_gaze_predictor_2.pth")
+                        default=None, help="Path to gaze predictor weights")
     parser.add_argument("--num_episodes", type=int, default=None, help="Episodes to load from .pt dataset")
     parser.add_argument("--sort_by", type=str, default=None, choices=['length', 'reward_per_step'])
     parser.add_argument("--valuation_path", type=str, default=None, help="Path to pre-computed valuation.pt")
@@ -183,6 +183,10 @@ def main():
     parser.add_argument("--aggregation", type=str, default="max", choices=["softor", "max"], help="Aggregation method for action scores")
     parser.add_argument("--target_diagonal", type=float, default=0.99, help="Initial confidence for clauses in block diagonal initialization.")
     args = parser.parse_args()
+    
+    # -- Resolve gaze model path if not provided
+    if args.gaze_model_path is None:
+        args.gaze_model_path = get_gaze_model_path(args.env)
     
     unnormalized = args.unnormalized
     visible_preds_only = args.visible_preds_only

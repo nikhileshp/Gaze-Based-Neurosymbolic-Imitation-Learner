@@ -56,7 +56,7 @@ class NSFREnv(NSFRBaseEnv):
         # Consumable item class names from OCAtari vision module
         consumable_names = {"Cauldron", "Helmet", "Shield", "Lamp", "Apple", "Fish", "Meat", "Mug"}
  
-        obj_idx = 1 # Start from 1 to match obj1, obj2, ... objN
+        obj_idx = 0 # Start from 0 to match obj0, obj1, ... objN
         for entity in raw_state:
             if obj_idx >= n_objects:
                 break

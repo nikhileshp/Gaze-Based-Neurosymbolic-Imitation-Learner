@@ -58,6 +58,20 @@ def get_primitive_action_map(env_name: str) -> dict:
         print(f"Warning: Could not load action map for env '{env_name}'. Falling back to default.")
         return PRIMITIVE_ACTION_MAP
 
+def get_gaze_model_path(env_name: str) -> str:
+    """
+    Returns the default gaze model path for the given environment.
+    """
+    env_lower = env_name.lower()
+    if 'asterix' in env_lower:
+        # Check if localized model exists, else fallback to gaze_models subdir
+        if os.path.exists("asterix_visual_gaze_predictor.pth"):
+            return "asterix_visual_gaze_predictor.pth"
+        return "gaze_models/asterix/asterix_visual_gaze_predictor.pth"
+    
+    # Default is Seaquest
+    return "gaze_models/seaquest/seaquest_gaze_predictor_2.pth"
+
 def set_seed_everywhere(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():

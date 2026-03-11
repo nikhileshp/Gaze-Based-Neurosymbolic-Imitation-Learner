@@ -12,6 +12,7 @@ import pandas as pd
 from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.env import NSFRBaseEnv
 from nsfr.utils import make_deterministic
+from core.utils.utils import get_gaze_model_path
 
 
 # ── GABRILEnvWrapper — inlined so worker processes don't need a separate import
@@ -667,7 +668,7 @@ def main():
     # ── Gaze ──────────────────────────────────────────────────────────────────
     parser.add_argument("--use_gaze",           action="store_true")
     parser.add_argument("--gaze_model_path",    type=str,
-                        default="gaze_models/seaquest/seaquest_gaze_predictor_2.pth")
+                        default=None)
     parser.add_argument("--unnormalized",       action="store_true")
     parser.add_argument("--visible_preds_only", action="store_true")
     parser.add_argument("--alpha",              type=float, default=None)
@@ -678,6 +679,10 @@ def main():
                              "seed=base+1000*ep")
     parser.add_argument("--output_csv",         type=str, default=None)
     args = parser.parse_args()
+    
+    # -- Resolve gaze model path if not provided
+    if args.gaze_model_path is None:
+        args.gaze_model_path = get_gaze_model_path(args.env)
 
     if args.unnormalized:
         args.use_gaze = True

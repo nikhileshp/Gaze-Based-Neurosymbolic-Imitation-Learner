@@ -48,8 +48,9 @@ except RuntimeError:
     pass
 
 from core.utils.utils import (
-    get_primitive_action_map, PtDataset,
-    set_seed_everywhere, send_run_update, load_pt_dataset
+    get_primitive_action_map, get_gaze_model_path,
+    PtDataset, set_seed_everywhere,
+    send_run_update, load_pt_dataset
 )
 from nsfr.agents.imitation_agent import ImitationAgent
 from nsfr.utils import make_deterministic
@@ -95,7 +96,7 @@ def get_args():
     p.add_argument("--use_gaze",        action="store_true")
     p.add_argument("--gaze_threshold",  type=float, default=50.0)
     p.add_argument("--gaze_model_path", type=str,
-                   default="gaze_models/seaquest/seaquest_gaze_predictor_2.pth")
+                   default=None)
     p.add_argument("--unnormalized",    action="store_true",
                    help="Use unnormalized gaze probabilities.")
     p.add_argument("--visible_preds_only", action="store_true")
@@ -180,6 +181,10 @@ def build_vT_batch(ep_nums, step_idxs, valuations, agent, device):
 
 def main():
     args = get_args()
+    
+    # -- Resolve gaze model path if not provided
+    if args.gaze_model_path is None:
+        args.gaze_model_path = get_gaze_model_path(args.env)
     if args.env is None:
         raise ValueError("--env must be specified")
 
