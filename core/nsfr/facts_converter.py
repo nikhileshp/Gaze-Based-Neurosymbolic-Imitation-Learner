@@ -102,6 +102,8 @@ class FactsConverter(nn.Module):
                 if getattr(self.vm, "unnormalized", False):
                     # Keep raw SAT sums — no normalization
                     gaze_sums = torch.max(gaze_sums, is_present * 0.5)
+                    if gaze_sums.shape[0] == 1:  # single sample, avoid spam
+                        print(f"[GAZE DEBUG] per-object gaze_sums: {gaze_sums[0].cpu().numpy()}")
                 else:
                     # Normalized: max-normalize so peak attended object = 1.0
                     gaze_max  = gaze_sums.max(dim=1, keepdim=True).values.clamp(min=1e-8)
