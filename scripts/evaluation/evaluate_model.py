@@ -405,6 +405,16 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
         agent, state_q, action_qs, num_workers, num_episodes,
         device, use_gaze, gaze_model, verbose=verbose
     )
+    # Track action distribution across the episode
+    from collections import Counter
+    if not hasattr(agent, '_action_counts'):
+        agent._action_counts = Counter()
+    agent._action_counts[scores.argmax().item()] += 1
+
+    # Print at end of each episode
+    if msg_type == _MSG_DONE:
+        print(f"  Action distribution: {dict(agent._action_counts)}")
+        agent._action_counts.clear()    
 
     for p in workers:
         p.join(timeout=5)
