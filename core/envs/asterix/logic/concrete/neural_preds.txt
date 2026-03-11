@@ -12,7 +12,5 @@ at_right:1:object
 at_top:1:object
 at_bottom:1:object
 visible:1:object
-notcloseby:2:object,object
 above:2:object,object
 below:2:object,object
-closest:2:object,object
