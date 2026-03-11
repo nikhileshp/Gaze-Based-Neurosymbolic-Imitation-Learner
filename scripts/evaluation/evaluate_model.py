@@ -401,6 +401,17 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
                              gabril_compat=gabril_compat)
 
     agent.model.eval()
+
+    print(f"[EVAL DEBUG] use_gaze={use_gaze}, gaze_model loaded={gaze_model is not None}")
+
+# Monkey-patch agent.act or agent.predict to log whether gaze arrives
+    original_predict = agent.predict
+    def debug_predict(states, gaze=None, vT=None):
+        if use_gaze:
+            print(f"  [EVAL DEBUG] agent.predict called | gaze={'NOT None' if gaze is not None else 'NONE ← BUG'}")
+        return original_predict(states, gaze=gaze, vT=vT)
+    agent.predict = debug_predict
+
     rewards = _run_inference_loop(
         agent, state_q, action_qs, num_workers, num_episodes,
         device, use_gaze, gaze_model, verbose=verbose
