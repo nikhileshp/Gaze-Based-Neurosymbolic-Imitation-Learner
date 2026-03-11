@@ -295,12 +295,12 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
         while workers_done < num_workers or pending:
 
         # Drain all available messages
-        drained = False
-        while True:
-            try:
-                timeout = 0.0 if (pending or drained) else 0.002
-                msg     = state_q.get(timeout=timeout)
-                drained = True
+            drained = False
+            while True:
+                try:
+                    timeout = 0.0 if (pending or drained) else 0.002
+                    msg     = state_q.get(timeout=timeout)
+                    drained = True
             except Exception:
                 break
 
