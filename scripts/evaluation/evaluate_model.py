@@ -332,7 +332,7 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
                         frames_gpu
                     ).squeeze(1)  # (B, 84, 84)
 
-                _, action_scores = agent.predict(batch_states, gazes=batch_gazes)
+                _, action_scores = agent.predict(batch_states, gaze=batch_gazes)
 
                 for wid, scores in zip(wids, action_scores):
                     action_qs[wid].put((_MSG_STATE, inv_map[scores.argmax().item()]))
