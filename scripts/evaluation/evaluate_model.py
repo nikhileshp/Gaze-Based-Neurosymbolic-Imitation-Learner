@@ -346,7 +346,7 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
 
                 pending.clear()
 
-return episode_rewards  # ← only once, delete the duplicate code below this
+    return episode_rewards  # ← only once, delete the duplicate code below this
 
 
 def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
