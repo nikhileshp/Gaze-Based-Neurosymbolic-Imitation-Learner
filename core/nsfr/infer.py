@@ -430,9 +430,8 @@ class InferModule(nn.Module):
         #     self.W = nn.Parameter(W_init.to(device))
 
         elif random_init:
-            print(f"  [W init] Random initialization: {m} rules, {I.size(0)} clauses")
-            self.W = nn.Parameter(torch.Tensor(
-                np.random.normal(size=(m, I.size(0)))).to(device))
+            print(f"  [W init] Random initialization (torch.randn): {m} rules, {I.size(0)} clauses")
+            self.W = nn.Parameter(torch.randn(m, I.size(0), device=device))
         else:
             self.W = nn.Parameter(
                 self._init_block_diagonal(m, I.size(0), clauses, device, target_diagonal)
