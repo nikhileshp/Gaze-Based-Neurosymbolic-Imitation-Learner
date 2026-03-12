@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Union
 
 import numpy as np
@@ -53,6 +54,7 @@ class Renderer:
             if isinstance(ocenv, HackAtari):
                 ocenv = ocenv.env
             self.keys2actions = ocenv.get_keys_to_action()
+            print(f"DEBUG: keys2actions: {self.keys2actions}")
         except Exception:
             print(yellow("Info: No key-to-action mapping found for this env. No manual user control possible."))
             self.action_meanings = None
@@ -99,7 +101,7 @@ class Renderer:
 
             if self.takeover:  # human plays game manually
                 action = self._get_action()
-                self.model.act(th.unsqueeze(obs, 0))  # update the model's internals
+                self.model.act(th.unsqueeze(th.tensor(obs), 0))  # update the model's internals
             else:  # AI plays the game
                 action, _ = self.model.act(th.unsqueeze(th.tensor(obs), 0))
                 action = self.predicates[action.item()]
@@ -165,17 +167,58 @@ class Renderer:
 
                 elif event.key == pygame.K_c:  # 'C': capture screenshot
                     file_name = f"{datetime.strftime(datetime.now(), '%Y-%m-%d-%H-%M-%S')}.png"
-                    pygame.image.save(self.window, SCREENSHOTS_BASE_PATH + file_name)
+                    save_path = Path(SCREENSHOTS_BASE_PATH) / file_name
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    pygame.image.save(self.window, str(save_path))
+                    print(f"Screenshot saved to {save_path}")
 
-                elif (event.key,) in self.keys2actions.keys():  # env action
-                    self.current_keys_down.add(event.key)
+                else:
+                    mapped_key = self._map_key(event.key)
+                    if mapped_key is not None:
+                        # print(f"DEBUG: Key down: {pygame.key.name(event.key)} -> {mapped_key}")
+                        self.current_keys_down.add(mapped_key)
 
             elif event.type == pygame.KEYUP:  # keyboard key released
-                if (event.key,) in self.keys2actions.keys():
-                    self.current_keys_down.remove(event.key)
+                mapped_key = self._map_key(event.key)
+                if mapped_key in self.current_keys_down:
+                    self.current_keys_down.remove(mapped_key)
 
-                # elif event.key == pygame.K_f:  # 'F': fast forward
-                #     self.fast_forward = False
+    def _map_key(self, pygame_key):
+        """Maps a pygame key to the format expected by the environment's keys2actions."""
+        if not self.keys2actions:
+            return None
+            
+        # Determine if mapping uses strings or integers
+        first_key_tuple = next(iter(self.keys2actions.keys()), None)
+        if not first_key_tuple:
+            return None
+        use_strings = isinstance(first_key_tuple[0], str)
+        
+        if use_strings:
+            # Standard WASD mapping for Atari string-based envs
+            arrow_map = {
+                pygame.K_UP: 'w',
+                pygame.K_DOWN: 's',
+                pygame.K_LEFT: 'a',
+                pygame.K_RIGHT: 'd',
+                pygame.K_SPACE: 'e',
+                pygame.K_f: 'e' # Sometimes F is used for fire
+            }
+            if pygame_key in arrow_map:
+                mapped = arrow_map[pygame_key]
+            else:
+                mapped = pygame.key.name(pygame_key)
+                
+            # Check if this mapped key exists in any of the valid action tuples
+            for k_tuple in self.keys2actions.keys():
+                if mapped in k_tuple:
+                    return mapped
+            return None
+        else:
+            # Integer-based mapping (standard Gym/OCAtari)
+            if (pygame_key,) in self.keys2actions.keys() or any(pygame_key in k for k in self.keys2actions.keys()):
+                return pygame_key
+            return None
 
     def _render(self):
         self.window.fill((20, 20, 20))  # clear the entire window
@@ -193,6 +236,18 @@ class Renderer:
         frame_surface = pygame.Surface(self.env_render_shape)
         pygame.pixelcopy.array_to_surface(frame_surface, frame)
         self.window.blit(frame_surface, (0, 0))
+        
+        # DRAW TAKEOVER STATUS
+        if hasattr(self, 'takeover') and self.takeover:
+            takeover_font = pygame.font.SysFont('Calibri', 32, bold=True)
+            text = takeover_font.render("HUMAN TAKEOVER", True, (255, 50, 50))
+            text_rect = text.get_rect()
+            text_rect.topleft = (10, 10)
+            # Add a semi-transparent background for readability
+            bg_rect = text_rect.copy()
+            bg_rect.inflate_ip(10, 5)
+            pygame.draw.rect(self.window, (0, 0, 0, 150), bg_rect)
+            self.window.blit(text, text_rect)
 
     def _render_predicate_probs(self):
         anchor = (self.env_render_shape[0] + 10, 25)

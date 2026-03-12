@@ -110,7 +110,7 @@ class AgentWrapper:
             high_value_indices = [(i, float(val_np[i])) for i in range(min(len(val_np), len(atoms))) if float(val_np[i]) > 0.1]
             high_value_indices.sort(key=lambda x: x[1], reverse=True)
             
-            self.current_neural_predicates = [(str(atoms[idx]), val) for idx, val in high_value_indices[:25]]
+            self.current_neural_predicates = [(str(atoms[idx]), val) for idx, val in high_value_indices[:150]]
         else:
             self.current_neural_predicates = []
         
@@ -150,8 +150,16 @@ class AgentWrapper:
             
             # Show top neural predicates with their object references
             # print(f"\nTop Neural Predicates:")
-            for pred_str, val in self.current_neural_predicates[:20]:
+            for pred_str, val in self.current_neural_predicates:
                 print(f"  {val:.3f} - {pred_str}")
+            
+            # Specifically check ALL visible predicates if not already shown
+            # print(f"\nAll Visible Predicates Check:")
+            for idx, atom in enumerate(atoms):
+                atom_str = str(atom)
+                if 'visible(' in atom_str and idx < len(val_np):
+                     val = float(val_np[idx])
+                     print(f"  {val:.3f} - {atom_str}")
             
             # Check for type predicates specifically
             # print(f"\nType Predicates Check:")
@@ -362,14 +370,14 @@ class ILRenderer(Renderer):
         
         # Render neural predicates
         if hasattr(self.model, 'current_neural_predicates'):
-            neural_preds = self.model.current_neural_predicates[:20]  # Top 12 (reduced for space)
+            neural_preds = self.model.current_neural_predicates  # Shown in GUI
             count=0
             for i, (pred_str, val) in enumerate(neural_preds):
                 # Normalize value to 0-1 range (in case values are > 1)
                 
                 val_normalized = min(val, 1.0)
                 if(val_normalized):
-                    print(i, pred_str, val_normalized)
+                    # print(i, pred_str, val_normalized)
                 
                     # Render background
                     color = val_normalized * np.array([40, 200, 100]) + (1 - val_normalized) * CELL_BACKGROUND_DEFAULT
@@ -422,7 +430,7 @@ if __name__ == "__main__":
     print(f"Loading model from {args.agent_path}...")
     # agent.load(args.agent_path)
     print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
-    agent.model.eval() # Set to eval mode
+    # agent.model.eval() # Set to eval mode
     
     # Wrap Agent
     model = AgentWrapper(agent, env, debug=args.debug, gaze_predictor=gaze_predictor)

@@ -26,7 +26,7 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
     Evaluates the agent in the environment for a set number of episodes.
     Returns the list of total rewards for each episode.
     """
-    agent.eval()
+    agent.model.eval()
     episode_rewards = []
     if seed is not None:
         make_deterministic(seed)
@@ -81,18 +81,18 @@ def evaluate(agent, env, num_episodes=5, seed=42, gaze_predictor=None, log_inter
             action_idx = agent.act(logic_state_tensor, gaze=gaze_tensor)
             
             # Print top atom valuations every valuation_interval steps
-            if valuation_interval > 0 and step_count % valuation_interval == 0 and step_count > 0:
-                if agent.V_0 is not None:
-                    v0 = agent.V_0.squeeze(0).detach().cpu()
-                    atoms = agent.atoms
-                    pairs = sorted(zip(atoms, v0.tolist()), key=lambda x: x[1], reverse=True)
-                    visible_pairs = [(a, v) for a, v in pairs if str(a).startswith("visible_") and v > 0.01]
-                    print(f"  --- visible_ Valuations at Step {step_count} ---")
-                    for atom, val in visible_pairs:
-                        print(f"    {val:.3f}  {atom}")
+            # if valuation_interval > 0 and step_count % valuation_interval == 0 and step_count > 0:
+            #     if hasattr(agent.model, 'V_0') and agent.model.V_0 is not None:
+            #         v0 = agent.model.V_0.squeeze(0).detach().cpu()
+            #         atoms = agent.model.atoms
+            #         pairs = sorted(zip(atoms, v0.tolist()), key=lambda x: x[1], reverse=True)
+            #         visible_pairs = [(a, v) for a, v in pairs if str(a).startswith("visible_") and v > 0.01]
+            #         print(f"  --- visible_ Valuations at Step {step_count} ---")
+            #         for atom, val in visible_pairs:
+            #             print(f"    {val:.3f}  {atom}")
             
             # Map action index to predicate name
-            prednames = agent.get_prednames()
+            prednames = agent.model.get_prednames()
             predicate = prednames[action_idx]
             
             # Step environment
@@ -153,7 +153,7 @@ def main():
 
     # Initialize Environment
     print(f"Initializing Environment: {args.env}...")
-    env = NudgeBaseEnv.from_name(args.env, mode='logic')
+    env = NudgeBaseEnv.from_name(args.env, mode='logic',)
 
     # Initialize Agent
     print(f"Initializing Agent for rules: {args.rules}...")
