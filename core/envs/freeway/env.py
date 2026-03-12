@@ -14,9 +14,9 @@ class NSFREnv(NSFRBaseEnv):
     }
     pred_names: Sequence
 
-    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False):
+    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False, oc_mode="ram"):
         super().__init__(mode)
-        self.env = OCAtari(env_name="ALE/Freeway-v5", mode="ram",
+        self.env = OCAtari(env_name="ALE/Freeway-v5", mode=oc_mode,
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
 
     def reset(self):
@@ -33,29 +33,25 @@ class NSFREnv(NSFRBaseEnv):
         return self.convert_state(state), reward, done
 
     def extract_logic_state(self, raw_state):
-        num_of_feature = 6
+        num_of_feature = 5 # visibility, chicken_type, car_type, x, y
         num_of_object = 11
         logic_state = np.zeros((num_of_object, num_of_feature))
 
         for i, entity in enumerate(raw_state):
-            if entity.category == "Chicken" and i == 0:
-                logic_state[0][0] = 1
-                logic_state[0][-2:] = entity.xy
+            if i >= num_of_object:
+                break
+            logic_state[i][0] = 1 # Visibility
+            if entity.category == "Chicken":
+                logic_state[i][1] = 1 # Type Chicken
+                logic_state[i][3:5] = entity.xy
             elif entity.category == 'Car':
-                logic_state[i - 1][1] = 1
-                logic_state[i - 1][-2:] = entity.xy
+                logic_state[i][2] = 1 # Type Car
+                logic_state[i][3:5] = entity.xy
 
         return logic_state
 
     def extract_neural_state(self, raw_state):
-        neural_state = []
-        for i, inst in enumerate(raw_state):
-            if inst.category == "Chicken" and i == 1:
-                neural_state.append([1, 0, 0, 0] + list(inst.xy))
-            elif inst.category == "Car":
-                neural_state.append([0, 1, 0, 0] + list(inst.xy))
-
-        return np.array(neural_state).reshape(-1)
+        return self.extract_logic_state(raw_state).flatten()
 
     def close(self):
         self.env.close()

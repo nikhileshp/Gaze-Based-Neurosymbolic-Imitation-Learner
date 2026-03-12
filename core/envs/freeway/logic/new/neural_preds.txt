@@ -6,4 +6,7 @@ same_row:2:ocar,oagent
 above_row:2:ocar,oagent
 top5car:1:ocar
 bottom5car:1:ocar
+bottomfastcar:1:ocar
+topfastcar:1:ocar
 visible:1:object
+above:2:ocar,oagent

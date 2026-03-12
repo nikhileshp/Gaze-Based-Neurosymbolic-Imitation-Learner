@@ -23,6 +23,7 @@ parser.add_argument("--fps", type=int, default=60, help="Frames per second for p
 parser.add_argument("--aggregation", type=str, default="max", choices=["softor", "max"], help="Aggregation method for action scores")
 parser.add_argument("--unnormalized", action="store_true", help="Use unnormalized gaze maps")
 parser.add_argument("--visible_preds_only", action="store_true", help="Only apply gaze scaling to visible_ predicates")
+parser.add_argument("--oc_mode", type=str, default="ram", choices=["ram", "vision"], help="OCAtari detection mode")
 
 try:
     from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
@@ -289,6 +290,7 @@ class ILRenderer(Renderer):
             if isinstance(ocenv, HackAtari):
                 ocenv = ocenv.env
             self.keys2actions = ocenv.get_keys_to_action()
+            self._normalize_keys()
         except Exception:
             print(yellow("Info: No key-to-action mapping found for this env. No manual user control possible."))
             self.action_meanings = None
@@ -412,7 +414,7 @@ class ILRenderer(Renderer):
         #                 break
         
         # Calculate starting position for neural predicates (after objects)
-        neural_pred_start_y = objects_start_y + max(num_objects_shown * 18, 20) 
+        neural_pred_start_y = objects_start_y + max(num_objects_shown * 18, 40) 
         
         # Render title for neural predicates
         title_text = self.font.render("Neural Predicates (>0.01):", True, "yellow", None)
@@ -422,7 +424,7 @@ class ILRenderer(Renderer):
         
         # Render neural predicates
         if hasattr(self.model, 'current_neural_predicates'):
-            neural_preds = self.model.current_neural_predicates[:20]  # Top 12 (reduced for space)
+            neural_preds = self.model.current_neural_predicates[:40]  # Top 12 (reduced for space)
             count=0
             for i, (pred_str, val) in enumerate(neural_preds):
                 # Normalize value to 0-1 range (in case values are > 1)
@@ -458,7 +460,7 @@ class ILRenderer(Renderer):
 def main():
     args = parser.parse_args()
 
-    env = NSFRBaseEnv.from_name(args.game, mode="logic", render_oc_overlay=True)
+    env = NSFRBaseEnv.from_name(args.game, mode="logic", render_oc_overlay=True, oc_mode=args.oc_mode)
 
     gaze_predictor = None
     if args.use_gaze:
@@ -479,8 +481,12 @@ def main():
         visible_preds_only=args.visible_preds_only
     )
 
-    print(f"Loading model from {args.agent_path}...")
-    agent.load(args.agent_path)
+    import os
+    if os.path.exists(args.agent_path):
+        print(f"Loading model from {args.agent_path}...")
+        agent.load(args.agent_path)
+    else:
+        print(f"Warning: Model not found at {args.agent_path}. Running with untrained model.")
     # print("WARNING: SKIPPING MODEL LOAD FOR DEBUGGING (USING FRESH MODEL)")
     agent.model.eval()
 

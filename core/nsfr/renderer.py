@@ -53,6 +53,7 @@ class Renderer:
             if isinstance(ocenv, HackAtari):
                 ocenv = ocenv.env
             self.keys2actions = ocenv.get_keys_to_action()
+            self._normalize_keys()
         except Exception:
             print(yellow("Info: No key-to-action mapping found for this env. No manual user control possible."))
             self.action_meanings = None
@@ -71,6 +72,24 @@ class Renderer:
         self.fast_forward = False
         self.reset = False
         self.takeover = False
+
+    def _normalize_keys(self):
+        """Normalizes keys2actions to use integers instead of strings/characters."""
+        new_keys2actions = {}
+        for keys, action in self.keys2actions.items():
+            new_key_tuple = []
+            for k in keys:
+                if isinstance(k, str):
+                    try:
+                        # k might be ' ' or 'w' or 'space' or 'up'
+                        code = pygame.key.key_code(k)
+                        new_key_tuple.append(code)
+                    except ValueError:
+                        new_key_tuple.append(k) # Fallback
+                else:
+                    new_key_tuple.append(k)
+            new_keys2actions[tuple(sorted(new_key_tuple))] = action
+        self.keys2actions = new_keys2actions
 
     def _init_pygame(self):
         pygame.init()
@@ -99,7 +118,7 @@ class Renderer:
 
             if self.takeover:  # human plays game manually
                 action = self._get_action()
-                self.model.act(th.unsqueeze(obs, 0))  # update the model's internals
+                self.model.act(th.unsqueeze(th.tensor(obs), 0))  # update the model's internals
             else:  # AI plays the game
                 action, _ = self.model.act(th.unsqueeze(th.tensor(obs), 0))
                 action = self.predicates[action.item()]
