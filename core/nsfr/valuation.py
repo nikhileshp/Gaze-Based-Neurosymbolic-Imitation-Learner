@@ -73,7 +73,9 @@ class ValuationModule(nn.Module, ABC):
         # term: logical term
         # args: the vectorized input evaluated by the value function
         args = [self.ground_to_tensor(term, zs) for term in atom.terms]
-        return self._call_val_fn(atom.pred.name, args, gaze)
+        # Identify which arguments are objects (for gaze scaling)
+        is_object_list = [term.dtype.name == 'object' or re.match(r"obj(\d+)", term.name) is not None for term in atom.terms]
+        return self._call_val_fn(atom.pred.name, args, gaze, is_object_list=is_object_list)
 
     def batch_forward(self, zs: torch.Tensor, pred_name: str, atoms: Sequence[Atom], gaze: torch.Tensor = None, all_objects: torch.Tensor = None):
         """Convert object-centric representation to valuation tensors for a batch of atoms of the same predicate.
@@ -122,22 +124,23 @@ class ValuationModule(nn.Module, ABC):
                 gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1)
                 flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, -1)
 
-        # 3. Expand all_objects if needed: (Batch, N_OBJ, F) -> (Batch*num_atoms, N_OBJ, F)
-        flat_all_objects = None
-        if all_objects is not None:
-            all_objects = all_objects.to(self.device)
-            if all_objects.dim() == 3:
-                ao_expanded = all_objects.unsqueeze(1).expand(-1, num_atoms, -1, -1)  # (B, N, N_OBJ, F)
-                flat_all_objects = ao_expanded.reshape(batch_size * num_atoms, all_objects.size(1), all_objects.size(2))
+        # Identify which arguments are objects (for gaze scaling)
+        # All atoms in the batch have the same predicate and term structure
+        is_object_list = []
+        if num_atoms > 0:
+            for term in atoms[0].terms:
+                is_obj = (term.dtype.name == 'object' or re.match(r"obj(\d+)", term.name) is not None)
+                is_object_list.append(is_obj)
 
         # 4. Call Valuation Function
-        val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze, flat_all_objects, unnormalized=self.unnormalized, batch_size=batch_size, num_atoms=num_atoms)
+        val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze, flat_all_objects, unnormalized=self.unnormalized, 
+                                     batch_size=batch_size, num_atoms=num_atoms, is_object_list=is_object_list)
         
         # 5. Reshape back
         val = val_flat.view(batch_size, num_atoms)
         return val
 
-    def _call_val_fn(self, pred_name, args, gaze, all_objects=None, unnormalized=False, batch_size=None, num_atoms=None):
+    def _call_val_fn(self, pred_name, args, gaze, all_objects=None, unnormalized=False, batch_size=None, num_atoms=None, is_object_list=None):
         try:
             val_fn = self.val_fns[pred_name]
         except KeyError as e:
@@ -165,16 +168,23 @@ class ValuationModule(nn.Module, ABC):
                 max_gaze_flat = torch.zeros(val.shape[0], device=self.device)
                 
                 # Find the max gaze among all object arguments provided to this predicate
-                for arg in args:
-                    # The last dimension is the appended gaze from FactsConverter.
-                    if arg.dim() == 2 and arg.size(1) >= 8:
+                for i, arg in enumerate(args):
+                    # Check if this argument is an object
+                    is_obj = is_object_list[i] if (is_object_list is not None and i < len(is_object_list)) else False
+                    
+                    # If we don't have is_object_list, fallback to size heuristic (least ideal)
+                    if not is_obj and is_object_list is None:
+                        is_obj = (arg.dim() == 2 and arg.size(1) >= 6) # lowered to 6 for Freeway
+                    
+                    if is_obj:
+                        # The last dimension is the appended gaze from FactsConverter.
                         obj_gaze = arg[:, -1]
                         max_gaze_flat = torch.max(max_gaze_flat, obj_gaze)
                         found_object = True
 
                 if found_object:
-                    # Apply multiplication
-                    val = val * max_gaze_flat
+                    # Apply multiplication and clamp to [0, 1]
+                    val = (val * max_gaze_flat).clamp(0.0, 1.0)
 
         # Gaze-based valuation scaling (Old Logic for points)
         if self.gaze_threshold is not None and gaze is not None and len(gaze.shape) == 2 and gaze.shape[1] == 2 and (pred_name == "visible" or pred_name.startswith("visible_")):

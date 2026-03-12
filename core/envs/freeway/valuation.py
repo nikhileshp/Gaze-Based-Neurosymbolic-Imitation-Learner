@@ -19,9 +19,12 @@ def closeby(z_1: torch.Tensor, z_2: torch.Tensor) -> torch.Tensor:
     dis_x = abs(c_1[:, 0] - c_2[:, 0]) / 171
     dis_y = abs(c_1[:, 1] - c_2[:, 1]) / 171
 
-    result = bool_to_probs((dis_x < 2.5) & (dis_y <= 0.1))
+    # Continuous Gaussian decay
+    # sigma_y=0.05 targets ~8-10 pixels (half lane)
+    # sigma_x=0.5 targets ~85 pixels (half screen)
+    prob = torch.exp(- (dis_x**2 / (2 * 0.5**2)) - (dis_y**2 / (2 * 0.05**2)))
 
-    return result
+    return prob
 
 
 def on_left(z_1: torch.Tensor, z_2: torch.Tensor):

@@ -13,6 +13,5 @@ logs/
 *.pkl
 events.out.tfevents*
 eval_every_10_epochs.csv
-# trained_models/**/*.pth
-trained_models/**/*.pt
+trained_models/
 *.mp4
