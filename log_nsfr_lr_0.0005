@@ -1,0 +1,76 @@
+nohup: ignoring input
+/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/pygame/pkgdata.py:25: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import resource_stream, resource_exists
+Device: cuda | Gaze: False | Loss: nll
+Base output dir: trained_models/seaquest/nsfr_random_init_learning_curve_new_rules_0.0005_lr_nll_ep_1_seed_42
+
+Probing ImitationAgent to determine action count ...
+Initializing NSFR model for seaquest...
+image:img
+oplayer:obj0
+odiver:obj25,obj26,obj27,obj28
+oenemy:obj1,obj2,obj3,obj4,obj5,obj6,obj7,obj8,obj9,obj10,obj11,obj12,obj13,obj14,obj15,obj16,obj17,obj18,obj19,obj20,obj21,obj22,obj23,obj24,obj37
+osurfacesub:obj37
+ocollecteddiver:obj40,obj41,obj42,obj43,obj44,obj45
+osixthdiver:obj45
+omissile:obj29,obj30,obj31,obj32,obj33,obj34
+ooxygenbar:obj39
+  [W init] Random initialization (torch.randn): 16 rules, 18 clauses
+NSFR model initialized.
+  num_actions=6  →  max_action=5
+
+Loading full dataset ...
+Loading .pt dataset from data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt ...
+  PtDataset: 211373 samples | logic (49, 7) | episodes: 28
+Total samples in dataset: 211373
+Valuation path: trained_models/seaquest/nsfr/new_rules_0.0005_lr_nll/valuations_new.pt
+
+=================================================================
+  10% of dataset  →  21137 / 211373 samples
+  Output: trained_models/seaquest/nsfr_random_init_learning_curve_new_rules_0.0005_lr_nll_ep_1_seed_42/10p
+=================================================================
+  Train: 20081 | Val: 1056
+Initializing NSFR model for seaquest...
+image:img
+oplayer:obj0
+odiver:obj25,obj26,obj27,obj28
+oenemy:obj1,obj2,obj3,obj4,obj5,obj6,obj7,obj8,obj9,obj10,obj11,obj12,obj13,obj14,obj15,obj16,obj17,obj18,obj19,obj20,obj21,obj22,obj23,obj24,obj37
+osurfacesub:obj37
+ocollecteddiver:obj40,obj41,obj42,obj43,obj44,obj45
+osixthdiver:obj45
+omissile:obj29,obj30,obj31,obj32,obj33,obj34
+ooxygenbar:obj39
+  [W init] Random initialization (torch.randn): 16 rules, 18 clauses
+NSFR model initialized.
+  Single GPU / CPU — DataParallel not applied.
+Loading pre-computed valuations from trained_models/seaquest/nsfr/new_rules_0.0005_lr_nll/valuations_new.pt ...
+[10%] Epoch 1/1:   0%|          | 0/79 [00:00<?, ?it/s]                                                       Traceback (most recent call last):
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/scripts/training/train_il_learning_curve.py", line 682, in <module>
+    main()
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/scripts/training/train_il_learning_curve.py", line 527, in main
+    loss, probs, action_scores = agent.update(
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/core/nsfr/agents/imitation_agent.py", line 335, in update
+    probs = self.model(vT.to(self.device))
+  File "/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/core/nsfr/nsfr.py", line 51, in forward
+    self.V_T = self.im(self.V_0)
+  File "/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/core/nsfr/infer.py", line 513, in forward
+    R = softor([R, self.r(R)], dim=1, gamma=self.gamma)
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/core/nsfr/infer.py", line 521, in r
+    C_stack = torch.stack([self.cs[i](x) for i in range(self.C)], dim=0)  # (C, B, G)
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/core/nsfr/infer.py", line 521, in <listcomp>
+    C_stack = torch.stack([self.cs[i](x) for i in range(self.C)], dim=0)  # (C, B, G)
+  File "/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/nxp190053/Projects/Gaze-Based-Neurosymbolic-Imitation-Learner/core/nsfr/infer.py", line 643, in forward
+    torch.prod(torch.gather(V_tild, 1, I_i_tild), dim=3),
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.02 GiB. GPU 0 has a total capacity of 22.04 GiB of which 875.12 MiB is free. Including non-PyTorch memory, this process has 21.17 GiB memory in use. Of the allocated memory 20.75 GiB is allocated by PyTorch, and 212.88 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

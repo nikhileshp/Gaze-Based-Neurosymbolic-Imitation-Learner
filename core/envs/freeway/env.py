@@ -19,8 +19,8 @@ class NSFREnv(NSFRBaseEnv):
         self.env = OCAtari(env_name="ALE/Freeway-v5", mode=oc_mode,
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
 
-    def reset(self):
-        self.env.reset()
+    def reset(self, seed: int = None, options: dict = None):
+        self.env.reset(seed=seed, options=options)
         state = self.env.objects
         return self.convert_state(state)
 
@@ -52,6 +52,9 @@ class NSFREnv(NSFRBaseEnv):
 
     def extract_neural_state(self, raw_state):
         return self.extract_logic_state(raw_state).flatten()
+
+    def get_rgb_frame(self):
+        return self.env.render()
 
     def close(self):
         self.env.close()
