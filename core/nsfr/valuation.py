@@ -126,22 +126,12 @@ class ValuationModule(nn.Module, ABC):
                 gaze_expanded = gaze.unsqueeze(1).expand(-1, num_atoms, -1)
                 flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, -1)
 
-<<<<<<< HEAD
         # 3. Expand all_objects if needed: (Batch, N_OBJ, F) -> (Batch*num_atoms, N_OBJ, F)
         if all_objects is not None:
             all_objects = all_objects.to(self.device)
             if all_objects.dim() == 3:
                 ao_expanded = all_objects.unsqueeze(1).expand(-1, num_atoms, -1, -1)  # (B, N, N_OBJ, F)
                 flat_all_objects = ao_expanded.reshape(batch_size * num_atoms, all_objects.size(1), all_objects.size(2))
-=======
-        # Identify which arguments are objects (for gaze scaling)
-        # All atoms in the batch have the same predicate and term structure
-        is_object_list = []
-        if num_atoms > 0:
-            for term in atoms[0].terms:
-                is_obj = (term.dtype.name == 'object' or re.match(r"obj(\d+)", term.name) is not None)
-                is_object_list.append(is_obj)
->>>>>>> 0521225a4cfd65d7ebcf8a0e81238270cf6154d9
 
         # 4. Call Valuation Function
         val_flat = self._call_val_fn(pred_name, flat_args, flat_gaze, flat_all_objects, unnormalized=self.unnormalized, 
