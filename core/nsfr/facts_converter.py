@@ -99,22 +99,26 @@ class FactsConverter(nn.Module):
                 ).clamp(min=0.0)
                 
 
-                # ADD THIS — normalize by box area to keep values in [0, 1]
-                # box_area = (dw * dh).float().clamp(min=1)
-                # sums = sums / box_area    
+                # Normalize by box area to obtain gaze density
+                box_area = (dw * dh).float().clamp(min=1.0)
+                avg_gaze = sums / box_area
                 
+                # Compute attention ratio relative to uniform density
+                uniform_density = 1.0 / (84.0 * 84.0)
+                attention_ratio = avg_gaze / uniform_density
+
                 # Zero out absent objects
                 is_present = (Z[:, :, 0] > 0.5).float()          # (B, N_OBJ)
-                sums       = sums * (flat_Z[:, 0] > 0.5).float()
-                gaze_sums  = sums.reshape(B_size, N_OBJ)          # (B, N_OBJ)
-
+                
                 if getattr(self.vm, "unnormalized", False):
-                    # Keep raw SAT sums — no normalization
-                    gaze_sums = torch.max(gaze_sums, is_present * 0.05)
-                    # if gaze_sums.shape[0] == 1:  # single sample, avoid spam
-                    #     print(f"[GAZE DEBUG] per-object gaze_sums: {gaze_sums[0].cpu().numpy()}")
+                    # Unnormalized: use attention ratio scaled by a base factor.
+                    # This ensures small objects still get a strong signal when attended.
+                    # Base factor 0.01 means ratio of 10 -> 0.1 score.
+                    gaze_sums = attention_ratio * 0.01
+                    gaze_sums = torch.max(gaze_sums.reshape(B_size, N_OBJ), is_present * 0.005)
                 else:
-                    # Normalized: max-normalize so peak attended object = 1.0
+                    # Normalized: max-normalize across objects in the frame
+                    gaze_sums  = sums.reshape(B_size, N_OBJ)          # (B, N_OBJ)
                     gaze_max  = gaze_sums.max(dim=1, keepdim=True).values.clamp(min=1e-8)
                     gaze_sums = gaze_sums / gaze_max
                     gaze_sums = torch.max(gaze_sums, is_present * 0.5)
