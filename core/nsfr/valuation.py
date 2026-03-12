@@ -93,6 +93,9 @@ class ValuationModule(nn.Module, ABC):
         if num_atoms == 0:
             return torch.zeros(batch_size, 0).to(self.device)
             
+        flat_gaze = None
+        flat_all_objects = None
+
         # 1. Gather Arguments: List of [Arg0_Tensor, Arg1_Tensor, ...]
         # Each ArgX_Tensor should be (Batch * N, Features)
         
@@ -109,7 +112,6 @@ class ValuationModule(nn.Module, ABC):
             flat_args.append(flat)
             
         # 2. Expand Gaze if needed
-        flat_gaze = None
         if gaze is not None:
             gaze = gaze.to(self.device)
             if len(gaze.shape) > 2:
@@ -123,7 +125,6 @@ class ValuationModule(nn.Module, ABC):
                 flat_gaze = gaze_expanded.reshape(batch_size * num_atoms, -1)
 
         # 3. Expand all_objects if needed: (Batch, N_OBJ, F) -> (Batch*num_atoms, N_OBJ, F)
-        flat_all_objects = None
         if all_objects is not None:
             all_objects = all_objects.to(self.device)
             if all_objects.dim() == 3:
@@ -217,7 +218,7 @@ class ValuationModule(nn.Module, ABC):
 
         elif const.dtype.name == 'object':
             obj_index = self.lang.term_index(const)
-            self.term_cache[const.name] = obj_index
+            self.term_cache[const.name] = obj_index 
             return zs[:, obj_index]
 
         elif const.dtype.name == 'image':
