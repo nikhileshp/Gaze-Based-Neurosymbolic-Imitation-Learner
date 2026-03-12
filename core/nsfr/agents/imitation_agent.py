@@ -224,7 +224,7 @@ from core.utils.utils import get_primitive_action_map
 
 
 class ImitationAgent(nn.Module):
-    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, aggregation_method='max', target_diagonal=0.99):
+    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, aggregation_method='max', target_diagonal=0.99, random_init=False):
         super().__init__()
         self.device = device
         self.env_name = env_name
@@ -233,7 +233,7 @@ class ImitationAgent(nn.Module):
         self.num_actions = max(self.primitive_action_map.values()) + 1
 
         print(f"Initializing NSFR model for {env_name}...", flush=True)
-        self.model = get_nsfr_model(env_name, rules, device=device, train=True, gaze_threshold=gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, target_diagonal=target_diagonal)
+        self.model = get_nsfr_model(env_name, rules, device=device, train=True, gaze_threshold=gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, target_diagonal=target_diagonal, random_init=random_init)
         print("NSFR model initialized.", flush=True)
 
     @property
@@ -257,7 +257,7 @@ class ImitationAgent(nn.Module):
         action_rule_probs = {idx: [] for idx in range(self.num_actions)}
         # unwrapped_model: works whether or not DataParallel is wrapping self.model
         prednames = self.unwrapped_model.get_prednames()
-
+    
         for i, pred in enumerate(prednames):
             prefix = pred.split('_')[0]
             if prefix in self.primitive_action_map:

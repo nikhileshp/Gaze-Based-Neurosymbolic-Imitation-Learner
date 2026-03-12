@@ -287,6 +287,10 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
     workers_done    = 0
     pending         = {}   # worker_id -> (logic_np, frame_np | None)
 
+    # 1. ADD Counter init before the main while loop
+    from collections import Counter
+    action_counts = Counter()  # ← initialize BEFORE the while loop
+
     with torch.no_grad():
         while workers_done < num_workers or pending:
 
@@ -310,11 +314,13 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
                     if verbose:
                         print(f"  Episode {len(episode_rewards)}"
                               f"/{num_episodes}: Reward = {msg[2]:.1f}")
+                    print(f"  Action distribution: {dict(action_counts)}")
+                    action_counts.clear()  # reset per episode
 
                 elif msg_type == _MSG_STOP:
                     workers_done += 1
 
-            # Batch GPU inference for all pending workers
+            # Batch GPU inference
             if pending:
                 wids = list(pending.keys())
                 batch_states = torch.tensor(
@@ -330,16 +336,17 @@ def _run_inference_loop(agent, state_q, action_qs, num_workers,
                     )
                     batch_gazes = gaze_model.predict_normalized(
                         frames_gpu
-                    ).squeeze(1)  # (B, 84, 84)
+                    ).squeeze(1)
 
                 _, action_scores = agent.predict(batch_states, gazes=batch_gazes)
 
                 for wid, scores in zip(wids, action_scores):
+                    action_counts[scores.argmax().item()] += 1  # ← inside loop
                     action_qs[wid].put((_MSG_STATE, inv_map[scores.argmax().item()]))
 
                 pending.clear()
 
-    return episode_rewards
+    return episode_rewards  # ← only once, delete the duplicate code below this
 
 
 def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
@@ -405,6 +412,7 @@ def evaluate_parallel(agent, env_name, num_episodes=50, seed=42,
         agent, state_q, action_qs, num_workers, num_episodes,
         device, use_gaze, gaze_model, verbose=verbose
     )
+    
 
     for p in workers:
         p.join(timeout=5)

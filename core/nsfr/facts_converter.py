@@ -93,7 +93,12 @@ class FactsConverter(nn.Module):
                     - flat_gaze[idx, y2, x1]
                     + flat_gaze[idx, y1, x1]
                 ).clamp(min=0.0)
+                
 
+                # ADD THIS — normalize by box area to keep values in [0, 1]
+                # box_area = (dw * dh).float().clamp(min=1)
+                # sums = sums / box_area    
+                
                 # Zero out absent objects
                 is_present = (Z[:, :, 0] > 0.5).float()          # (B, N_OBJ)
                 sums       = sums * (flat_Z[:, 0] > 0.5).float()
@@ -102,6 +107,8 @@ class FactsConverter(nn.Module):
                 if getattr(self.vm, "unnormalized", False):
                     # Keep raw SAT sums — no normalization
                     gaze_sums = torch.max(gaze_sums, is_present * 0.05)
+                    # if gaze_sums.shape[0] == 1:  # single sample, avoid spam
+                    #     print(f"[GAZE DEBUG] per-object gaze_sums: {gaze_sums[0].cpu().numpy()}")
                 else:
                     # Normalized: max-normalize so peak attended object = 1.0
                     gaze_max  = gaze_sums.max(dim=1, keepdim=True).values.clamp(min=1e-8)

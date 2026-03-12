@@ -42,7 +42,7 @@ class AgentWrapper:
     def __init__(self, agent, env, debug=False, gaze_predictor=None):
         self.agent = agent
         self.env = env
-        self.actor = agent.model # For Renderer to access prednames and print_program
+        self.actor = agent.unwrapped_model # For Renderer to access prednames and print_program
         self.step_count = 0
         self.current_neural_predicates = []  # Store for GUI display
         self.current_objects = []  # Store detected objects
@@ -96,11 +96,11 @@ class AgentWrapper:
                 state_input = state
             
             # Pass gaze to NSFR model if available
-            probs = self.agent.model(state_input, gaze=gaze_tensor).squeeze(0)
+            probs = self.agent.unwrapped_model(state_input, gaze=gaze_tensor).squeeze(0)
             
             # Get the valuation tensor from the model (this has the actual atom probabilities)
-            if hasattr(self.agent.model, 'V_0'):
-                valuation = self.agent.model.V_0.squeeze(0)  # Remove batch dimension
+            if hasattr(self.agent.unwrapped_model, 'V_0'):
+                valuation = self.agent.unwrapped_model.V_0.squeeze(0)  # Remove batch dimension
             else:
                 valuation = None
             
@@ -113,8 +113,8 @@ class AgentWrapper:
             val_np = valuation.detach().cpu().numpy()
             
             # The valuation is a 1D tensor of probabilities (0-1) for each atom
-            # Find predicates with values > 0.5 and store them all
-            high_value_indices = [(i, float(val_np[i])) for i in range(min(len(val_np), len(atoms))) if float(val_np[i]) > 0.5]
+            # Find predicates with values > 0.01 and store them all (0.01 threshold allows unnormalized gaze values)
+            high_value_indices = [(i, float(val_np[i])) for i in range(min(len(val_np), len(atoms))) if float(val_np[i]) > 0.01]
             high_value_indices.sort(key=lambda x: x[1], reverse=True)
             
             self.current_neural_predicates = [(str(atoms[idx]), val) for idx, val in high_value_indices]
@@ -415,7 +415,7 @@ class ILRenderer(Renderer):
         neural_pred_start_y = objects_start_y + max(num_objects_shown * 18, 20) 
         
         # Render title for neural predicates
-        title_text = self.font.render("Neural Predicates (>0.5):", True, "yellow", None)
+        title_text = self.font.render("Neural Predicates (>0.01):", True, "yellow", None)
         title_rect = title_text.get_rect()
         title_rect.topleft = (self.env_render_shape[0] + 10, neural_pred_start_y - 5)
         self.window.blit(title_text, title_rect)
@@ -449,7 +449,7 @@ class ILRenderer(Renderer):
                     self.window.blit(text, text_rect)
         else:
             # Show message if no predicates
-            text = self.font.render("No predicates > 0.5", True, "gray", None)
+            text = self.font.render("No predicates > 0.01", True, "gray", None)
             text_rect = text.get_rect()
             text_rect.topleft = (self.env_render_shape[0] + 10, neural_pred_start_y)
             self.window.blit(text, text_rect)

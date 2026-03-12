@@ -20,6 +20,7 @@ from core.utils.utils import (
     set_seed_everywhere, format_results_table,
     send_run_update, load_pt_dataset
 )
+import gc
 from scripts.evaluation.evaluate_model import evaluate, evaluate_parallel
 import time
 import signal
@@ -30,6 +31,10 @@ try:
      mp.set_start_method('spawn', force=True)
 except RuntimeError:
     pass
+
+# Free unused memory
+torch.cuda.empty_cache()
+gc.collect()
 
 def run_diagnostics(agent, epoch_loader, device, args, warmup_batches=30, measure_batches=50):
     """
@@ -182,6 +187,7 @@ def main():
     parser.add_argument("--alpha", type=float, default=None, help="Laplacian smoothing parameter for gaze normalization")
     parser.add_argument("--aggregation", type=str, default="max", choices=["softor", "max"], help="Aggregation method for action scores")
     parser.add_argument("--target_diagonal", type=float, default=0.99, help="Initial confidence for clauses in block diagonal initialization.")
+    parser.add_argument("--random_init", action="store_true", help="Initialize weights randomly instead of target_diagonal.")
     args = parser.parse_args()
     
     # -- Resolve gaze model path if not provided
@@ -227,7 +233,7 @@ def main():
 
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
     agent_gaze_threshold = args.gaze_threshold if use_gaze else None
-    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, aggregation_method=args.aggregation, target_diagonal=target_diagonal)
+    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, aggregation_method=args.aggregation, target_diagonal=target_diagonal, random_init=args.random_init)
 
         # Multi-GPU: DataParallel splits the batch evenly across all visible GPUs.
     # Each GPU processes batch/N samples independently — no cross-GPU communication
@@ -314,12 +320,14 @@ def main():
     num_iters = len(unique_eps) if (args.num_episodes is None) and (args.limit is not None) else "full"
     vis_tag = "_vis_only" if visible_preds_only else ""
     alpha_tag = f"_a{alpha}" if alpha is not None else ""
+    init_tag = "random_init" if args.random_init else f"td_{args.target_diagonal}"
+    
     if use_gaze and unnormalized:
-        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_unnormalized{vis_tag}/{num_iters}_ep/{now_time}")
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_unnormalized{vis_tag}_{init_tag}/{num_iters}_ep/{now_time}")
     elif use_gaze:
-        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_normalized{vis_tag}{alpha_tag}/{num_iters}_ep/{now_time}")
+        run_dir   = (f"trained_models/{args.env}/grail/{args.rules}_rules_{args.lr}_lr_{args.loss}_normalized{vis_tag}_{init_tag}/{num_iters}_ep/{now_time}")
     else:
-        run_dir   = (f"trained_models/{args.env}/nsfr/{args.rules}_rules_{args.lr}_lr_{args.loss}/{num_iters}_ep/{now_time}")
+        run_dir   = (f"trained_models/{args.env}/nsfr/{args.rules}_rules_{args.lr}_lr_{args.loss}_{init_tag}/{num_iters}_ep/{now_time}")
     os.makedirs(run_dir, exist_ok=True)
     os.makedirs("out/imitation", exist_ok=True)
 

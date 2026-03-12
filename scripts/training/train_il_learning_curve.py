@@ -57,6 +57,10 @@ from nsfr.utils import make_deterministic
 from nsfr.env import NSFRBaseEnv
 from scripts.evaluation.evaluate_model import evaluate, evaluate_parallel
 
+# Free unused memory
+torch.cuda.empty_cache()
+gc.collect()
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Constants
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -92,6 +96,8 @@ def get_args():
                    choices=["softor", "max"])
     p.add_argument("--target_diagonal", type=float, default=0.99,
                    help="Initial confidence for clauses in block diagonal initialization.")
+    p.add_argument("--random_init", action="store_true",
+                   help="Initialize weights randomly instead of target_diagonal.")
     # Gaze
     p.add_argument("--use_gaze",        action="store_true")
     p.add_argument("--gaze_threshold",  type=float, default=50.0)
@@ -225,12 +231,13 @@ def main():
     if args.run_dir:
         base_run_dir = args.run_dir
     else:
+        init_tag = "random_init" if args.random_init else f"td_{args.target_diagonal}"
         if use_gaze and unnormalized:
-            tag = f"grail_unnormalized{vis_tag}_td_{args.target_diagonal}"
+            tag = f"grail_unnormalized{vis_tag}_{init_tag}"
         elif use_gaze:
-            tag = f"grail_normalized{vis_tag}{alpha_tag}_td_{args.target_diagonal}"
+            tag = f"grail_normalized{vis_tag}{alpha_tag}_{init_tag}"
         else:
-            tag = f"nsfr_td_{args.target_diagonal}"
+            tag = f"nsfr_{init_tag}"
         base_run_dir = (
             f"trained_models/{args.env}/{tag}_learning_curve"
             f"_{args.rules}_rules_{args.lr}_lr_{args.loss}"
@@ -253,6 +260,7 @@ def main():
         alpha=alpha,
         aggregation_method=args.aggregation,
         target_diagonal=target_diagonal,
+        random_init=args.random_init,
     )
     max_action = _probe_agent.num_actions - 1
     print(f"  num_actions={_probe_agent.num_actions}  →  max_action={max_action}")
@@ -304,6 +312,7 @@ def main():
             alpha=alpha,
             aggregation_method=args.aggregation,
             target_diagonal=target_diagonal,
+            random_init=args.random_init,
         )
 
         # Initialise gaze predictor if needed for precompute
@@ -474,6 +483,7 @@ def main():
             alpha=alpha,
             aggregation_method=args.aggregation,
             target_diagonal=target_diagonal,
+            random_init=args.random_init,
         )
 
         num_gpus = torch.cuda.device_count()

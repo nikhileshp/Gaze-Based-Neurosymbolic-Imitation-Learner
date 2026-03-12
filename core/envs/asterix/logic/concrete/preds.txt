@@ -1,5 +1,4 @@
-noop_far_enemy:1:image
-noop_no_bonus:1:image
+noop:1:image
 up_dodge_left:1:image
 up_dodge_right:1:image
 down_dodge_left:1:image

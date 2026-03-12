@@ -1,0 +1,35 @@
+Device: cuda | Gaze: False | Loss: nll
+Base output dir: trained_models/seaquest/nsfr_learning_curve_new_rules_0.01_lr_nll_ep_20_seed_42
+
+Loading full dataset ...
+Loading .pt dataset from data/seaquest/full_data_28_episodes_10p0_sigma_win_10_obj_49.pt ...
+Traceback (most recent call last):
+  File "/nas1-nfs1/home/rxs174730/Gaze-Based-Neurosymbolic-Imitation-Learner/scripts/training/train_il_learning_curve.py", line 512, in <module>
+    main()
+  File "/nas1-nfs1/home/rxs174730/Gaze-Based-Neurosymbolic-Imitation-Learner/scripts/training/train_il_learning_curve.py", line 234, in main
+    full_dataset = PtDataset(
+  File "/nas1-nfs1/home/rxs174730/Gaze-Based-Neurosymbolic-Imitation-Learner/core/utils/utils.py", line 190, in __init__
+    data = torch.load(pt_path, map_location='cpu', weights_only=False)
+  File "/nas1-nfs1/home/rxs174730/miniconda3/envs/nesy/lib/python3.10/site-packages/torch/serialization.py", line 809, in load
+    return _load(opened_zipfile, map_location, pickle_module, **pickle_load_args)
+  File "/nas1-nfs1/home/rxs174730/miniconda3/envs/nesy/lib/python3.10/site-packages/torch/serialization.py", line 1168, in _load
+    data_file = io.BytesIO(zip_file.get_record(pickle_file))
+KeyboardInterrupt
+usage: train_il_learning_curve.py [-h] --dataset DATASET [--env ENV]
+                                  [--rules RULES] [--epochs EPOCHS]
+                                  [--batch_size BATCH_SIZE] [--lr LR]
+                                  [--seed SEED] [--num_workers NUM_WORKERS]
+                                  [--val_split VAL_SPLIT]
+                                  [--lr_patience LR_PATIENCE]
+                                  [--loss {nll,bce}]
+                                  [--aggregation {softor,max}] [--use_gaze]
+                                  [--gaze_threshold GAZE_THRESHOLD]
+                                  [--gaze_model_path GAZE_MODEL_PATH]
+                                  [--unnormalized] [--visible_preds_only]
+                                  [--alpha ALPHA]
+                                  [--valuation_path VALUATION_PATH]
+                                  [--eval_episodes EVAL_EPISODES]
+                                  [--eval_max_steps EVAL_MAX_STEPS]
+                                  [--run_dir RUN_DIR] [--device DEVICE]
+                                  [--percentages PERCENTAGES [PERCENTAGES ...]]
+train_il_learning_curve.py: error: unrecognized arguments: --
