@@ -84,7 +84,7 @@ def plot_learning_curve_models(csv_path, output_path, window_size=1):
         )
 
         if 'std_reward' in df.columns:
-            std = g_clean['std_reward'].fillna(0)
+            std = g_clean['std_reward'].fillna(0)/5.0
             smoothed_std = std.rolling(window=window_size, min_periods=1).mean()
             plt.fill_between(
                 traj_percent,
@@ -95,7 +95,7 @@ def plot_learning_curve_models(csv_path, output_path, window_size=1):
 
     plt.xticks(range(0, 101, 10), [f"{x}%" for x in range(0, 101, 10)])
     plt.xlim(0, 100)
-    plt.ylim(0, 550)
+    plt.ylim(0, 6500)
 
 
     plt.xlabel('Percentage of Dataset (%)')
