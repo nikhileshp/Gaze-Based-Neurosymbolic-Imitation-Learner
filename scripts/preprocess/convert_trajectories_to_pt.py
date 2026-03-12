@@ -38,6 +38,7 @@ from ocatari.vision.extract_vision_info import detect_objects_vision
 from ocatari.core import OCAtari
 from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_NB_SEAQUEST
 from ocatari.ram.asterix import MAX_NB_OBJECTS as MAX_NB_ASTERIX
+from ocatari.ram.freeway import MAX_NB_OBJECTS as MAX_NB_FREEWAY
 
 IMG_W = 160   # Game width (pixels)
 IMG_H = 210   # Game height (pixels)
@@ -79,6 +80,20 @@ ENV_CONFIGS = {
         "N_FEATURES": 7,
         "N_OBJECTS": 25, # Match nudge env.py
         "TRAJ_DIR": 'data/asterix/trajectories'
+    },
+    "Freeway": {
+        "TYPE_MAP": {
+            'Chicken': 0,
+            'Car': 1
+        },
+        "CANONICAL_SIZES": {
+            'Chicken': (6, 8),
+            'Car': (8, 10)
+        },
+        "MAX_ESSENTIAL_OBJECTS": MAX_NB_FREEWAY.copy(),
+        "N_FEATURES": 6,
+        "N_OBJECTS": 11, # 1 player + 10 cars
+        "TRAJ_DIR": 'data/freeway/trajectories'
     }
 }
 # Override for Seaquest
@@ -213,6 +228,31 @@ def extract_logic_state(tracked_objects, env_name="Seaquest"):
             cx, cy = getattr(obj, 'center', (int(obj.x + obj.w / 2), int(obj.y + obj.h / 2)))
             state[obj_idx][5] = cx
             state[obj_idx][6] = cy
+            obj_idx += 1
+
+    elif env_name == "Freeway":
+        # Format: [ChickenBit, CarBit, 0, 0, X, Y]
+        obj_idx = 0
+        for tr in tracked_objects:
+            if obj_idx >= n_objects:
+                break
+            obj = tr.obj
+            cat = obj.category
+            if cat == "NoObject": continue
+
+            # For Freeway, we only take the first chicken (player)
+            if cat == "Chicken":
+                if any(state[:, 0]): # Already have a chicken
+                    continue
+                state[obj_idx][0] = 1
+            elif cat == "Car":
+                state[obj_idx][1] = 1
+            else:
+                continue
+
+            cx, cy = getattr(obj, 'center', (int(obj.x + obj.w / 2), int(obj.y + obj.h / 2)))
+            state[obj_idx][4] = cx
+            state[obj_idx][5] = cy
             obj_idx += 1
 
     return state
