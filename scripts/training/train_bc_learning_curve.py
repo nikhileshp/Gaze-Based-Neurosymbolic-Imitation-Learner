@@ -45,7 +45,6 @@ from nsfr.env import NSFRBaseEnv
 # Constants
 # ═══════════════════════════════════════════════════════════════════════════════
 
-PRIMITIVE_ACTIONS = {0: 'noop', 1: 'fire', 2: 'up', 3: 'right', 4: 'left', 5: 'down'}
 PERCENTAGES = list(range(10, 110, 10))   # [10, 20, 30, ..., 100]
 
 
@@ -63,10 +62,9 @@ def preprocess_obs(obs_batch, device):
     return x
 
 
-def build_model(args, device):
+def build_model(args, action_dim, device):
     """Construct fresh encoder, pre_actor, actor (and optional encoder_agil) and return them."""
     encoder_out_dim = 8 * 8 * args.embedding_dim   # 4096 for defaults
-    action_dim = 6  # seaquest: noop fire up right left down
 
     encoder = Encoder(1, args.embedding_dim, args.num_hiddens,
                       args.num_residual_layers, args.num_residual_hiddens).to(device)
@@ -95,7 +93,7 @@ def build_model(args, device):
 
 
 def evaluate_bc(encoder, pre_actor, actor, env, num_episodes, seed, device,
-                gaze_method='None', encoder_agil=None, gaze_predictor=None):
+                gaze_method='None', encoder_agil=None, gaze_predictor=None, id2action=None):
     """Run the policy for num_episodes, return list of total rewards."""
     dev = torch.device(device)
     encoder.to(dev).eval()
@@ -145,7 +143,7 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes, seed, device,
                 logits = actor(pre_actor(z))
                 action_idx = logits.argmax(dim=1).item()
 
-            action_str = PRIMITIVE_ACTIONS[action_idx]
+            action_str = id2action[action_idx]
             state, reward, done = env.step(action_str)
             total_r += reward
 
@@ -242,16 +240,27 @@ def main():
         )
     os.makedirs(base_run_dir, exist_ok=True)
 
+    # ── Environment (shared across all runs) ──────────────────────────────────
+    env = NSFRBaseEnv.from_name(args.env, mode='logic')
+    
+    # Deriving action mapping from environment
+    id2action = {v: k for k, v in env.pred2action.items()}
+    print(f"Action mapping derived from Env: {id2action}")
+
     # ── Load FULL dataset once to determine total number of samples ───────────
     print("\nLoading full dataset to determine total sample count ...")
     obs_full, actions_full, gaze_full, _, _ = load_pt_dataset(
         args.dataset, num_episodes=None, use_gaze=use_gaze_data
     )
     total_samples = len(obs_full)
-    print(f"Total samples in dataset: {total_samples}")
+    action_dim = int(actions_full.max() + 1)
+    print(f"Total samples in dataset: {total_samples} | Action Dim: {action_dim}")
 
-    # ── Environment (shared across all runs) ──────────────────────────────────
-    env = NSFRBaseEnv.from_name(args.env, mode='logic')
+    # Check if we have string mappings for all actions predicted by the model
+    for a_idx in range(action_dim):
+        if a_idx not in id2action:
+            print(f"Warning: Action index {a_idx} from dataset not found in {args.env} pred2action!")
+            id2action[a_idx] = 'noop' # Fallback
 
     # ── Results accumulator ───────────────────────────────────────────────────
     results_log = []
@@ -288,7 +297,7 @@ def main():
 
         # ── Fresh model for each percentage ───────────────────────────────────
         set_seed_everywhere(args.seed)   # reset RNG so each run is comparable
-        encoder, pre_actor, actor, encoder_agil = build_model(args, device)
+        encoder, pre_actor, actor, encoder_agil = build_model(args, action_dim, device)
 
         params = (list(encoder.parameters()) + list(pre_actor.parameters()) +
                   list(actor.parameters()))
@@ -394,7 +403,8 @@ def main():
                                 seed=args.seed, device=str(device),
                                 gaze_method=args.gaze_method,
                                 encoder_agil=encoder_agil,
-                                gaze_predictor=gaze_predictor)
+                                gaze_predictor=gaze_predictor,
+                                id2action=id2action)
         mean_r    = np.mean(rewards)
         std_r     = np.std(rewards)
         median_r  = float(np.median(rewards))
