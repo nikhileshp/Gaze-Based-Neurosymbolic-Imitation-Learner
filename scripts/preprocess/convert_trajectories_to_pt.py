@@ -467,6 +467,15 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
             pts, x_n, y_n, action, reward, _ = gaze_map[fid]
         else:
             pts, x_n, y_n, action, reward, _ = [(0.5, 0.5)], 0.5, 0.5, 0, 0.0
+            
+        # Proper action mapping for Freeway: Handled Full to Minimal Space
+        if env_name == "Freeway":
+            if action == 2:  # Full space UP
+                action = 1
+            elif action == 5: # Full space DOWN
+                action = 2
+            elif action > 2: # Any other random key presses
+                action = 0
  
         global_step = global_step_offset + len(obs_l) - 1
         gaze_l.append([x_n, y_n, float(global_step)])   # mean coord for GABRIL compatibility

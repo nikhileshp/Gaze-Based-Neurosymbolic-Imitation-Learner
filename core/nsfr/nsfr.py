@@ -41,10 +41,24 @@ class NSFReasoner(nn.Module):
         # Check if input is already a valuation (pre-computed atoms)
         # Valuation V_0 has shape (batch_size, num_atoms) -> 2D
         # Object state input usually has shape (batch_size, num_objects, num_features) -> 3D
-        if zs.dim() == 2 and zs.size(1) == len(self.atoms):
-            self.V_0 = zs
+        if zs.dim() == 2:
+            if zs.size(1) == len(self.atoms):
+                self.V_0 = zs
+            else:
+                # If it's 2D but the size doesn't match num_atoms, it might be a flat object state
+                # or a stale valuation tensor from a different logic version.
+                # FactsConverter expects 3D (batch, n_obj, f).
+                # To be robust, if it's 2D and doesn't match atoms, we assume it's NOT a valuation.
+                # However, if it was intended to be a valuation, this will fail deep in FC.
+                # Better to raise a clear error if it's clearly a mismatched valuation.
+                if zs.size(1) > 100: # Heuristic: valuations are usually large, logic states small
+                     raise ValueError(f"Input tensor is 2D with size {zs.size(1)}, but expected {len(self.atoms)} atoms. "
+                                      "This usually happens if pre-computed valuations are stale (from a different ruleset).")
+                
+                # Try to let FactsConverter handle it (might be a flat observation)
+                self.V_0 = self.fc(zs, self.atoms, self.bk, gaze=gaze)
         else:
-            # convert to the valuation tensor
+            # convert to the valuation tensor (expected 3D)
             self.V_0 = self.fc(zs, self.atoms, self.bk, gaze=gaze)
             
         # perform T-step forward-chaining reasoning

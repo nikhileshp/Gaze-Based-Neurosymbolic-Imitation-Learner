@@ -150,6 +150,14 @@ def load_valuations(v_path, agent, device):
                 atoms = item['atoms']
                 if not isinstance(atoms, torch.Tensor):
                     atoms = torch.tensor(atoms, dtype=torch.float32)
+                
+                # Validation: check if the number of atoms matches the current model
+                if atoms.size(0) != len(agent.unwrapped_model.atoms):
+                    print(f"  WARNING: Valuation size mismatch ({atoms.size(0)} vs {len(agent.unwrapped_model.atoms)}). "
+                          f"The valuation file {v_path} is likely stale and from a different ruleset. "
+                          "Invalidating cache to force re-computation.")
+                    return None
+                    
                 valuations_indexed[ep_id][step_idx] = atoms.to(device)
             except (IndexError, ValueError):
                 continue
@@ -157,12 +165,21 @@ def load_valuations(v_path, agent, device):
         valuations = {}
         for ep_id, steps in valuations_indexed.items():
             max_step = max(steps.keys())
-            v_list   = [torch.zeros(len(agent.unwrapped_model.atoms)).to(device)] * (max_step + 1)
+            v0_size = len(agent.unwrapped_model.atoms)
+            v_list   = [torch.zeros(v0_size).to(device)] * (max_step + 1)
             for s_idx, v in steps.items():
                 v_list[s_idx] = v
             valuations[ep_id] = v_list
         print(f"  Loaded valuations for {len(valuations)} episodes.")
     else:
+        # Check size if it's already a dict
+        if isinstance(valuations_raw, dict) and len(valuations_raw) > 0:
+            first_ep = next(iter(valuations_raw.values()))
+            if len(first_ep) > 0:
+                first_v = first_ep[0]
+                if first_v.size(0) != len(agent.unwrapped_model.atoms):
+                    print(f"  WARNING: Valuation size mismatch ({first_v.size(0)} vs {len(agent.unwrapped_model.atoms)}). Invalidating.")
+                    return None
         valuations = valuations_raw
 
     return valuations
@@ -289,7 +306,7 @@ def main():
             if unnormalized:
                 tag = "grail_unnormalized"
             if visible_preds_only:
-                tag = "grail_normalized_vis_only"
+                tag += "_vis_only"
         else:
             tag = "nsfr"
         config_dir = os.path.join("trained_models", args.env, tag,
