@@ -17,9 +17,9 @@ class NSFREnv(NSFRBaseEnv):
     }
     pred_names: Sequence
  
-    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False):
+    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False, oc_mode="vision"):
         super().__init__(mode)
-        self.env = OCAtari(env_name="ALE/Asterix-v5", mode="vision",
+        self.env = OCAtari(env_name="ALE/Asterix-v5", mode=oc_mode,
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay,
                            repeat_action_probability=0.25,
                            max_episode_steps=10000)

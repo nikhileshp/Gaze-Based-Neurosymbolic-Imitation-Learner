@@ -75,6 +75,10 @@ class FactsConverter(nn.Module):
                     # Asterix: [P, E, B, R, ?, X, Y] -> indices 5, 6. Width/Height hardcoded 8x11.
                     cx, cy = flat_Z[:, 5], flat_Z[:, 6]
                     w,  h  = torch.ones_like(cx) * 8.0, torch.ones_like(cy) * 11.0
+                elif self.env_name == "freeway":
+                    # Freeway: [vis, is_chicken, is_car, x, y] -> indices 3, 4. Width/Height hardcoded 8x8.
+                    cx, cy = flat_Z[:, 3], flat_Z[:, 4]
+                    w,  h  = torch.ones_like(cx) * 8.0, torch.ones_like(cy) * 8.0
                 else:
                     # Seaquest/Default: [vis, x, y, w, h, ...]
                     cx, cy, w, h = flat_Z[:, 1], flat_Z[:, 2], flat_Z[:, 3], flat_Z[:, 4]

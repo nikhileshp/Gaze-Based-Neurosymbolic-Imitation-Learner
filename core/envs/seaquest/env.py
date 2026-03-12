@@ -21,9 +21,9 @@ class NSFREnv(NSFRBaseEnv):
     }
     pred_names: Sequence
 
-    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False):
+    def __init__(self, mode: str, render_mode="rgb_array", render_oc_overlay=False, oc_mode="ram"):
         super().__init__(mode)
-        self.env = OCAtari(env_name="ALE/Seaquest-v5", mode="vision",
+        self.env = OCAtari(env_name="ALE/Seaquest-v5", mode=oc_mode,
                            render_mode=render_mode, render_oc_overlay=render_oc_overlay)
         self.n_objects = 49 # Increased from 47 to include Surface
         self.n_features = 7  # visible, x-pos, y-pos, width, height, right-facing, type_id
