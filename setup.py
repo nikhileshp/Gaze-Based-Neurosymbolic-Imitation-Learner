@@ -17,7 +17,7 @@ setup(
     name='grail',
     version='0.1.0',
     description='Gaze-Based Neurosymbolic Imitation Learner',
-    author='Nikhilesh Prabhakar',
+    author='Anonymous',
     python_requires='>=3.9',
 
     # Robust programmatic package discovery

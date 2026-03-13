@@ -1021,8 +1021,8 @@ def process_episode(episode_folder, txt_file, output_file=None, vis=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", type=str, default="/home/nikhilesh/Projects/NUDGE/data/seaquest/237_RZ_9656617_Feb-08-14-12-21")
-    parser.add_argument("--txt_file", type=str, default="/home/nikhilesh/Projects/NUDGE/data/seaquest/237_RZ_9656617_Feb-08-14-12-21.txt")
+    parser.add_argument("--data_dir", type=str, default="/home/anonymous/Projects/NUDGE/data/seaquest/237_RZ_9656617_Feb-08-14-12-21")
+    parser.add_argument("--txt_file", type=str, default="/home/anonymous/Projects/NUDGE/data/seaquest/237_RZ_9656617_Feb-08-14-12-21.txt")
     parser.add_argument("--output", type=str, default="gaze_segments.json")
     
     args = parser.parse_args()
