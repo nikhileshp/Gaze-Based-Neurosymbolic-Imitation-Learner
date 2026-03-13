@@ -4,10 +4,13 @@ on_left:2:object,object
 on_right:2:object,object
 same_row:2:object,object
 above_row:2:object,object
+below_row:2:object,object
+above:2:object,object
+below:2:object,object
+visible:1:object
 top5car:1:object
 bottom5car:1:object
-bottomfastcar:1:object
 topfastcar:1:object
-visible:1:object
-above:2:object,object
+bottomfastcar:1:object
 above_row_free:2:object,object
+in_front:2:object,object

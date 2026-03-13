@@ -1,0 +1,245 @@
+nohup: ignoring input
+/home/nxp190053/.conda/envs/grail/lib/python3.10/site-packages/pygame/pkgdata.py:25: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import resource_stream, resource_exists
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+Using device: cuda
+Initializing ImitationAgent for freeway with rules new...
+Initializing NSFR model for freeway...
+object:obj0,obj1,obj2,obj3,obj4,obj5,obj6,obj7,obj8,obj9,obj10,obj11
+type:chicken,car
+image:img
+  [W init] Random initialization (torch.randn): 8 rules, 8 clauses
+NSFR model initialized.
+Using DataParallel across 4 GPUs.
+Effective per-GPU batch size: 128
+Loading .pt dataset from data/freeway/Freeway_full_data_6_episodes_10p0_sigma_win_10_obj_12.pt ...
+  PtDataset: 103828 samples | logic (12, 6) | episodes: 6
+Train: 98637 samples | Val: 5191 samples
+Found 6 unique episodes in training set.
+No pre-computed valuations at trained_models/freeway/nsfr/new_rules_0.0005_lr_nll_random_init/valuations_new.pt. Will precompute from logic states.
+
+==================================================
+Precomputing valuations...
+==================================================
+Precomputing valuations:   0%|          | 0/6 [00:00<?, ?it/s]Precomputing valuations:  17%|█▋        | 1/6 [00:00<00:04,  1.02it/s]Precomputing valuations:  33%|███▎      | 2/6 [00:01<00:03,  1.19it/s]Precomputing valuations:  50%|█████     | 3/6 [00:02<00:02,  1.26it/s]Precomputing valuations:  67%|██████▋   | 4/6 [00:03<00:01,  1.31it/s]Precomputing valuations:  83%|████████▎ | 5/6 [00:03<00:00,  1.33it/s]Precomputing valuations: 100%|██████████| 6/6 [00:04<00:00,  1.27it/s]Precomputing valuations: 100%|██████████| 6/6 [00:04<00:00,  1.26it/s]
+Saving precomputed valuations to trained_models/freeway/nsfr/new_rules_0.0005_lr_nll_random_init/valuations_new.pt
+Valuation precomputation complete.
+
+Starting epoch-based training over full dataset...
+
+--- Epoch 1/1 (all 6 episodes) ---
+Epoch 1:   0%|          | 0/193 [00:00<?, ?it/s]Epoch 1:   0%|          | 0/193 [00:35<?, ?it/s, loss=0.6654]Epoch 1:   1%|          | 1/193 [00:35<1:54:51, 35.89s/it, loss=0.6654]Epoch 1:   1%|          | 1/193 [00:36<1:54:51, 35.89s/it, loss=0.6554]Epoch 1:   1%|          | 2/193 [00:36<48:45, 15.31s/it, loss=0.6554]  Epoch 1:   1%|          | 2/193 [00:37<48:45, 15.31s/it, loss=4.3332]Epoch 1:   2%|▏         | 3/193 [00:37<27:39,  8.74s/it, loss=4.3332]Epoch 1:   2%|▏         | 3/193 [00:38<27:39,  8.74s/it, loss=4.4758]Epoch 1:   2%|▏         | 4/193 [00:38<17:46,  5.64s/it, loss=4.4758]Epoch 1:   2%|▏         | 4/193 [00:39<17:46,  5.64s/it, loss=4.4756]Epoch 1:   3%|▎         | 5/193 [00:39<12:19,  3.93s/it, loss=4.4756]Epoch 1:   3%|▎         | 5/193 [00:40<12:19,  3.93s/it, loss=4.4866]Epoch 1:   3%|▎         | 6/193 [00:40<09:06,  2.92s/it, loss=4.4866]Epoch 1:   3%|▎         | 6/193 [00:41<09:06,  2.92s/it, loss=4.4758]Epoch 1:   4%|▎         | 7/193 [00:41<07:00,  2.26s/it, loss=4.4758]Epoch 1:   4%|▎         | 7/193 [00:42<07:00,  2.26s/it, loss=4.4759]Epoch 1:   4%|▍         | 8/193 [00:42<05:38,  1.83s/it, loss=4.4759]Epoch 1:   4%|▍         | 8/193 [00:43<05:38,  1.83s/it, loss=4.4859]Epoch 1:   5%|▍         | 9/193 [00:43<04:43,  1.54s/it, loss=4.4859]Epoch 1:   5%|▍         | 9/193 [00:44<04:43,  1.54s/it, loss=4.4760]Epoch 1:   5%|▌         | 10/193 [00:44<04:05,  1.34s/it, loss=4.4760]Epoch 1:   5%|▌         | 10/193 [00:44<04:05,  1.34s/it, loss=4.4756]Epoch 1:   6%|▌         | 11/193 [00:44<03:40,  1.21s/it, loss=4.4756]Epoch 1:   6%|▌         | 11/193 [00:45<03:40,  1.21s/it, loss=4.4757]Epoch 1:   6%|▌         | 12/193 [00:45<03:22,  1.12s/it, loss=4.4757]Epoch 1:   6%|▌         | 12/193 [00:46<03:22,  1.12s/it, loss=4.4760]Epoch 1:   7%|▋         | 13/193 [00:46<03:12,  1.07s/it, loss=4.4760]Epoch 1:   7%|▋         | 13/193 [00:47<03:12,  1.07s/it, loss=4.4755]Epoch 1:   7%|▋         | 14/193 [00:47<03:02,  1.02s/it, loss=4.4755]Epoch 1:   7%|▋         | 14/193 [00:48<03:02,  1.02s/it, loss=4.4759]Epoch 1:   8%|▊         | 15/193 [00:48<02:55,  1.02it/s, loss=4.4759]Epoch 1:   8%|▊         | 15/193 [00:49<02:55,  1.02it/s, loss=4.4760]Epoch 1:   8%|▊         | 16/193 [00:49<02:50,  1.04it/s, loss=4.4760]Epoch 1:   8%|▊         | 16/193 [00:50<02:50,  1.04it/s, loss=4.4759]Epoch 1:   9%|▉         | 17/193 [00:50<02:46,  1.06it/s, loss=4.4759]Epoch 1:   9%|▉         | 17/193 [00:51<02:46,  1.06it/s, loss=4.4755]Epoch 1:   9%|▉         | 18/193 [00:51<02:43,  1.07it/s, loss=4.4755]Epoch 1:   9%|▉         | 18/193 [00:52<02:43,  1.07it/s, loss=4.4759]Epoch 1:  10%|▉         | 19/193 [00:52<02:42,  1.07it/s, loss=4.4759]Epoch 1:  10%|▉         | 19/193 [00:53<02:42,  1.07it/s, loss=4.4863]Epoch 1:  10%|█         | 20/193 [00:53<02:39,  1.08it/s, loss=4.4863]Epoch 1:  10%|█         | 20/193 [00:54<02:39,  1.08it/s, loss=4.4955]Epoch 1:  11%|█         | 21/193 [00:54<02:38,  1.09it/s, loss=4.4955]Epoch 1:  11%|█         | 21/193 [00:55<02:38,  1.09it/s, loss=4.4756]Epoch 1:  11%|█▏        | 22/193 [00:55<02:36,  1.09it/s, loss=4.4756]Epoch 1:  11%|█▏        | 22/193 [00:55<02:36,  1.09it/s, loss=4.4759]Epoch 1:  12%|█▏        | 23/193 [00:55<02:36,  1.08it/s, loss=4.4759]Epoch 1:  12%|█▏        | 23/193 [00:56<02:36,  1.08it/s, loss=4.4757]Epoch 1:  12%|█▏        | 24/193 [00:56<02:35,  1.09it/s, loss=4.4757]Epoch 1:  12%|█▏        | 24/193 [00:57<02:35,  1.09it/s, loss=4.4860]Epoch 1:  13%|█▎        | 25/193 [00:57<02:33,  1.09it/s, loss=4.4860]Epoch 1:  13%|█▎        | 25/193 [00:58<02:33,  1.09it/s, loss=4.4864]Epoch 1:  13%|█▎        | 26/193 [00:58<02:32,  1.10it/s, loss=4.4864]Epoch 1:  13%|█▎        | 26/193 [00:59<02:32,  1.10it/s, loss=4.4758]Epoch 1:  14%|█▍        | 27/193 [00:59<02:30,  1.10it/s, loss=4.4758]Epoch 1:  14%|█▍        | 27/193 [01:00<02:30,  1.10it/s, loss=4.4758]Epoch 1:  15%|█▍        | 28/193 [01:00<02:29,  1.10it/s, loss=4.4758]Epoch 1:  15%|█▍        | 28/193 [01:01<02:29,  1.10it/s, loss=4.4757]Epoch 1:  15%|█▌        | 29/193 [01:01<02:31,  1.08it/s, loss=4.4757]Epoch 1:  15%|█▌        | 29/193 [01:02<02:31,  1.08it/s, loss=4.4756]Epoch 1:  16%|█▌        | 30/193 [01:02<02:29,  1.09it/s, loss=4.4756]Epoch 1:  16%|█▌        | 30/193 [01:03<02:29,  1.09it/s, loss=4.4761]Epoch 1:  16%|█▌        | 31/193 [01:03<02:28,  1.09it/s, loss=4.4761]Epoch 1:  16%|█▌        | 31/193 [01:04<02:28,  1.09it/s, loss=4.4758]Epoch 1:  17%|█▋        | 32/193 [01:04<02:26,  1.10it/s, loss=4.4758]Epoch 1:  17%|█▋        | 32/193 [01:05<02:26,  1.10it/s, loss=4.4756]Epoch 1:  17%|█▋        | 33/193 [01:05<02:26,  1.09it/s, loss=4.4756]Epoch 1:  17%|█▋        | 33/193 [01:06<02:26,  1.09it/s, loss=4.4760]Epoch 1:  18%|█▊        | 34/193 [01:06<02:25,  1.09it/s, loss=4.4760]Epoch 1:  18%|█▊        | 34/193 [01:06<02:25,  1.09it/s, loss=4.4759]Epoch 1:  18%|█▊        | 35/193 [01:06<02:23,  1.10it/s, loss=4.4759]Epoch 1:  18%|█▊        | 35/193 [01:07<02:23,  1.10it/s, loss=4.4757]Epoch 1:  19%|█▊        | 36/193 [01:07<02:22,  1.10it/s, loss=4.4757]Epoch 1:  19%|█▊        | 36/193 [01:08<02:22,  1.10it/s, loss=4.4760]Epoch 1:  19%|█▉        | 37/193 [01:08<02:21,  1.10it/s, loss=4.4760]Epoch 1:  19%|█▉        | 37/193 [01:09<02:21,  1.10it/s, loss=4.4860]Epoch 1:  20%|█▉        | 38/193 [01:09<02:20,  1.10it/s, loss=4.4860]Epoch 1:  20%|█▉        | 38/193 [01:10<02:20,  1.10it/s, loss=4.4755]Epoch 1:  20%|██        | 39/193 [01:10<02:21,  1.09it/s, loss=4.4755]Epoch 1:  20%|██        | 39/193 [01:11<02:21,  1.09it/s, loss=4.4757]Epoch 1:  21%|██        | 40/193 [01:11<02:20,  1.09it/s, loss=4.4757]Epoch 1:  21%|██        | 40/193 [01:12<02:20,  1.09it/s, loss=4.4757]Epoch 1:  21%|██        | 41/193 [01:12<02:18,  1.10it/s, loss=4.4757]Epoch 1:  21%|██        | 41/193 [01:13<02:18,  1.10it/s, loss=4.4763]Epoch 1:  22%|██▏       | 42/193 [01:13<02:17,  1.10it/s, loss=4.4763]Epoch 1:  22%|██▏       | 42/193 [01:14<02:17,  1.10it/s, loss=4.4859]Epoch 1:  22%|██▏       | 43/193 [01:14<02:17,  1.09it/s, loss=4.4859]Epoch 1:  22%|██▏       | 43/193 [01:15<02:17,  1.09it/s, loss=4.4756]Epoch 1:  23%|██▎       | 44/193 [01:15<02:16,  1.09it/s, loss=4.4756]Epoch 1:  23%|██▎       | 44/193 [01:16<02:16,  1.09it/s, loss=4.4758]Epoch 1:  23%|██▎       | 45/193 [01:16<02:15,  1.10it/s, loss=4.4758]Epoch 1:  23%|██▎       | 45/193 [01:16<02:15,  1.10it/s, loss=4.4759]Epoch 1:  24%|██▍       | 46/193 [01:16<02:13,  1.10it/s, loss=4.4759]Epoch 1:  24%|██▍       | 46/193 [01:17<02:13,  1.10it/s, loss=4.4761]Epoch 1:  24%|██▍       | 47/193 [01:17<02:12,  1.10it/s, loss=4.4761]Epoch 1:  24%|██▍       | 47/193 [01:18<02:12,  1.10it/s, loss=4.4755]Epoch 1:  25%|██▍       | 48/193 [01:18<02:11,  1.10it/s, loss=4.4755]Epoch 1:  25%|██▍       | 48/193 [01:19<02:11,  1.10it/s, loss=4.4856]Epoch 1:  25%|██▌       | 49/193 [01:19<02:12,  1.08it/s, loss=4.4856]Epoch 1:  25%|██▌       | 49/193 [01:20<02:12,  1.08it/s, loss=4.4756]Epoch 1:  26%|██▌       | 50/193 [01:20<02:11,  1.09it/s, loss=4.4756]Epoch 1:  26%|██▌       | 50/193 [01:21<02:11,  1.09it/s, loss=4.4858]Epoch 1:  26%|██▋       | 51/193 [01:21<02:09,  1.09it/s, loss=4.4858]Epoch 1:  26%|██▋       | 51/193 [01:22<02:09,  1.09it/s, loss=4.4755]Epoch 1:  27%|██▋       | 52/193 [01:22<02:08,  1.10it/s, loss=4.4755]Epoch 1:  27%|██▋       | 52/193 [01:23<02:08,  1.10it/s, loss=4.4761]Epoch 1:  27%|██▋       | 53/193 [01:23<02:08,  1.09it/s, loss=4.4761]Epoch 1:  27%|██▋       | 53/193 [01:24<02:08,  1.09it/s, loss=4.4758]Epoch 1:  28%|██▊       | 54/193 [01:24<02:07,  1.09it/s, loss=4.4758]Epoch 1:  28%|██▊       | 54/193 [01:25<02:07,  1.09it/s, loss=4.4859]Epoch 1:  28%|██▊       | 55/193 [01:25<02:05,  1.10it/s, loss=4.4859]Epoch 1:  28%|██▊       | 55/193 [01:26<02:05,  1.10it/s, loss=4.4954]Epoch 1:  29%|██▉       | 56/193 [01:26<02:04,  1.10it/s, loss=4.4954]Epoch 1:  29%|██▉       | 56/193 [01:26<02:04,  1.10it/s, loss=4.4757]Epoch 1:  30%|██▉       | 57/193 [01:26<02:03,  1.10it/s, loss=4.4757]Epoch 1:  30%|██▉       | 57/193 [01:27<02:03,  1.10it/s, loss=4.4760]Epoch 1:  30%|███       | 58/193 [01:27<02:01,  1.11it/s, loss=4.4760]Epoch 1:  30%|███       | 58/193 [01:28<02:01,  1.11it/s, loss=4.4956]Epoch 1:  31%|███       | 59/193 [01:28<02:02,  1.09it/s, loss=4.4956]Epoch 1:  31%|███       | 59/193 [01:29<02:02,  1.09it/s, loss=4.4759]Epoch 1:  31%|███       | 60/193 [01:29<02:01,  1.10it/s, loss=4.4759]Epoch 1:  31%|███       | 60/193 [01:30<02:01,  1.10it/s, loss=4.4757]Epoch 1:  32%|███▏      | 61/193 [01:30<02:00,  1.10it/s, loss=4.4757]Epoch 1:  32%|███▏      | 61/193 [01:31<02:00,  1.10it/s, loss=4.4760]Epoch 1:  32%|███▏      | 62/193 [01:31<01:59,  1.10it/s, loss=4.4760]Epoch 1:  32%|███▏      | 62/193 [01:32<01:59,  1.10it/s, loss=4.4761]Epoch 1:  33%|███▎      | 63/193 [01:32<01:58,  1.10it/s, loss=4.4761]Epoch 1:  33%|███▎      | 63/193 [01:33<01:58,  1.10it/s, loss=4.4760]Epoch 1:  33%|███▎      | 64/193 [01:33<01:57,  1.10it/s, loss=4.4760]Epoch 1:  33%|███▎      | 64/193 [01:34<01:57,  1.10it/s, loss=4.4758]Epoch 1:  34%|███▎      | 65/193 [01:34<01:56,  1.10it/s, loss=4.4758]Epoch 1:  34%|███▎      | 65/193 [01:35<01:56,  1.10it/s, loss=4.4858]Epoch 1:  34%|███▍      | 66/193 [01:35<01:56,  1.09it/s, loss=4.4858]Epoch 1:  34%|███▍      | 66/193 [01:36<01:56,  1.09it/s, loss=4.4754]Epoch 1:  35%|███▍      | 67/193 [01:36<01:54,  1.10it/s, loss=4.4754]Epoch 1:  35%|███▍      | 67/193 [01:37<01:54,  1.10it/s, loss=4.4755]Epoch 1:  35%|███▌      | 68/193 [01:37<01:53,  1.10it/s, loss=4.4755]Epoch 1:  35%|███▌      | 68/193 [01:37<01:53,  1.10it/s, loss=4.4759]Epoch 1:  36%|███▌      | 69/193 [01:37<01:52,  1.10it/s, loss=4.4759]Epoch 1:  36%|███▌      | 69/193 [01:38<01:52,  1.10it/s, loss=4.4757]Epoch 1:  36%|███▋      | 70/193 [01:38<01:51,  1.10it/s, loss=4.4757]Epoch 1:  36%|███▋      | 70/193 [01:39<01:51,  1.10it/s, loss=4.4853]Epoch 1:  37%|███▋      | 71/193 [01:39<01:50,  1.10it/s, loss=4.4853]Epoch 1:  37%|███▋      | 71/193 [01:40<01:50,  1.10it/s, loss=4.4761]Epoch 1:  37%|███▋      | 72/193 [01:40<01:51,  1.09it/s, loss=4.4761]Epoch 1:  37%|███▋      | 72/193 [01:41<01:51,  1.09it/s, loss=4.4962]Epoch 1:  38%|███▊      | 73/193 [01:41<01:49,  1.09it/s, loss=4.4962]Epoch 1:  38%|███▊      | 73/193 [01:42<01:49,  1.09it/s, loss=4.4858]Epoch 1:  38%|███▊      | 74/193 [01:42<01:48,  1.10it/s, loss=4.4858]Epoch 1:  38%|███▊      | 74/193 [01:43<01:48,  1.10it/s, loss=4.4764]Epoch 1:  39%|███▉      | 75/193 [01:43<01:47,  1.10it/s, loss=4.4764]Epoch 1:  39%|███▉      | 75/193 [01:44<01:47,  1.10it/s, loss=4.4754]Epoch 1:  39%|███▉      | 76/193 [01:44<01:47,  1.08it/s, loss=4.4754]Epoch 1:  39%|███▉      | 76/193 [01:45<01:47,  1.08it/s, loss=4.4858]Epoch 1:  40%|███▉      | 77/193 [01:45<01:46,  1.09it/s, loss=4.4858]Epoch 1:  40%|███▉      | 77/193 [01:46<01:46,  1.09it/s, loss=4.4757]Epoch 1:  40%|████      | 78/193 [01:46<01:45,  1.09it/s, loss=4.4757]Epoch 1:  40%|████      | 78/193 [01:47<01:45,  1.09it/s, loss=4.4757]Epoch 1:  41%|████      | 79/193 [01:47<01:43,  1.10it/s, loss=4.4757]Epoch 1:  41%|████      | 79/193 [01:47<01:43,  1.10it/s, loss=4.4761]Epoch 1:  41%|████▏     | 80/193 [01:47<01:42,  1.10it/s, loss=4.4761]Epoch 1:  41%|████▏     | 80/193 [01:48<01:42,  1.10it/s, loss=4.4759]Epoch 1:  42%|████▏     | 81/193 [01:48<01:41,  1.10it/s, loss=4.4759]Epoch 1:  42%|████▏     | 81/193 [01:49<01:41,  1.10it/s, loss=4.4859]Epoch 1:  42%|████▏     | 82/193 [01:49<01:42,  1.09it/s, loss=4.4859]Epoch 1:  42%|████▏     | 82/193 [01:50<01:42,  1.09it/s, loss=4.4754]Epoch 1:  43%|████▎     | 83/193 [01:50<01:40,  1.09it/s, loss=4.4754]Epoch 1:  43%|████▎     | 83/193 [01:51<01:40,  1.09it/s, loss=4.4858]Epoch 1:  44%|████▎     | 84/193 [01:51<01:39,  1.10it/s, loss=4.4858]Epoch 1:  44%|████▎     | 84/193 [01:52<01:39,  1.10it/s, loss=4.4756]Epoch 1:  44%|████▍     | 85/193 [01:52<01:38,  1.10it/s, loss=4.4756]Epoch 1:  44%|████▍     | 85/193 [01:53<01:38,  1.10it/s, loss=4.4756]Epoch 1:  45%|████▍     | 86/193 [01:53<01:38,  1.08it/s, loss=4.4756]Epoch 1:  45%|████▍     | 86/193 [01:54<01:38,  1.08it/s, loss=4.4754]Epoch 1:  45%|████▌     | 87/193 [01:54<01:37,  1.09it/s, loss=4.4754]Epoch 1:  45%|████▌     | 87/193 [01:55<01:37,  1.09it/s, loss=4.4756]Epoch 1:  46%|████▌     | 88/193 [01:55<01:35,  1.10it/s, loss=4.4756]Epoch 1:  46%|████▌     | 88/193 [01:56<01:35,  1.10it/s, loss=4.4758]Epoch 1:  46%|████▌     | 89/193 [01:56<01:34,  1.10it/s, loss=4.4758]Epoch 1:  46%|████▌     | 89/193 [01:57<01:34,  1.10it/s, loss=4.4756]Epoch 1:  47%|████▋     | 90/193 [01:57<01:33,  1.10it/s, loss=4.4756]Epoch 1:  47%|████▋     | 90/193 [01:58<01:33,  1.10it/s, loss=4.4954]Epoch 1:  47%|████▋     | 91/193 [01:58<01:34,  1.08it/s, loss=4.4954]Epoch 1:  47%|████▋     | 91/193 [01:58<01:34,  1.08it/s, loss=4.4756]Epoch 1:  48%|████▊     | 92/193 [01:58<01:32,  1.09it/s, loss=4.4756]Epoch 1:  48%|████▊     | 92/193 [01:59<01:32,  1.09it/s, loss=4.4754]Epoch 1:  48%|████▊     | 93/193 [01:59<01:31,  1.09it/s, loss=4.4754]Epoch 1:  48%|████▊     | 93/193 [02:00<01:31,  1.09it/s, loss=4.4760]Epoch 1:  49%|████▊     | 94/193 [02:00<01:30,  1.10it/s, loss=4.4760]Epoch 1:  49%|████▊     | 94/193 [02:01<01:30,  1.10it/s, loss=4.4760]Epoch 1:  49%|████▉     | 95/193 [02:01<01:29,  1.10it/s, loss=4.4760]Epoch 1:  49%|████▉     | 95/193 [02:02<01:29,  1.10it/s, loss=4.4763]Epoch 1:  50%|████▉     | 96/193 [02:02<01:29,  1.08it/s, loss=4.4763]Epoch 1:  50%|████▉     | 96/193 [02:03<01:29,  1.08it/s, loss=4.4855]Epoch 1:  50%|█████     | 97/193 [02:03<01:27,  1.09it/s, loss=4.4855]Epoch 1:  50%|█████     | 97/193 [02:04<01:27,  1.09it/s, loss=4.4755]Epoch 1:  51%|█████     | 98/193 [02:04<01:28,  1.08it/s, loss=4.4755]Epoch 1:  51%|█████     | 98/193 [02:05<01:28,  1.08it/s, loss=4.4761]Epoch 1:  51%|█████▏    | 99/193 [02:05<01:27,  1.07it/s, loss=4.4761]Epoch 1:  51%|█████▏    | 99/193 [02:06<01:27,  1.07it/s, loss=4.4757]Epoch 1:  52%|█████▏    | 100/193 [02:06<01:26,  1.08it/s, loss=4.4757]Epoch 1:  52%|█████▏    | 100/193 [02:07<01:26,  1.08it/s, loss=4.4757]Epoch 1:  52%|█████▏    | 101/193 [02:07<01:24,  1.09it/s, loss=4.4757]Epoch 1:  52%|█████▏    | 101/193 [02:08<01:24,  1.09it/s, loss=4.4862]Epoch 1:  53%|█████▎    | 102/193 [02:08<01:23,  1.09it/s, loss=4.4862]Epoch 1:  53%|█████▎    | 102/193 [02:09<01:23,  1.09it/s, loss=4.4757]Epoch 1:  53%|█████▎    | 103/193 [02:09<01:23,  1.08it/s, loss=4.4757]Epoch 1:  53%|█████▎    | 103/193 [02:10<01:23,  1.08it/s, loss=4.4859]Epoch 1:  54%|█████▍    | 104/193 [02:10<01:21,  1.09it/s, loss=4.4859]Epoch 1:  54%|█████▍    | 104/193 [02:10<01:21,  1.09it/s, loss=4.4757]Epoch 1:  54%|█████▍    | 105/193 [02:10<01:20,  1.09it/s, loss=4.4757]Epoch 1:  54%|█████▍    | 105/193 [02:11<01:20,  1.09it/s, loss=4.4760]Epoch 1:  55%|█████▍    | 106/193 [02:11<01:19,  1.10it/s, loss=4.4760]Epoch 1:  55%|█████▍    | 106/193 [02:12<01:19,  1.10it/s, loss=4.4753]Epoch 1:  55%|█████▌    | 107/193 [02:12<01:19,  1.08it/s, loss=4.4753]Epoch 1:  55%|█████▌    | 107/193 [02:13<01:19,  1.08it/s, loss=4.4759]Epoch 1:  56%|█████▌    | 108/193 [02:13<01:17,  1.09it/s, loss=4.4759]Epoch 1:  56%|█████▌    | 108/193 [02:14<01:17,  1.09it/s, loss=4.4752]Epoch 1:  56%|█████▋    | 109/193 [02:14<01:16,  1.09it/s, loss=4.4752]Epoch 1:  56%|█████▋    | 109/193 [02:15<01:16,  1.09it/s, loss=4.4859]Epoch 1:  57%|█████▋    | 110/193 [02:15<01:15,  1.10it/s, loss=4.4859]Epoch 1:  57%|█████▋    | 110/193 [02:16<01:15,  1.10it/s, loss=4.4756]Epoch 1:  58%|█████▊    | 111/193 [02:16<01:14,  1.10it/s, loss=4.4756]Epoch 1:  58%|█████▊    | 111/193 [02:17<01:14,  1.10it/s, loss=4.4759]Epoch 1:  58%|█████▊    | 112/193 [02:17<01:13,  1.10it/s, loss=4.4759]Epoch 1:  58%|█████▊    | 112/193 [02:18<01:13,  1.10it/s, loss=4.4858]Epoch 1:  59%|█████▊    | 113/193 [02:18<01:13,  1.09it/s, loss=4.4858]Epoch 1:  59%|█████▊    | 113/193 [02:19<01:13,  1.09it/s, loss=4.4757]Epoch 1:  59%|█████▉    | 114/193 [02:19<01:12,  1.09it/s, loss=4.4757]Epoch 1:  59%|█████▉    | 114/193 [02:20<01:12,  1.09it/s, loss=4.4761]Epoch 1:  60%|█████▉    | 115/193 [02:20<01:11,  1.10it/s, loss=4.4761]Epoch 1:  60%|█████▉    | 115/193 [02:20<01:11,  1.10it/s, loss=4.4756]Epoch 1:  60%|██████    | 116/193 [02:20<01:10,  1.10it/s, loss=4.4756]Epoch 1:  60%|██████    | 116/193 [02:21<01:10,  1.10it/s, loss=4.4762]Epoch 1:  61%|██████    | 117/193 [02:21<01:10,  1.08it/s, loss=4.4762]Epoch 1:  61%|██████    | 117/193 [02:22<01:10,  1.08it/s, loss=4.4757]Epoch 1:  61%|██████    | 118/193 [02:22<01:08,  1.09it/s, loss=4.4757]Epoch 1:  61%|██████    | 118/193 [02:23<01:08,  1.09it/s, loss=4.4760]Epoch 1:  62%|██████▏   | 119/193 [02:23<01:07,  1.09it/s, loss=4.4760]Epoch 1:  62%|██████▏   | 119/193 [02:24<01:07,  1.09it/s, loss=4.4760]Epoch 1:  62%|██████▏   | 120/193 [02:24<01:06,  1.10it/s, loss=4.4760]Epoch 1:  62%|██████▏   | 120/193 [02:25<01:06,  1.10it/s, loss=4.4754]Epoch 1:  63%|██████▎   | 121/193 [02:25<01:05,  1.10it/s, loss=4.4754]Epoch 1:  63%|██████▎   | 121/193 [02:26<01:05,  1.10it/s, loss=4.4759]Epoch 1:  63%|██████▎   | 122/193 [02:26<01:04,  1.10it/s, loss=4.4759]Epoch 1:  63%|██████▎   | 122/193 [02:27<01:04,  1.10it/s, loss=4.4755]Epoch 1:  64%|██████▎   | 123/193 [02:27<01:04,  1.09it/s, loss=4.4755]Epoch 1:  64%|██████▎   | 123/193 [02:28<01:04,  1.09it/s, loss=4.4756]Epoch 1:  64%|██████▍   | 124/193 [02:28<01:03,  1.09it/s, loss=4.4756]Epoch 1:  64%|██████▍   | 124/193 [02:29<01:03,  1.09it/s, loss=4.4757]Epoch 1:  65%|██████▍   | 125/193 [02:29<01:02,  1.10it/s, loss=4.4757]Epoch 1:  65%|██████▍   | 125/193 [02:30<01:02,  1.10it/s, loss=4.4761]Epoch 1:  65%|██████▌   | 126/193 [02:30<01:01,  1.08it/s, loss=4.4761]Epoch 1:  65%|██████▌   | 126/193 [02:31<01:01,  1.08it/s, loss=4.4759]Epoch 1:  66%|██████▌   | 127/193 [02:31<01:00,  1.09it/s, loss=4.4759]Epoch 1:  66%|██████▌   | 127/193 [02:31<01:00,  1.09it/s, loss=4.4757]Epoch 1:  66%|██████▋   | 128/193 [02:31<00:59,  1.09it/s, loss=4.4757]Epoch 1:  66%|██████▋   | 128/193 [02:32<00:59,  1.09it/s, loss=4.4756]Epoch 1:  67%|██████▋   | 129/193 [02:32<00:59,  1.08it/s, loss=4.4756]Epoch 1:  67%|██████▋   | 129/193 [02:33<00:59,  1.08it/s, loss=4.4755]Epoch 1:  67%|██████▋   | 130/193 [02:33<00:58,  1.07it/s, loss=4.4755]Epoch 1:  67%|██████▋   | 130/193 [02:34<00:58,  1.07it/s, loss=4.4755]Epoch 1:  68%|██████▊   | 131/193 [02:34<00:57,  1.08it/s, loss=4.4755]Epoch 1:  68%|██████▊   | 131/193 [02:35<00:57,  1.08it/s, loss=4.4856]Epoch 1:  68%|██████▊   | 132/193 [02:35<00:56,  1.09it/s, loss=4.4856]Epoch 1:  68%|██████▊   | 132/193 [02:36<00:56,  1.09it/s, loss=4.4755]Epoch 1:  69%|██████▉   | 133/193 [02:36<00:54,  1.09it/s, loss=4.4755]Epoch 1:  69%|██████▉   | 133/193 [02:37<00:54,  1.09it/s, loss=4.4750]Epoch 1:  69%|██████▉   | 134/193 [02:37<00:54,  1.08it/s, loss=4.4750]Epoch 1:  69%|██████▉   | 134/193 [02:38<00:54,  1.08it/s, loss=4.4855]Epoch 1:  70%|██████▉   | 135/193 [02:38<00:53,  1.09it/s, loss=4.4855]Epoch 1:  70%|██████▉   | 135/193 [02:39<00:53,  1.09it/s, loss=4.4757]Epoch 1:  70%|███████   | 136/193 [02:39<00:52,  1.09it/s, loss=4.4757]Epoch 1:  70%|███████   | 136/193 [02:40<00:52,  1.09it/s, loss=4.4756]Epoch 1:  71%|███████   | 137/193 [02:40<00:51,  1.10it/s, loss=4.4756]Epoch 1:  71%|███████   | 137/193 [02:41<00:51,  1.10it/s, loss=4.4756]Epoch 1:  72%|███████▏  | 138/193 [02:41<00:50,  1.08it/s, loss=4.4756]Epoch 1:  72%|███████▏  | 138/193 [02:42<00:50,  1.08it/s, loss=4.4756]Epoch 1:  72%|███████▏  | 139/193 [02:42<00:49,  1.09it/s, loss=4.4756]Epoch 1:  72%|███████▏  | 139/193 [02:43<00:49,  1.09it/s, loss=4.5059]Epoch 1:  73%|███████▎  | 140/193 [02:43<00:48,  1.09it/s, loss=4.5059]Epoch 1:  73%|███████▎  | 140/193 [02:43<00:48,  1.09it/s, loss=4.4754]Epoch 1:  73%|███████▎  | 141/193 [02:43<00:47,  1.10it/s, loss=4.4754]Epoch 1:  73%|███████▎  | 141/193 [02:44<00:47,  1.10it/s, loss=4.4760]Epoch 1:  74%|███████▎  | 142/193 [02:44<00:47,  1.08it/s, loss=4.4760]Epoch 1:  74%|███████▎  | 142/193 [02:45<00:47,  1.08it/s, loss=4.4858]Epoch 1:  74%|███████▍  | 143/193 [02:45<00:45,  1.09it/s, loss=4.4858]Epoch 1:  74%|███████▍  | 143/193 [02:46<00:45,  1.09it/s, loss=4.4858]Epoch 1:  75%|███████▍  | 144/193 [02:46<00:44,  1.09it/s, loss=4.4858]Epoch 1:  75%|███████▍  | 144/193 [02:47<00:44,  1.09it/s, loss=4.4760]Epoch 1:  75%|███████▌  | 145/193 [02:47<00:43,  1.10it/s, loss=4.4760]Epoch 1:  75%|███████▌  | 145/193 [02:48<00:43,  1.10it/s, loss=4.4756]Epoch 1:  76%|███████▌  | 146/193 [02:48<00:42,  1.10it/s, loss=4.4756]Epoch 1:  76%|███████▌  | 146/193 [02:49<00:42,  1.10it/s, loss=4.4757]Epoch 1:  76%|███████▌  | 147/193 [02:49<00:41,  1.10it/s, loss=4.4757]Epoch 1:  76%|███████▌  | 147/193 [02:50<00:41,  1.10it/s, loss=4.4858]Epoch 1:  77%|███████▋  | 148/193 [02:50<00:41,  1.09it/s, loss=4.4858]Epoch 1:  77%|███████▋  | 148/193 [02:51<00:41,  1.09it/s, loss=4.4757]Epoch 1:  77%|███████▋  | 149/193 [02:51<00:40,  1.09it/s, loss=4.4757]Epoch 1:  77%|███████▋  | 149/193 [02:52<00:40,  1.09it/s, loss=4.4757]Epoch 1:  78%|███████▊  | 150/193 [02:52<00:39,  1.10it/s, loss=4.4757]Epoch 1:  78%|███████▊  | 150/193 [02:53<00:39,  1.10it/s, loss=4.4760]Epoch 1:  78%|███████▊  | 151/193 [02:53<00:38,  1.10it/s, loss=4.4760]Epoch 1:  78%|███████▊  | 151/193 [02:53<00:38,  1.10it/s, loss=4.4756]Epoch 1:  79%|███████▉  | 152/193 [02:53<00:37,  1.10it/s, loss=4.4756]Epoch 1:  79%|███████▉  | 152/193 [02:54<00:37,  1.10it/s, loss=4.4755]Epoch 1:  79%|███████▉  | 153/193 [02:54<00:36,  1.10it/s, loss=4.4755]Epoch 1:  79%|███████▉  | 153/193 [02:55<00:36,  1.10it/s, loss=4.4754]Epoch 1:  80%|███████▉  | 154/193 [02:55<00:35,  1.09it/s, loss=4.4754]Epoch 1:  80%|███████▉  | 154/193 [02:56<00:35,  1.09it/s, loss=4.4756]Epoch 1:  80%|████████  | 155/193 [02:56<00:34,  1.09it/s, loss=4.4756]Epoch 1:  80%|████████  | 155/193 [02:57<00:34,  1.09it/s, loss=4.4757]Epoch 1:  81%|████████  | 156/193 [02:57<00:33,  1.10it/s, loss=4.4757]Epoch 1:  81%|████████  | 156/193 [02:58<00:33,  1.10it/s, loss=4.4862]Epoch 1:  81%|████████▏ | 157/193 [02:58<00:32,  1.10it/s, loss=4.4862]Epoch 1:  81%|████████▏ | 157/193 [02:59<00:32,  1.10it/s, loss=4.4759]Epoch 1:  82%|████████▏ | 158/193 [02:59<00:32,  1.08it/s, loss=4.4759]Epoch 1:  82%|████████▏ | 158/193 [03:00<00:32,  1.08it/s, loss=4.4758]Epoch 1:  82%|████████▏ | 159/193 [03:00<00:31,  1.09it/s, loss=4.4758]Epoch 1:  82%|████████▏ | 159/193 [03:01<00:31,  1.09it/s, loss=4.4755]Epoch 1:  83%|████████▎ | 160/193 [03:01<00:30,  1.10it/s, loss=4.4755]Epoch 1:  83%|████████▎ | 160/193 [03:02<00:30,  1.10it/s, loss=4.4858]Epoch 1:  83%|████████▎ | 161/193 [03:02<00:29,  1.08it/s, loss=4.4858]Epoch 1:  83%|████████▎ | 161/193 [03:03<00:29,  1.08it/s, loss=4.4758]Epoch 1:  84%|████████▍ | 162/193 [03:03<00:28,  1.09it/s, loss=4.4758]Epoch 1:  84%|████████▍ | 162/193 [03:04<00:28,  1.09it/s, loss=4.4757]Epoch 1:  84%|████████▍ | 163/193 [03:04<00:27,  1.08it/s, loss=4.4757]Epoch 1:  84%|████████▍ | 163/193 [03:04<00:27,  1.08it/s, loss=4.4756]Epoch 1:  85%|████████▍ | 164/193 [03:04<00:26,  1.09it/s, loss=4.4756]Epoch 1:  85%|████████▍ | 164/193 [03:05<00:26,  1.09it/s, loss=4.4758]Epoch 1:  85%|████████▌ | 165/193 [03:05<00:26,  1.08it/s, loss=4.4758]Epoch 1:  85%|████████▌ | 165/193 [03:06<00:26,  1.08it/s, loss=4.4755]Epoch 1:  86%|████████▌ | 166/193 [03:06<00:25,  1.07it/s, loss=4.4755]Epoch 1:  86%|████████▌ | 166/193 [03:07<00:25,  1.07it/s, loss=4.4754]Epoch 1:  87%|████████▋ | 167/193 [03:07<00:24,  1.08it/s, loss=4.4754]Epoch 1:  87%|████████▋ | 167/193 [03:08<00:24,  1.08it/s, loss=4.4856]Epoch 1:  87%|████████▋ | 168/193 [03:08<00:23,  1.09it/s, loss=4.4856]Epoch 1:  87%|████████▋ | 168/193 [03:09<00:23,  1.09it/s, loss=4.4758]Epoch 1:  88%|████████▊ | 169/193 [03:09<00:22,  1.07it/s, loss=4.4758]Epoch 1:  88%|████████▊ | 169/193 [03:10<00:22,  1.07it/s, loss=4.4757]Epoch 1:  88%|████████▊ | 170/193 [03:10<00:21,  1.08it/s, loss=4.4757]Epoch 1:  88%|████████▊ | 170/193 [03:11<00:21,  1.08it/s, loss=4.4753]Epoch 1:  89%|████████▊ | 171/193 [03:11<00:20,  1.09it/s, loss=4.4753]Epoch 1:  89%|████████▊ | 171/193 [03:12<00:20,  1.09it/s, loss=4.4757]Epoch 1:  89%|████████▉ | 172/193 [03:12<00:19,  1.10it/s, loss=4.4757]Epoch 1:  89%|████████▉ | 172/193 [03:13<00:19,  1.10it/s, loss=4.4752]Epoch 1:  90%|████████▉ | 173/193 [03:13<00:18,  1.10it/s, loss=4.4752]Epoch 1:  90%|████████▉ | 173/193 [03:14<00:18,  1.10it/s, loss=4.4756]Epoch 1:  90%|█████████ | 174/193 [03:14<00:17,  1.10it/s, loss=4.4756]Epoch 1:  90%|█████████ | 174/193 [03:15<00:17,  1.10it/s, loss=4.4758]Epoch 1:  91%|█████████ | 175/193 [03:15<00:16,  1.09it/s, loss=4.4758]Epoch 1:  91%|█████████ | 175/193 [03:16<00:16,  1.09it/s, loss=4.4757]Epoch 1:  91%|█████████ | 176/193 [03:16<00:15,  1.09it/s, loss=4.4757]Epoch 1:  91%|█████████ | 176/193 [03:16<00:15,  1.09it/s, loss=4.4757]Epoch 1:  92%|█████████▏| 177/193 [03:16<00:14,  1.08it/s, loss=4.4757]Epoch 1:  92%|█████████▏| 177/193 [03:17<00:14,  1.08it/s, loss=4.4861]Epoch 1:  92%|█████████▏| 178/193 [03:17<00:13,  1.09it/s, loss=4.4861]Epoch 1:  92%|█████████▏| 178/193 [03:18<00:13,  1.09it/s, loss=4.4754]Epoch 1:  93%|█████████▎| 179/193 [03:18<00:12,  1.09it/s, loss=4.4754]Epoch 1:  93%|█████████▎| 179/193 [03:19<00:12,  1.09it/s, loss=4.4757]Epoch 1:  93%|█████████▎| 180/193 [03:19<00:11,  1.10it/s, loss=4.4757]Epoch 1:  93%|█████████▎| 180/193 [03:20<00:11,  1.10it/s, loss=4.4858]Epoch 1:  94%|█████████▍| 181/193 [03:20<00:10,  1.10it/s, loss=4.4858]Epoch 1:  94%|█████████▍| 181/193 [03:21<00:10,  1.10it/s, loss=4.4761]Epoch 1:  94%|█████████▍| 182/193 [03:21<00:10,  1.08it/s, loss=4.4761]Epoch 1:  94%|█████████▍| 182/193 [03:22<00:10,  1.08it/s, loss=4.4757]Epoch 1:  95%|█████████▍| 183/193 [03:22<00:09,  1.09it/s, loss=4.4757]Epoch 1:  95%|█████████▍| 183/193 [03:23<00:09,  1.09it/s, loss=4.4760]Epoch 1:  95%|█████████▌| 184/193 [03:23<00:08,  1.10it/s, loss=4.4760]Epoch 1:  95%|█████████▌| 184/193 [03:24<00:08,  1.10it/s, loss=4.4759]Epoch 1:  96%|█████████▌| 185/193 [03:24<00:07,  1.08it/s, loss=4.4759]Epoch 1:  96%|█████████▌| 185/193 [03:25<00:07,  1.08it/s, loss=4.4759]Epoch 1:  96%|█████████▋| 186/193 [03:25<00:06,  1.07it/s, loss=4.4759]Epoch 1:  96%|█████████▋| 186/193 [03:26<00:06,  1.07it/s, loss=4.4762]Epoch 1:  97%|█████████▋| 187/193 [03:26<00:05,  1.08it/s, loss=4.4762]Epoch 1:  97%|█████████▋| 187/193 [03:27<00:05,  1.08it/s, loss=4.4752]Epoch 1:  97%|█████████▋| 188/193 [03:27<00:04,  1.07it/s, loss=4.4752]Epoch 1:  97%|█████████▋| 188/193 [03:28<00:04,  1.07it/s, loss=4.4758]Epoch 1:  98%|█████████▊| 189/193 [03:28<00:03,  1.08it/s, loss=4.4758]Epoch 1:  98%|█████████▊| 189/193 [03:28<00:03,  1.08it/s, loss=4.4756]Epoch 1:  98%|█████████▊| 190/193 [03:28<00:02,  1.09it/s, loss=4.4756]Epoch 1:  98%|█████████▊| 190/193 [03:29<00:02,  1.09it/s, loss=4.4755]Epoch 1:  99%|█████████▉| 191/193 [03:29<00:01,  1.08it/s, loss=4.4755]Epoch 1:  99%|█████████▉| 191/193 [03:30<00:01,  1.08it/s, loss=4.4755]Epoch 1:  99%|█████████▉| 192/193 [03:30<00:00,  1.09it/s, loss=4.4755]Epoch 1:  99%|█████████▉| 192/193 [03:31<00:00,  1.09it/s, loss=4.4647]Epoch 1: 100%|██████████| 193/193 [03:31<00:00,  1.14it/s, loss=4.4647]Epoch 1: 100%|██████████| 193/193 [03:31<00:00,  1.10s/it, loss=4.4647]
+Epoch 1 Train Loss: 4.4377 | Train Acc: 0.2172
+Epoch 1 Val   Loss: 2.5707 | Val Acc: 0.2163
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+A.L.E: Arcade Learning Environment (version 0.11.2+ecc1138)
+[Powered by Stella]
+  Episode 1/50: Reward = 0.0
+  Action distribution: {0: 100455}
+  Episode 2/50: Reward = 0.0
+  Action distribution: {0: 93}
+  Episode 3/50: Reward = 0.0
+  Action distribution: {0: 169}
+  Episode 4/50: Reward = 0.0
+  Action distribution: {}
+  Episode 5/50: Reward = 0.0
+  Action distribution: {0: 82}
+  Episode 6/50: Reward = 0.0
+  Action distribution: {0: 42}
+  Episode 7/50: Reward = 0.0
+  Action distribution: {0: 83}
+  Episode 8/50: Reward = 0.0
+  Action distribution: {}
+  Episode 9/50: Reward = 0.0
+  Action distribution: {0: 76}
+  Episode 10/50: Reward = 0.0
+  Action distribution: {}
+  Episode 11/50: Reward = 0.0
+  Action distribution: {}
+  Episode 12/50: Reward = 0.0
+  Action distribution: {}
+  Episode 13/50: Reward = 0.0
+  Action distribution: {0: 67}
+  Episode 14/50: Reward = 0.0
+  Action distribution: {}
+  Episode 15/50: Reward = 0.0
+  Action distribution: {0: 156}
+  Episode 16/50: Reward = 0.0
+  Action distribution: {}
+  Episode 17/50: Reward = 0.0
+  Action distribution: {}
+  Episode 18/50: Reward = 0.0
+  Action distribution: {0: 31}
+  Episode 19/50: Reward = 0.0
+  Action distribution: {}
+  Episode 20/50: Reward = 0.0
+  Action distribution: {0: 26}
+  Episode 21/50: Reward = 0.0
+  Action distribution: {0: 24}
+  Episode 22/50: Reward = 0.0
+  Action distribution: {}
+  Episode 23/50: Reward = 0.0
+  Action distribution: {0: 44}
+  Episode 24/50: Reward = 0.0
+  Action distribution: {}
+  Episode 25/50: Reward = 0.0
+  Action distribution: {0: 40}
+  Episode 26/50: Reward = 0.0
+  Action distribution: {0: 63}
+  Episode 27/50: Reward = 0.0
+  Action distribution: {0: 14}
+  Episode 28/50: Reward = 0.0
+  Action distribution: {}
+  Episode 29/50: Reward = 0.0
+  Action distribution: {}
+  Episode 30/50: Reward = 0.0
+  Action distribution: {}
+  Episode 31/50: Reward = 0.0
+  Action distribution: {0: 13}
+  Episode 32/50: Reward = 0.0
+  Action distribution: {0: 7}
+  Episode 33/50: Reward = 0.0
+  Action distribution: {0: 18}
+  Episode 34/50: Reward = 0.0
+  Action distribution: {0: 10}
+  Episode 35/50: Reward = 0.0
+  Action distribution: {}
+  Episode 36/50: Reward = 0.0
+  Action distribution: {0: 5}
+  Episode 37/50: Reward = 0.0
+  Action distribution: {}
+  Episode 38/50: Reward = 0.0
+  Action distribution: {0: 26}
+  Episode 39/50: Reward = 0.0
+  Action distribution: {0: 24}
+  Episode 40/50: Reward = 0.0
+  Action distribution: {0: 6}
+  Episode 41/50: Reward = 0.0
+  Action distribution: {0: 14}
+  Episode 42/50: Reward = 0.0
+  Action distribution: {}
+  Episode 43/50: Reward = 0.0
+  Action distribution: {0: 20}
+  Episode 44/50: Reward = 0.0
+  Action distribution: {0: 3}
+  Episode 45/50: Reward = 0.0
+  Action distribution: {0: 12}
+  Episode 46/50: Reward = 0.0
+  Action distribution: {0: 2}
+  Episode 47/50: Reward = 0.0
+  Action distribution: {0: 2}
+  Episode 48/50: Reward = 0.0
+  Action distribution: {0: 19}
+  Episode 49/50: Reward = 0.0
+  Action distribution: {}
+  Episode 50/50: Reward = 0.0
+  Action distribution: {}
+Epoch 1 Eval Score: Mean=0.00  Std=0.00
+Saved model to trained_models/freeway/nsfr/new_rules_0.0005_lr_nll_random_init/full_ep/2026_03_13_02_21_48/epoch_1.pth
+Results CSV updated → trained_models/freeway/nsfr/new_rules_0.0005_lr_nll_random_init/full_ep/2026_03_13_02_21_48/results_1_eval_50.csv
+--- New Best Val Loss! 2.5707 ---
+
+==================================================
+LEARNING CURVE
+==================================================
+  Epoch   1 | Traj all | Loss 4.4377 | T-Acc 0.2172 | V-Acc 0.2163 | Score 0.00 ± 0.00
+==================================================
+Results saved to trained_models/freeway/nsfr/new_rules_0.0005_lr_nll_random_init/full_ep/2026_03_13_02_21_48/results_1.csv
