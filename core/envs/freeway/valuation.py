@@ -56,6 +56,16 @@ def on_right(z_1: torch.Tensor, z_2: torch.Tensor):
     result = (diff < 0) & _is_player(z_2)
     return bool_to_probs(result)
 
+def above_row_free(z_1: torch.Tensor, z_2: torch.Tensor):
+    x1, y1 = _get_x_y(z_1)
+    x2, y2 = _get_x_y(z_2)
+    diff = y2 - y1
+
+    x_diff = abs(x2 - x1)
+    val = x_diff-9/10
+    prob = torch.clamp(val, 0, 1)
+    result = ((diff < 23) & (diff >= 4)) & _is_player(z_2)
+    return bool_to_probs(result)
 
 def same_row(z_1: torch.Tensor, z_2: torch.Tensor):
     _, y1 = _get_x_y(z_1)
