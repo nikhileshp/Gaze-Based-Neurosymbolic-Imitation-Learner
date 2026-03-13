@@ -6,12 +6,11 @@ def send_email(subject, body):
     # Email configuration
     smtp_server = 'smtp.gmail.com'
     smtp_port = 465  # Use 465 for SSL
-    sender_email = 'nikki.p098@gmail.com'
+    sender_email = 'anonymous@gmail.com'
     # Use your generated App Password here
     sender_password = 'pfrk ieas nkzt helz' 
     recipient_emails=[]
-    recipient_emails.append('prabhakar.nikhilesh@gmail.com')
-    recipient_emails.append('varunbalaji1303@gmail.com')
+    recipient_emails.append('anonymous@gmail.com')
     
 
     for recipient_email in recipient_emails:

@@ -3,7 +3,7 @@ from PIL import Image, ImageDraw
 import numpy as np
 import sys
 
-IMAGE_PATH = "/home/nikhilesh/Projects/NeSY-Imitation-Learning/data/seaquest/gaze_data_tmp/237_RZ_9656617_Feb-08-14-12-21/RZ_9656617_13767.png"
+IMAGE_PATH = "/home/anonymous/Projects/NeSY-Imitation-Learning/data/seaquest/gaze_data_tmp/237_RZ_9656617_Feb-08-14-12-21/RZ_9656617_13767.png"
 OUTPUT_PATH = "detection_result.png"
 
 def main():
