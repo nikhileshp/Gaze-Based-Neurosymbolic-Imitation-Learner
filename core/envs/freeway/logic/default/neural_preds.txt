@@ -4,6 +4,7 @@ on_left:2:ocar,oagent
 on_right:2:ocar,oagent
 same_row:2:ocar,oagent
 above_row:2:ocar,oagent
+below_row:2:ocar,oagent
 top5car:1:ocar
 bottom5car:1:ocar
 visible:1:object

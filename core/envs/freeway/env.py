@@ -34,16 +34,19 @@ class NSFREnv(NSFRBaseEnv):
 
     def extract_logic_state(self, raw_state):
         num_of_feature = 5 # visibility, chicken_type, car_type, x, y
-        num_of_object = 11
+        num_of_object = 12
         logic_state = np.zeros((num_of_object, num_of_feature))
 
+        # Only allow the first chicken found to be the player chicken.
+        chicken_found = False
         for i, entity in enumerate(raw_state):
             if i >= num_of_object:
                 break
             logic_state[i][0] = 1 # Visibility
-            if entity.category == "Chicken":
+            if entity.category == "Chicken" and not chicken_found:
                 logic_state[i][1] = 1 # Type Chicken
                 logic_state[i][3:5] = entity.xy
+                chicken_found = True
             elif entity.category == 'Car':
                 logic_state[i][2] = 1 # Type Car
                 logic_state[i][3:5] = entity.xy

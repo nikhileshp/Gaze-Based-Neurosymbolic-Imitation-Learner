@@ -57,7 +57,15 @@ class NSFRBaseEnv(ABC):
 
     @staticmethod
     def from_name(name: str, **kwargs):
-        env_path = f"core/envs/{name}/env.py"
+        # Try 'in/envs' first, then fall back to 'core/envs'
+        in_path = f"in/envs/{name}/env.py"
+        core_path = f"core/envs/{name}/env.py"
+        
+        if os.path.exists(in_path):
+            env_path = in_path
+        else:
+            env_path = core_path
+            
         with open(os.devnull, 'w') as fnull:
             with redirect_stdout(fnull), redirect_stderr(fnull):
                 env_module = load_module(env_path)

@@ -146,51 +146,24 @@ class AgentWrapper:
             
         action_idx = best_rule_idx
         
-        # Enhanced debug output every 10 steps
+        # Enhanced debug output
         if self.debug:
-            if self.step_count % 10 == 0:
-                print(f"\n[DEBUG] Object Tensor (Logic State) at Step {self.step_count}:")
-                # state is (1, 49, 7) or (49, 7)
-                logic_state = state[0] if state.dim() == 3 else state
-                for i in range(logic_state.shape[0]):
-                    if logic_state[i, 0] > 0.5:  # Visible
-                        x, y = logic_state[i, 1].item(), logic_state[i, 2].item()
-                        w, h = logic_state[i, 3].item(), logic_state[i, 4].item()
-                        t_id = int(logic_state[i, 6].item())
-                        print(f"  obj{i:2d}: type={t_id:1d}, pos=({x:3.1f}, {y:3.1f}), size=({w:2.1f}x{h:2.1f})")
-                
-            if self.step_count % 10 == 1:
-                prednames = self.actor.prednames
-                # print(f"\n{'='*60}")
-                # print(f"Step {self.step_count}: {prednames[action_idx]} (prob: {probs[action_idx]:.3f})")
+            print(f"\n--- Step {self.step_count} ---")
             
-            # Show detected objects
-            if hasattr(self.env, 'env') and hasattr(self.env.env, 'objects'):
-                objects = self.env.env.objects
-                # print(f"\nDetected Objects ({len(objects)} total):")
-                
-                # Show ALL non-NoObject instances with their indices
-                non_no_objects = []
-                for i, obj in enumerate(objects):
-                    obj_type = obj.__class__.__name__
-                    if obj_type != 'NoObject':
-                        pos = f"({obj.x}, {obj.y})" if hasattr(obj, 'x') else "N/A"
-                        non_no_objects.append((i, obj_type, pos))
-                        
-                for idx, obj_type, pos in non_no_objects:
-                    print(f"  obj{idx}: {obj_type} at {pos}")
-                
-                # Also check specific object indices mentioned in predicates
-                # print(f"\nSpecific Object Indices (from predicates):")
-                for check_idx in [0, 1, 2, 3, 4, 5, 37]:
-                    if check_idx < len(objects):
-                        obj = objects[check_idx]
-                        obj_type = obj.__class__.__name__
-                        pos = f"({obj.x}, {obj.y})" if hasattr(obj, 'x') and hasattr(obj, 'y') else "N/A"
-                        # print(f"  obj{check_idx}: {obj_type} at {pos}")
+            # 1. Print Logic State Coordinates (from the actual tensor used by the model)
+            logic_state = state[0] if state.dim() == 3 else state
+            print("Detected Objects (Logic State):")
+            for i in range(logic_state.shape[0]):
+                if logic_state[i, 0] > 0.5:  # Visible
+                    # Freeway has 5 features: [vis, type1, type2, x, y]
+                    # Coordinates are the last two features
+                    x, y = logic_state[i, -2].item(), logic_state[i, -1].item()
+                    t1, t2 = logic_state[i, 1].item(), logic_state[i, 2].item()
+                    obj_type = "Chicken" if t1 > 0.5 else ("Car" if t2 > 0.5 else "Unknown")
+                    print(f"  obj{i:2d}: {obj_type:7s} at ({x:3.1f}, {y:3.1f})")
             
-            # Show top neural predicates with their object references
-            # print(f"\nTop Neural Predicates:")
+            # 2. Show high-value neural predicates
+            print("Top Neural Predicates:")
             for pred_str, val in self.current_neural_predicates:
                 print(f"  {val:.3f} - {pred_str}")
             
@@ -414,7 +387,7 @@ class ILRenderer(Renderer):
         #                 break
         
         # Calculate starting position for neural predicates (after objects)
-        neural_pred_start_y = objects_start_y + max(num_objects_shown * 18, 40) 
+        neural_pred_start_y = objects_start_y + max(num_objects_shown * 18, 80) 
         
         # Render title for neural predicates
         title_text = self.font.render("Neural Predicates (>0.01):", True, "yellow", None)
@@ -424,7 +397,7 @@ class ILRenderer(Renderer):
         
         # Render neural predicates
         if hasattr(self.model, 'current_neural_predicates'):
-            neural_preds = self.model.current_neural_predicates[:40]  # Top 12 (reduced for space)
+            neural_preds = self.model.current_neural_predicates[:80]  # Top 12 (reduced for space)
             count=0
             for i, (pred_str, val) in enumerate(neural_preds):
                 # Normalize value to 0-1 range (in case values are > 1)

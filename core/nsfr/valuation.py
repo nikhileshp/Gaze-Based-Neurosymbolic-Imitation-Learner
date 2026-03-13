@@ -186,10 +186,16 @@ class ValuationModule(nn.Module, ABC):
                         is_obj = (arg.dim() == 2 and arg.size(1) >= 6) # lowered to 6 for Freeway
                     
                     if is_obj:
-                        # The last dimension is the appended gaze from FactsConverter.
-                        obj_gaze = arg[:, -1]
-                        max_gaze_flat = torch.max(max_gaze_flat, obj_gaze)
-                        found_object = True
+                        # Only apply gaze scaling if we have more than the base features.
+                        # Base features: Freeway=5, Seaquest=5, Asterix=7.
+                        # Appended gaze adds 1 feature.
+                        # So gaze is present if features > 5 (Freeway/Seaquest) or features > 7 (Asterix).
+                        # Using >= 6 is safe as base is either 5 or 7.
+                        if arg.size(1) >= 6:
+                            # The last dimension is the appended gaze from FactsConverter.
+                            obj_gaze = arg[:, -1]
+                            max_gaze_flat = torch.max(max_gaze_flat, obj_gaze)
+                            found_object = True
 
                 if found_object:
                     # Apply multiplication and clamp to [0, 1]

@@ -9,11 +9,19 @@ from nsfr.valuation import ValuationModule
 def get_nsfr_model(env_name: str, rules: str, device: str, train=False, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, target_diagonal=0.99, random_init=False):
     current_path = os.path.dirname(__file__)
     lark_path = os.path.join(current_path, 'lark/exp.lark')
-    lang_base_path = f"core/envs/{env_name}/logic/"
+    # Prioritize 'in/envs' for logic and valuation
+    in_lang_base = f"in/envs/{env_name}/logic/"
+    core_lang_base = f"core/envs/{env_name}/logic/"
+    # Only use 'in/' logic if the specific ruleset (dataset) folder exists there
+    lang_base_path = in_lang_base if os.path.exists(os.path.join(in_lang_base, rules)) else core_lang_base
 
     lang, clauses, bk, atoms = get_lang(lark_path, lang_base_path, rules)
 
-    val_fn_path = f"core/envs/{env_name}/valuation.py"
+    in_val_fn = f"in/envs/{env_name}/valuation.py"
+    core_val_fn = f"core/envs/{env_name}/valuation.py"
+    # Valuation priority: only use 'in/' if the file actually exists
+    val_fn_path = in_val_fn if os.path.exists(in_val_fn) else core_val_fn
+
     # Pass gaze_threshold to ValuationModule if it accepts it.
     # We need to update ValuationModule __init__ as well.
     val_module = ValuationModule(val_fn_path, lang, device, gaze_threshold=gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha)
