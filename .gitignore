@@ -15,3 +15,6 @@ events.out.tfevents*
 eval_every_10_epochs.csv
 trained_models/
 *.mp4
+trained_models/
+*.pth
+*.mp4
