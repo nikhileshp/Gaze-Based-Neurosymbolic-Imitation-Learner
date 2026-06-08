@@ -64,11 +64,11 @@ def get_gaze_model_path(env_name: str) -> str:
     """
     env_lower = env_name.lower()
     if 'asterix' in env_lower:
-        # Check if localized model exists, else fallback to gaze_models subdir
         if os.path.exists("asterix_visual_gaze_predictor.pth"):
             return "asterix_visual_gaze_predictor.pth"
         return "gaze_models/asterix/asterix_visual_gaze_predictor.pth"
-    
+    if 'freeway' in env_lower:
+        return "trained_models/gaze_predictor/freeway/freeway_gaze_predictor_10p.pth.pth"
     # Default is Seaquest
     return "gaze_models/seaquest/seaquest_gaze_predictor_2.pth"
 
