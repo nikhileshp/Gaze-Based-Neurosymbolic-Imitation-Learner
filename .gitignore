@@ -18,3 +18,6 @@ trained_models/
 trained_models/
 *.pth
 *.mp4
+trained_models/
+*.pth
+*.mp4
