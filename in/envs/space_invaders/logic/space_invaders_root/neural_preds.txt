@@ -1,0 +1,17 @@
+visible_alien:1:oalien
+visible_bullet:1:obullet
+visible_satellite:1:osatellite
+left_of_alien:2:oplayer,oalien
+right_of_alien:2:oplayer,oalien
+aligned_with_alien:2:oplayer,oalien
+slightly_left_of_alien:2:oplayer,oalien
+slightly_right_of_alien:2:oplayer,oalien
+aligned_with_satellite:2:oplayer,osatellite
+close_by_bullet:2:oplayer,obullet
+bullet_above_player:2:obullet,oplayer
+bullet_left_of_player:2:obullet,oplayer
+bullet_right_of_player:2:obullet,oplayer
+bullet_aligned_player:2:obullet,oplayer
+bullet_threatens_shield:2:obullet,oshield
+bullet_above_alien:2:obullet,oalien
+behind_shield:2:oplayer,oshield
