@@ -196,7 +196,7 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
                       device="cuda", use_gaze=False,
                       gaze_model_path="seaquest_gaze_predictor_2.pth",
                       ckpt_prefix="best_", stack=4,
-                      gabril_compat=False):
+                      gabril_compat=False, env_name="seaquest"):
     """
     Loads a pretrained BC/AGIL baseline and runs it in the provided environment.
 
@@ -245,9 +245,9 @@ def evaluate_bc_model(env, run_dir, gaze_method="None", num_episodes=10, seed=42
     gaze_predictor = None
     if (use_gaze or gaze_method in ['ViSaRL', 'Mask', 'AGIL']) and gaze_method != "None":
         try:
-            from scripts.gaze_predictor import Human_Gaze_Predictor
+            from scripts.gaze.gaze_predictor import Human_Gaze_Predictor
             print(f"Initialising Test-Time Gaze Predictor from {gaze_model_path}...")
-            gaze_predictor = Human_Gaze_Predictor("seaquest")
+            gaze_predictor = Human_Gaze_Predictor(env_name)
             gaze_predictor.init_model(gaze_model_path)
             gaze_predictor.model.eval()
         except ImportError:
@@ -358,6 +358,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_dir",        type=str, required=True)
+    parser.add_argument("--env",            type=str, default="seaquest")
     parser.add_argument("--gaze_method",    type=str, default="None",
                         choices=["None", "AGIL", "Mask"])
     parser.add_argument("--episodes",       type=int, default=100)
@@ -374,8 +375,8 @@ def main():
                              "terminal_on_life_loss, seed=base+1000*ep")
     args = parser.parse_args()
 
-    print(f"Initialising NSFRBaseEnv for seaquest...")
-    test_env = NSFRBaseEnv.from_name("seaquest", mode='logic')
+    print(f"Initialising NSFRBaseEnv for {args.env}...")
+    test_env = NSFRBaseEnv.from_name(args.env, mode='logic')
 
     print(f"Loading {args.gaze_method} BC model from: {args.run_dir} "
           f"(prefix: {args.ckpt_prefix})")
@@ -390,6 +391,7 @@ def main():
         ckpt_prefix=args.ckpt_prefix,
         stack=args.stack,
         gabril_compat=args.gabril_compat,
+        env_name=args.env,
     )
 
     print(f"\nFinal Evaluation over {args.episodes} episodes:")
