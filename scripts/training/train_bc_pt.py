@@ -56,7 +56,8 @@ def preprocess_obs(obs_batch, device):
 
 
 def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
-                gaze_method='None', encoder_agil=None, device='cuda', gaze_predictor=None):
+                gaze_method='None', encoder_agil=None, device='cuda', gaze_predictor=None,
+                primitive_actions=None):
     """Run policy in env for num_episodes, return list of total rewards."""
     dev = torch.device(device)
     encoder.to(dev).eval()
@@ -113,7 +114,8 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
                 logits = actor(pre_actor(z))
                 action_idx = logits.argmax(dim=1).item()
 
-            action_str = PRIMITIVE_ACTIONS[action_idx]
+            action_map = primitive_actions if primitive_actions is not None else PRIMITIVE_ACTIONS
+            action_str = action_map[action_idx]
             state, reward, done = env.step(action_str)
             total_r += reward
             step += 1
@@ -196,9 +198,13 @@ def main():
         # Shuffle + 95/5 train/val split is done inside the loop for conventional mode now
         pass
 
-    # Hardcode action_dim to 6 for Seaquest (0-5: noop, fire, up, right, left, down)
-    action_dim = 6
-    print(f"Using fixed action_dim: {action_dim}")
+    # ── Environment for evaluation (created early to derive action space) ─────
+    env = NSFRBaseEnv.from_name(args.env, mode='logic')
+
+    # Derive action_dim and index→name mapping from the env
+    primitive_actions = {v: k for k, v in env.pred2action.items()}
+    action_dim = len(primitive_actions)
+    print(f"Action map: {primitive_actions}  |  action_dim: {action_dim}")
 
     encoder_out_dim  = 8 * 8 * args.embedding_dim  # → 4096 for default settings
     
@@ -242,9 +248,7 @@ def main():
     os.makedirs(base_run_dir, exist_ok=True)
 
     results_log = []
-    # ── Environment for evaluation ────────────────────────────────────────────
-    env = NSFRBaseEnv.from_name(args.env, mode='logic')
-    # env = GABRILEnvWrapper(env, frame_skip=4, gabril_compat=True)
+
     # Determine episodes to loop over
     if args.incremental:
         # We need to know max episodes. We can peek at the dataset.
@@ -387,7 +391,8 @@ def main():
                 rewards = evaluate_bc(encoder, pre_actor, actor, env,
                                        num_episodes=args.eval_episodes, seed=args.seed,
                                        gaze_method=args.gaze_method, encoder_agil=encoder_agil,
-                                       device=str(device), gaze_predictor=gaze_predictor)
+                                       device=str(device), gaze_predictor=gaze_predictor,
+                                       primitive_actions=primitive_actions)
                 mean_r, std_r = np.mean(rewards), np.std(rewards)
                 print(f"\nEval [Ep {current_ep} Epoch {epoch+1}] | TrainLoss {avg_loss:.4f} | TrainAcc {train_acc:.3f} | ValAcc {val_acc:.3f} | MeanR {mean_r:.2f} | StdR {std_r:.2f}")
 
