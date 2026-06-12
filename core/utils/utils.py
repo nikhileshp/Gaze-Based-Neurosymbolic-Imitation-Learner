@@ -44,17 +44,24 @@ PRIMITIVE_ACTION_MAP = {
 def get_primitive_action_map(env_name: str) -> dict:
     """
     Returns the primitive action map (pred2action) for the given environment.
-    Loads from core.envs.{env_name}.env.
+    Mirrors NSFRBaseEnv.from_name discovery: prefer in/envs/{env}/env.py, then
+    core/envs/{env}/env.py. The 'in' package can't be import_module'd (reserved
+    keyword), so in/envs is loaded by file path.
     """
     import importlib
+    env_module_name = env_name.lower().replace("ale/", "").replace("-v5", "")
     try:
-        # Normalize env_name (some scripts might pass uppercase or full strings)
-        env_module_name = env_name.lower().replace("ale/", "").replace("-v5", "")
+        in_path = f"in/envs/{env_module_name}/env.py"
+        if os.path.exists(in_path):
+            from nsfr.utils.common import load_module
+            module = load_module(in_path)
+            if hasattr(module, "NSFREnv"):
+                return getattr(module.NSFREnv, "pred2action", PRIMITIVE_ACTION_MAP)
         module = importlib.import_module(f"core.envs.{env_module_name}.env")
         if hasattr(module, "NSFREnv"):
             return getattr(module.NSFREnv, "pred2action", PRIMITIVE_ACTION_MAP)
         return PRIMITIVE_ACTION_MAP
-    except (ImportError, AttributeError):
+    except (ImportError, AttributeError, FileNotFoundError):
         print(f"Warning: Could not load action map for env '{env_name}'. Falling back to default.")
         return PRIMITIVE_ACTION_MAP
 
