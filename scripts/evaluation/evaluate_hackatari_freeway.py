@@ -96,6 +96,7 @@ NSFR_MODELS = [
         "rules": "new",
         "use_gaze": True,
         "unnormalized": True,
+        "visible_preds_only": True,
     },
 ]
 
@@ -104,11 +105,13 @@ BC_MODELS = [
         "name": "BC",
         "run_dir": os.path.join(_ROOT, "trained_models/freeway/agil/all_ep"),
         "gaze_method": "None",
+        "stack": 1,
     },
     {
         "name": "AGIL",
         "run_dir": os.path.join(_ROOT, "trained_models/freeway/agil/all_ep"),
         "gaze_method": "AGIL",
+        "stack": 1,
     },
 ]
 
@@ -265,11 +268,11 @@ def _eval_nsfr(agent, env, num_episodes, seed, max_steps, gaze_model=None, devic
 
 # ── BC / AGIL sequential evaluator ───────────────────────────────────────────
 
-def _eval_bc(env, run_dir, gaze_method, num_episodes, seed, device, gaze_model_path, max_steps=5000):
+def _eval_bc(env, run_dir, gaze_method, num_episodes, seed, device, gaze_model_path, max_steps=5000, stack=1):
     """Run BC/AGIL pixel-based model sequentially. Returns list of episode rewards."""
     dev = torch.device(device)
     encoder, pre_actor, actor, encoder_agil = load_bc_model(
-        run_dir, gaze_method, device, ckpt_prefix="best_", stack=4
+        run_dir, gaze_method, device, ckpt_prefix="best_", stack=stack
     )
 
     gaze_predictor = None
@@ -292,21 +295,30 @@ def _eval_bc(env, run_dir, gaze_method, num_episodes, seed, device, gaze_model_p
         total_r = 0.0
         steps = 0
 
-        frame_buf = deque(maxlen=4)
+        frame_buf = deque(maxlen=max(stack, 4))
         gray = preprocess_frame(wrapped.get_rgb_frame())
-        for _ in range(4):
+        for _ in range(max(stack, 4)):
             frame_buf.append(gray)
 
         while not done and steps < max_steps:
-            img_stack = np.stack(list(frame_buf), axis=-1)  # (84, 84, 4)
-            xx = torch.tensor(
-                img_stack, dtype=torch.float32, device=dev
-            ).permute(2, 0, 1).unsqueeze(0)  # (1, 4, 84, 84)
+            # Build agent input using `stack` most recent frames
+            agent_frames = list(frame_buf)[-stack:]
+            if stack == 1:
+                xx = torch.tensor(
+                    agent_frames[0], dtype=torch.float32, device=dev
+                ).unsqueeze(0).unsqueeze(0)  # (1, 1, 84, 84)
+            else:
+                img_stack_agent = np.stack(agent_frames, axis=-1)  # (84, 84, stack)
+                xx = torch.tensor(
+                    img_stack_agent, dtype=torch.float32, device=dev
+                ).permute(2, 0, 1).unsqueeze(0)  # (1, stack, 84, 84)
 
+            # Gaze predictor always uses last 4 frames
             gg = torch.zeros(1, 1, 84, 84, device=dev)
             if gaze_predictor is not None:
-                inp4 = torch.tensor(img_stack, dtype=torch.float32, device=dev
-                                    ).permute(2, 0, 1).unsqueeze(0)
+                last4 = np.stack(list(frame_buf)[-4:], axis=-1)  # (84, 84, 4)
+                inp4 = torch.tensor(last4, dtype=torch.float32, device=dev
+                                    ).permute(2, 0, 1).unsqueeze(0)  # (1, 4, 84, 84)
                 with torch.no_grad():
                     gg = gaze_predictor.predict_normalized(inp4).to(dev)
 
@@ -408,6 +420,7 @@ def main():
                     device,
                     gaze_threshold=50.0 if cfg["use_gaze"] else None,
                     unnormalized=cfg.get("unnormalized", False),
+                    visible_preds_only=cfg.get("visible_preds_only", False),
                 )
                 agent.load(cfg["model_path"])
                 agent.model.eval()
@@ -474,6 +487,7 @@ def main():
                         device=args.device,
                         gaze_model_path=gaze_model_path,
                         max_steps=args.max_steps,
+                        stack=cfg.get("stack", 4),
                     )
                 finally:
                     env.close()
