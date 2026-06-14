@@ -21,12 +21,13 @@ class NSFREnv(NSFRBaseEnv):
     name = "space_invaders"
     # OCAtari minimal action set order: NOOP, FIRE, RIGHT, LEFT, RIGHTFIRE, LEFTFIRE.
     # RIGHTFIRE/LEFTFIRE are intentionally omitted (rare combos, ~3.7% of human
-    # frames) -> 4-action set.
+    # frames) -> 4-action set. Action names are single tokens because the agent's
+    # rule-aggregation keys on predname.split('_')[0] (e.g. right_toward -> right).
     pred2action = {
         "noop": 0,
         "fire": 1,
-        "move_right": 2,
-        "move_left": 3,
+        "right": 2,   # ALE RIGHT
+        "left": 3,    # ALE LEFT
     }
     pred_names: Sequence
 

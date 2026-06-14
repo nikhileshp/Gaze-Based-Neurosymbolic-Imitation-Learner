@@ -1,4 +1,10 @@
-noop:1:image
-fire:1:image
-move_left:1:image
-move_right:1:image
+fire_aim:1:image
+fire_bonus:1:image
+right_toward:1:image
+right_nudge:1:image
+right_dodge:1:image
+left_toward:1:image
+left_nudge:1:image
+left_dodge:1:image
+noop_cover:1:image
+noop_default:1:image
