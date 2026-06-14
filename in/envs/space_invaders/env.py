@@ -19,14 +19,14 @@ TYPE_MAP = {
 
 class NSFREnv(NSFRBaseEnv):
     name = "space_invaders"
-    # ALE Space Invaders action order: NOOP, FIRE, RIGHT, LEFT, RIGHTFIRE, LEFTFIRE
+    # OCAtari minimal action set order: NOOP, FIRE, RIGHT, LEFT, RIGHTFIRE, LEFTFIRE.
+    # RIGHTFIRE/LEFTFIRE are intentionally omitted (rare combos, ~3.7% of human
+    # frames) -> 4-action set.
     pred2action = {
         "noop": 0,
         "fire": 1,
         "move_right": 2,
         "move_left": 3,
-        "fire_right": 4,
-        "fire_left": 5,
     }
     pred_names: Sequence
 

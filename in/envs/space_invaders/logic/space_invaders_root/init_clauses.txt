@@ -2,5 +2,3 @@ noop(X0):-in_image(X0,O1),in_image(X0,O2).
 fire(X0):-in_image(X0,O1),in_image(X0,O2).
 move_left(X0):-in_image(X0,O1),in_image(X0,O2).
 move_right(X0):-in_image(X0,O1),in_image(X0,O2).
-fire_left(X0):-in_image(X0,O1),in_image(X0,O2).
-fire_right(X0):-in_image(X0,O1),in_image(X0,O2).

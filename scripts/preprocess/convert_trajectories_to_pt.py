@@ -39,6 +39,7 @@ from ocatari.core import OCAtari
 from ocatari.ram.seaquest import MAX_NB_OBJECTS as MAX_NB_SEAQUEST
 from ocatari.ram.asterix import MAX_NB_OBJECTS as MAX_NB_ASTERIX
 from ocatari.ram.freeway import MAX_NB_OBJECTS as MAX_NB_FREEWAY
+from ocatari.ram.spaceinvaders import MAX_NB_OBJECTS as MAX_NB_SPACEINVADERS
 
 IMG_W = 160   # Game width (pixels)
 IMG_H = 210   # Game height (pixels)
@@ -94,6 +95,22 @@ ENV_CONFIGS = {
         "N_FEATURES": 6,
         "N_OBJECTS": 11, # 1 player + 10 cars
         "TRAJ_DIR": 'data/freeway/trajectories'
+    },
+    "SpaceInvaders": {
+        # type_id order MUST match in/envs/space_invaders/{env.py TYPE_MAP, consts.txt type:}
+        "TYPE_MAP": {
+            'Player': 0,
+            'Alien': 1,
+            'Shield': 2,
+            'Bullet': 3,
+            'Satellite': 4,
+        },
+        # Use the actual detected w/h (matches env.py); no canonical-size override.
+        "CANONICAL_SIZES": {},
+        "MAX_ESSENTIAL_OBJECTS": MAX_NB_SPACEINVADERS.copy(),  # Player1,Shield3,Bullet3,Satellite1,Alien36
+        "N_FEATURES": 6,   # present, x, y, w, h, type_id
+        "N_OBJECTS": sum(MAX_NB_SPACEINVADERS.values()),  # 44
+        "TRAJ_DIR": 'data/space_invaders'
     }
 }
 # Override for Seaquest
@@ -255,6 +272,33 @@ def extract_logic_state(tracked_objects, env_name="Seaquest"):
             state[obj_idx][5] = cy
             obj_idx += 1
 
+    elif env_name == "SpaceInvaders":
+        # Mirror in/envs/space_invaders/env.py::extract_logic_state exactly so the
+        # dataset's per-frame state matches play time. Row = [present, x, y, w, h, type_id]
+        # with TOP-LEFT x,y (valuation._cx = o[1]+o[3]/2). Category-offset slots:
+        # Player 0, Shield 1-3, Bullet 4-6, Satellite 7, Alien 8-43.
+        relevant = cfg["MAX_ESSENTIAL_OBJECTS"]
+        offsets, obj_count = {}, {}
+        off = 0
+        for cat, max_c in relevant.items():
+            offsets[cat] = off
+            obj_count[cat] = 0
+            off += max_c
+
+        for tr in tracked_objects:
+            obj = tr.obj
+            cat = obj.category
+            if cat not in relevant or obj_count[cat] >= relevant[cat]:
+                continue
+            # Inactive objects (e.g. parked bullets) sit at the origin — treat as absent.
+            if int(obj.x) <= 0 and int(obj.y) <= 0:
+                continue
+            idx = offsets[cat] + obj_count[cat]
+            type_id = type_map[cat]
+            state[idx] = [1, int(obj.x), int(obj.y),
+                          int(getattr(obj, "w", 0)), int(getattr(obj, "h", 0)), type_id]
+            obj_count[cat] += 1
+
     return state
  
  
@@ -299,14 +343,20 @@ def build_episode_gaze_images(
     sigma=GAZE_SIGMA,
     coef=GAZE_COEF,
     variance_exp=GAZE_VARIANCE_EXP,
+    device='cpu',
 ):
     """
     Build temporally-aggregated gaze saliency maps for an entire episode.
     For each frame i, sums weighted Gaussians from frames in [i-k, i+k],
     where distance d uses sigma/variance_exp^d and weight coef^d.
     Returns list of (84, 84) float32 numpy arrays.
+
+    device: 'cpu' (default, robust) or 'cuda'. The GPU path segfaults on some
+    ROCm builds, so CPU is the safe default; pass --gaze_device cuda to opt in.
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if device == 'cuda' and not torch.cuda.is_available():
+        device = 'cpu'
+    device = torch.device(device)
  
     n_slots = k_window + 1
     saliency_sigmas = [sigma / (variance_exp ** d) for d in range(n_slots)]
@@ -386,12 +436,37 @@ def parse_gaze_file(filepath):
  
             result[fid] = (pts, x_n, y_n, action, reward, terminated)
     return result
- 
- 
+
+
+# ─── Action Mapping ──────────────────────────────────────────────────────────
+
+def map_action(env_name, action):
+    """Map a dataset (full-ALE) action id to the env's primitive action index.
+
+    Returns None to DROP the frame when the action is not in the env's kept set.
+    Non-SpaceInvaders envs never drop (backward-compatible).
+    """
+    if env_name == "SpaceInvaders":
+        # NOOP->noop, FIRE->fire, RIGHT->move_right, LEFT->move_left.
+        # RIGHTFIRE(11)/LEFTFIRE(12) and anything else are dropped.
+        return {0: 0, 1: 1, 3: 2, 4: 3}.get(action, None)
+    if env_name == "Freeway":
+        # Full-space UP(2)->1, DOWN(5)->2, other key presses->noop.
+        if action == 2:
+            return 1
+        if action == 5:
+            return 2
+        if action > 2:
+            return 0
+        return action
+    return action
+
+
 # ─── Episode Processing ──────────────────────────────────────────────────────
  
 def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
-                    gaze_sigma=GAZE_SIGMA, gaze_k_window=GAZE_K_WINDOW, objects_per_class=None, env_name="Seaquest"):
+                    gaze_sigma=GAZE_SIGMA, gaze_k_window=GAZE_K_WINDOW, objects_per_class=None, env_name="Seaquest",
+                    gaze_device='cpu'):
     """
     Process one trajectory folder, which may contain multiple episodes
     (a new episode begins after any frame with negative reward).
@@ -429,11 +504,21 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
             fid = int(os.path.basename(png_path).rsplit('_', 1)[-1].split('.')[0])
         except (ValueError, IndexError):
             fid = len(obs_l)
- 
+
+        # Look up gaze + action for this frame and apply the env's action map up-front.
+        # Dropping here (before vision detection) also skips the expensive detect pass.
+        if fid in gaze_map:
+            pts, x_n, y_n, raw_action, reward, _ = gaze_map[fid]
+        else:
+            pts, x_n, y_n, raw_action, reward = [(0.5, 0.5)], 0.5, 0.5, 0, 0.0
+        action = map_action(env_name, raw_action)
+        if action is None:
+            continue  # e.g. SpaceInvaders RIGHTFIRE/LEFTFIRE — dropped
+
         bgr = cv2.imread(png_path)
         if bgr is None:
             continue
- 
+
         # 2. Logic state via Ocatari vision
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         try:
@@ -461,30 +546,16 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
         # 1. Observations (84x84 grayscale) - added after filter
         obs_l.append(preprocess_frame(bgr))
         logic_l.append(extract_logic_state(active, env_name=env_name))
- 
-        # 3. Gaze info — store raw points; heatmap built after loop
-        if fid in gaze_map:
-            pts, x_n, y_n, action, reward, _ = gaze_map[fid]
-        else:
-            pts, x_n, y_n, action, reward, _ = [(0.5, 0.5)], 0.5, 0.5, 0, 0.0
-            
-        # Proper action mapping for Freeway: Handled Full to Minimal Space
-        if env_name == "Freeway":
-            if action == 2:  # Full space UP
-                action = 1
-            elif action == 5: # Full space DOWN
-                action = 2
-            elif action > 2: # Any other random key presses
-                action = 0
- 
+
+        # 3. Gaze info — store raw points; heatmap built after loop.
+        # (gaze + mapped action were fetched at the top of the loop)
         global_step = global_step_offset + len(obs_l) - 1
         gaze_l.append([x_n, y_n, float(global_step)])   # mean coord for GABRIL compatibility
         raw_pts_l.append(pts)
- 
+
         act_l.append(action)
         rew_l.append(reward)
-        
- 
+
         term_l.append(False)
         trunc_l.append(False)
         epnum_l.append(ep_number)
@@ -493,7 +564,7 @@ def process_episode(ep_folder, traj_dir, global_step_offset, ep_number, oc,
         term_l[-1] = True  # mark last frame as terminal
  
     # Build gaze images for the entire folder at once
-    gaze_img_l = build_episode_gaze_images(raw_pts_l, k_window=gaze_k_window, sigma=gaze_sigma)
+    gaze_img_l = build_episode_gaze_images(raw_pts_l, k_window=gaze_k_window, sigma=gaze_sigma, device=gaze_device)
  
     return obs_l, gaze_l, gaze_img_l, logic_l, epnum_l, act_l, rew_l, term_l, trunc_l
  
@@ -513,6 +584,9 @@ def main():
                         help='Sliding window size for gaze heatmap')
     parser.add_argument('--objects_per_class', type=int, default=None,
                         help='Max allowed objects of type enemy/diver per frame.')
+    parser.add_argument('--gaze_device', type=str, default='cpu', choices=['cpu', 'cuda'],
+                        help="Device for the gaze-heatmap build. CPU is the robust default "
+                             "(the GPU path segfaults on some ROCm builds).")
     args = parser.parse_args()
  
     env_name = args.env # e.g. "Seaquest" or "Asterix"
@@ -553,7 +627,8 @@ def main():
                               gaze_sigma=args.gaze_sigma,
                               gaze_k_window=args.sliding_window,
                               objects_per_class=args.objects_per_class,
-                              env_name=env_name)
+                              env_name=env_name,
+                              gaze_device=args.gaze_device)
         obs, gaze, gaze_img, logic, epnum, act, rew, term, trunc = out
         if not obs:
             continue
