@@ -33,23 +33,32 @@ class NSFREnv(NSFRBaseEnv):
         return self.convert_state(state), reward, done
 
     def extract_logic_state(self, raw_state):
-        num_of_feature = 5 # visibility, chicken_type, car_type, x, y
+        num_of_feature = 5  # [visible, is_chicken, is_car, x, y]
         num_of_object = 12
         logic_state = np.zeros((num_of_object, num_of_feature))
 
-        # Only allow the first chicken found to be the player chicken.
+        # OCAtari Freeway always reports 2 chickens (the player + a STATIC decoy at
+        # the bottom, x~108) and up to 10 cars. The decoy is irrelevant to the task,
+        # so keep ONLY the player chicken at obj0 and pack the cars densely into
+        # obj1.. . The decoy, NoObjects and empty slots are dropped (left all-zero =>
+        # not visible). This keeps the symbolic state consistent with the rule
+        # domains (oagent:obj0, ocar:obj1..) and with the (remapped) training data.
         chicken_found = False
-        for i, entity in enumerate(raw_state):
-            if i >= num_of_object:
-                break
-            logic_state[i][0] = 1 # Visibility
-            if entity.category == "Chicken" and not chicken_found:
-                logic_state[i][1] = 1 # Type Chicken
-                logic_state[i][3:5] = entity.xy
+        car_idx = 1
+        for entity in raw_state:
+            cat = entity.category
+            if cat == "Chicken" and not chicken_found:
+                logic_state[0][0] = 1       # visible
+                logic_state[0][1] = 1       # is_chicken (player)
+                logic_state[0][3:5] = entity.xy
+                entity._logic_slot = 0      # tag for the renderer overlay
                 chicken_found = True
-            elif entity.category == 'Car':
-                logic_state[i][2] = 1 # Type Car
-                logic_state[i][3:5] = entity.xy
+            elif cat == "Car" and car_idx < num_of_object:
+                logic_state[car_idx][0] = 1  # visible
+                logic_state[car_idx][2] = 1  # is_car
+                logic_state[car_idx][3:5] = entity.xy
+                entity._logic_slot = car_idx
+                car_idx += 1
 
         return logic_state
 

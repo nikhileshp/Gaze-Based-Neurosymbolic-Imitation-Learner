@@ -210,9 +210,11 @@ scripts/search/naive_search.py
 scripts/shell/__init__.py
 scripts/training/__init__.py
 scripts/training/train_bc.py
+scripts/training/train_bc_learning_curve.py
 scripts/training/train_bc_pt.py
 scripts/training/train_gaze.py
 scripts/training/train_il.py
+scripts/training/train_il_learning_curve.py
 scripts/training/train_valuation_cnn.py
 scripts/visualization/__init__.py
 scripts/visualization/make_trajectory_video.py

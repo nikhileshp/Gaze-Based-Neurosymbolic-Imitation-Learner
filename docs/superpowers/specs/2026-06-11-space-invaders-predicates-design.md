@@ -51,17 +51,20 @@ Reuse `main`'s geometric predicate bodies, but type the predicate args as
 block in the object row. No changes to core NSFR infrastructure; consistent with
 all other envs.
 
-### Logic-state layout — `(44, 10)` int tensor
+### Logic-state layout — `(44, 6)` int tensor
 
-Per-object row (indices): `[present, x, y, w, h, t_player, t_alien, t_shield,
-t_bullet, t_satellite]`. Position block (0–4) matches `main`'s valuation
-(`_cx=o[1]+o[3]/2`, `_cy=o[2]+o[4]/2`); indices 5–9 are a one-hot type block so
-the standard `type(O, category)` predicate (`(a * O[5:10]).sum()`) works and
-geometric predicates can gate on category (`_is_player(o)=o[5]>0.5`, etc.).
+Per-object row: `[present, x, y, w, h, type_id]` (seaquest convention). Position
+block (0–4) matches `main`'s valuation (`_cx=o[1]+o[3]/2`, `_cy=o[2]+o[4]/2`);
+`type_id` (index 5) is an int matching the `type:` consts order
+(player=0, alien=1, shield=2, bullet=3, satellite=4). The standard
+`type(O, type_oh)` predicate compares `O[5] == type_oh.argmax()` (exactly
+seaquest's), and geometric predicates gate on category via `_is(o, id)` helpers.
 
-`extract_logic_state(raw_state)` iterates `enumerate(raw_state)`, writing slot `i`
-from object `i`: `present=0` for `NoObject`/empty; otherwise `present=1`, copy
-`x,y,w,h`, set the type one-hot from `obj.category`.
+`extract_logic_state(raw_state)` uses category offsets (like seaquest):
+`MAX_NB_OBJECTS` (Player1,Shield3,Bullet3,Satellite1,Alien36) → slot offsets
+Player 0, Shield 1, Bullet 4, Satellite 7, Alien 8; each object goes to
+`offset[cat] + count[cat]`. `NoObject`/irrelevant categories are skipped
+(row stays `present=0`).
 
 ### Components
 

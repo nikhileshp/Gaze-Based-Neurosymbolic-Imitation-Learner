@@ -59,6 +59,10 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
                 gaze_method='None', encoder_agil=None, device='cuda', gaze_predictor=None):
     """Run policy in env for num_episodes, return list of total rewards."""
     dev = torch.device(device)
+    # Map model action index -> env predicate using the env's OWN action map
+    # (freeway = {noop,up,down}; PRIMITIVE_ACTIONS is a seaquest-style fallback).
+    idx2pred = ({v: k for k, v in env.pred2action.items()}
+                if hasattr(env, "pred2action") else dict(PRIMITIVE_ACTIONS))
     encoder.to(dev).eval()
     pre_actor.to(dev).eval()
     actor.to(dev).eval()
@@ -113,7 +117,7 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes=10, seed=42,
                 logits = actor(pre_actor(z))
                 action_idx = logits.argmax(dim=1).item()
 
-            action_str = PRIMITIVE_ACTIONS[action_idx]
+            action_str = idx2pred.get(action_idx, "noop")
             state, reward, done = env.step(action_str)
             total_r += reward
             step += 1
@@ -196,9 +200,11 @@ def main():
         # Shuffle + 95/5 train/val split is done inside the loop for conventional mode now
         pass
 
-    # Hardcode action_dim to 6 for Seaquest (0-5: noop, fire, up, right, left, down)
-    action_dim = 6
-    print(f"Using fixed action_dim: {action_dim}")
+    # Action dim from the env's own action map (freeway=3 {noop,up,down}, seaquest=6).
+    from core.utils.utils import get_primitive_action_map
+    _pred2action = get_primitive_action_map(args.env)
+    action_dim = max(_pred2action.values()) + 1
+    print(f"Using env action_dim: {action_dim}  ({_pred2action})")
 
     encoder_out_dim  = 8 * 8 * args.embedding_dim  # → 4096 for default settings
     

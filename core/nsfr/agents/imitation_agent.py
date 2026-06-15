@@ -224,17 +224,43 @@ from core.utils.utils import get_primitive_action_map
 
 
 class ImitationAgent(nn.Module):
-    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, aggregation_method='max', target_diagonal=0.99, random_init=False):
+    def __init__(self, env_name, rules, device, gaze_threshold=None, unnormalized=False, visible_preds_only=False, alpha=0.1, aggregation_method='max', target_diagonal=0.99, random_init=False, action_head='max'):
         super().__init__()
         self.device = device
         self.env_name = env_name
         self.aggregation_method = aggregation_method
+        # action_head: 'max'    -> max/softor over rules sharing an action prefix (rule
+        #                          valuations stay in [0,1]; the default, logic-faithful).
+        #              'linear' -> a learnable, UNNORMALIZED linear readout over all rule
+        #                          valuations -> action logits (can exceed 1). This lets a
+        #                          firing exception out-score the unconditional up:-. fact,
+        #                          which the [0,1]-bounded max head structurally cannot.
+        #                          Pair with --loss ce (softmax cross-entropy on the logits).
+        self.action_head_mode = action_head
         self.primitive_action_map = get_primitive_action_map(env_name)
         self.num_actions = max(self.primitive_action_map.values()) + 1
 
         print(f"Initializing NSFR model for {env_name}...", flush=True)
         self.model = get_nsfr_model(env_name, rules, device=device, train=True, gaze_threshold=gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, target_diagonal=target_diagonal, random_init=random_init)
         print("NSFR model initialized.", flush=True)
+
+        self.action_head = None
+        if self.action_head_mode == 'linear':
+            prednames = self.unwrapped_model.get_prednames()
+            num_rules = len(prednames)
+            self.action_head = nn.Linear(num_rules, self.num_actions).to(device)
+            # Warm start = the prefix mapping the 'max' head uses: rule r -> its action a
+            # gets weight +1, everything else 0. So at init the logit for action a is the
+            # sum of its rules' valuations; training is then free to reweight (incl. driving
+            # up:-. 's weight down) without being stuck near a random init.
+            with torch.no_grad():
+                self.action_head.weight.zero_()
+                self.action_head.bias.zero_()
+                for r, pred in enumerate(prednames):
+                    prefix = pred.split('_')[0]
+                    if prefix in self.primitive_action_map:
+                        self.action_head.weight[self.primitive_action_map[prefix], r] = 1.0
+            print(f"  [action_head] linear readout: {num_rules} rules -> {self.num_actions} action logits (unnormalized)", flush=True)
 
     @property
     def unwrapped_model(self):
@@ -254,6 +280,12 @@ class ImitationAgent(nn.Module):
         Uses max-aggregation over rules that map to the same primitive action.
         Called by update(), predict(), and act() to avoid code duplication.
         """
+        # Linear (unnormalized) readout: rule valuations -> action logits. Output is NOT
+        # bounded to [0,1], so a firing exception can out-score the up:-. fact. Use with
+        # CrossEntropyLoss (softmax over these logits).
+        if self.action_head_mode == 'linear' and self.action_head is not None:
+            return self.action_head(probs)
+
         action_rule_probs = {idx: [] for idx in range(self.num_actions)}
         # unwrapped_model: works whether or not DataParallel is wrapping self.model
         prednames = self.unwrapped_model.get_prednames()
@@ -355,16 +387,21 @@ class ImitationAgent(nn.Module):
         # print(f"  [DEBUG] actions range: [{actions.min()}, {actions.max()}]")
 
         
-        if loss_type == 'bce':
+        actions_clamped = actions.clamp(0, self.num_actions - 1)
+        if loss_type == 'ce':
+            # Softmax cross-entropy on raw action logits (use with action_head='linear').
+            # Provides a down-gradient on wrong classes and a normalized competition, so a
+            # firing exception can be driven above the unconditional up logit.
+            loss = nn.CrossEntropyLoss()(action_scores, actions_clamped)
+        elif loss_type == 'bce':
             target_matrix = torch.zeros_like(action_scores)
             target_matrix.scatter_(1, actions.unsqueeze(1), 1.0)
-            loss = nn.BCELoss()(action_scores, target_matrix)
+            loss = nn.BCELoss()(action_scores.clamp(0.0, 1.0), target_matrix)
         else:  # 'nll'
             log_action_scores = torch.log(action_scores.clamp(min=eps))
             # Clamp action targets to valid range [0, num_actions)
             # Necessary when the dataset contains raw ALE action IDs (e.g. 5)
             # that exceed the primitive action space for envs like Asterix (0-4).
-            actions_clamped = actions.clamp(0, self.num_actions - 1)
             loss = nn.NLLLoss()(log_action_scores, actions_clamped)
         # Return detached copies so callers can compute accuracy without
         # accidentally holding onto the computation graph.
@@ -426,10 +463,23 @@ class ImitationAgent(nn.Module):
         return predicate
 
     def save(self, path):
-        # Always save the underlying model weights, not the DataParallel wrapper
+        # Always save the underlying model weights, not the DataParallel wrapper.
         import os
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(self.unwrapped_model.state_dict(), path)
+        if self.action_head is not None:
+            # Bundle the learnable readout head alongside the model. (Plain model-only
+            # checkpoints are still produced for action_head='max' — no format change.)
+            torch.save({'model': self.unwrapped_model.state_dict(),
+                        'action_head': self.action_head.state_dict()}, path)
+        else:
+            torch.save(self.unwrapped_model.state_dict(), path)
 
     def load(self, path):
-        self.unwrapped_model.load_state_dict(torch.load(path, map_location=self.device))
+        ckpt = torch.load(path, map_location=self.device)
+        # New bundled format ({'model', 'action_head'}) vs legacy raw model state_dict.
+        if isinstance(ckpt, dict) and 'model' in ckpt:
+            self.unwrapped_model.load_state_dict(ckpt['model'])
+            if self.action_head is not None and 'action_head' in ckpt:
+                self.action_head.load_state_dict(ckpt['action_head'])
+        else:
+            self.unwrapped_model.load_state_dict(ckpt)

@@ -28,7 +28,7 @@ def load_csv(csv_path):
     return df
  
  
-def plot_learning_curve_models(csv_path, output_path, window_size=1):
+def plot_learning_curve_models(csv_path, output_path, window_size=1, hlines=None):
     if not os.path.exists(csv_path):
         print(f"Error: CSV file not found at {csv_path}")
         return
@@ -95,7 +95,15 @@ def plot_learning_curve_models(csv_path, output_path, window_size=1):
                 color=color, alpha=0.2
             )
  
-    plt.xticks(range(0, 101, 10), [f"{x}%" for x in range(0, 101, 10)])
+    # Horizontal reference lines (methods with no learning curve, full-data only)
+    if hlines:
+        for label, value in hlines:
+            color = MODEL_COLORS.get(label.split(' ')[0], 'gray')
+            plt.axhline(y=value, linestyle='--', color=color, alpha=0.8, label=label)
+
+    plt.xticks(range(10, 101, 10), [f"{x}%" for x in range(10, 101, 10)])
+    plt.xlim(10, 100)
+    plt.ylim(bottom=0)
  
     plt.title('Learning Curve by Model')
     plt.xlabel('Percentage of Dataset (%)')
@@ -117,8 +125,15 @@ def main():
                         help="Path to save the output plot.")
     parser.add_argument("--window_size", type=int, default=1,
                         help="Window size for smoothing the learning curves (default: 1).")
+    parser.add_argument("--hlines", type=str, default=None,
+                        help="Comma-sep horizontal reference lines 'Label:value', e.g. "
+                             "'NSFR:25.38,GRAIL:25.38' (for full-data-only methods).")
     args = parser.parse_args()
-    plot_learning_curve_models(args.csv_path, args.output, args.window_size)
+    hlines = None
+    if args.hlines:
+        hlines = [(s.rsplit(':', 1)[0], float(s.rsplit(':', 1)[1]))
+                  for s in args.hlines.split(',')]
+    plot_learning_curve_models(args.csv_path, args.output, args.window_size, hlines)
  
  
 if __name__ == "__main__":

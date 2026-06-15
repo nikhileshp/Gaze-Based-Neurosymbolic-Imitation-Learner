@@ -10,3 +10,4 @@ grail-train-bc = scripts.training.train_bc:main
 grail-train-bc-pt = scripts.training.train_bc_pt:main
 grail-train-gaze = scripts.training.train_gaze:main
 grail-visualize = scripts.visualization.visualize_trajectory:main
+grail-visualize-pt = scripts.visualization.visualize_pt:main

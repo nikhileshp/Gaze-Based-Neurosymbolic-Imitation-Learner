@@ -150,6 +150,11 @@ class FactsConverter(nn.Module):
                     self.atom_groups[pred_name].append(atom)
                     self.atom_indices[pred_name].append(i)
 
+        # Tell the valuation module whether a gaze column was appended above, so gaze
+        # scaling only fires when gaze is actually present (not guessed from feature
+        # count, which breaks for >=6-feature envs like Seaquest, type_id=0 enemies).
+        self.vm._has_gaze_col = gaze is not None
+
         # ── Batch evaluation ─────────────────────────────────────────────────
         # gaze=None: val_fns never receive the heatmap directly.
         # Gaze scaling is applied in valuation.py via Z[:, :, -1] scalar

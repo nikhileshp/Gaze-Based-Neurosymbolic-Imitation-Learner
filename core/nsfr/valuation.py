@@ -186,12 +186,13 @@ class ValuationModule(nn.Module, ABC):
                         is_obj = (arg.dim() == 2 and arg.size(1) >= 6) # lowered to 6 for Freeway
                     
                     if is_obj:
-                        # Only apply gaze scaling if we have more than the base features.
-                        # Base features: Freeway=5, Seaquest=5, Asterix=7.
-                        # Appended gaze adds 1 feature.
-                        # So gaze is present if features > 5 (Freeway/Seaquest) or features > 7 (Asterix).
-                        # Using >= 6 is safe as base is either 5 or 7.
-                        if arg.size(1) >= 6:
+                        # Apply gaze scaling ONLY when the FactsConverter actually
+                        # appended a gaze column (set via `_has_gaze_col`). The old
+                        # `arg.size(1) >= 6` heuristic misfired for envs whose base
+                        # feature count is already >= 6 (Seaquest has 7): with no gaze
+                        # it read the last base feature (type_id) as "gaze" and zeroed
+                        # every object whose type_id is 0 (all Seaquest enemies).
+                        if getattr(self, "_has_gaze_col", False):
                             # The last dimension is the appended gaze from FactsConverter.
                             obj_gaze = arg[:, -1]
                             max_gaze_flat = torch.max(max_gaze_flat, obj_gaze)

@@ -77,6 +77,7 @@ class NSFREnv(NSFRBaseEnv):
             if obj.category not in self.relevant_objects:
                 continue
             idx = self.obj_offsets[obj.category] + obj_count[obj.category]
+            obj._logic_slot = idx  # tag for the renderer overlay (objN matches the panel)
             type_id = type_map.get(obj.category, 0) # Default to 0 (enemy) if unknown
             # print(obj.category)
             if obj.category == "OxygenBar":

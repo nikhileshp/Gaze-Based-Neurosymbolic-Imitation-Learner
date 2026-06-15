@@ -159,13 +159,13 @@ def main():
     parser.add_argument("--rules", type=str, default="improved", help="Ruleset name")
     parser.add_argument("--dataset", type=str, default=None, help="Path to .pt dataset file")
     parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
-    parser.add_argument("--loss", type=str, default="nll", choices=["nll", "bce"],
-                        help="Loss function: 'nll' or 'bce'")
+    parser.add_argument("--loss", type=str, default="nll", choices=["nll", "bce", "ce"],
+                        help="Loss function: 'nll', 'bce', or 'ce' (softmax cross-entropy; use with --action_head linear)")
     parser.add_argument("--num_eval_episodes", type=int, default=50, help="Number of evaluation episodes")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
+    parser.add_argument("--device", type=str, default="auto", help="Device: 'auto' (cuda if available), 'cpu', or 'cuda[:N]'")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples")
     parser.add_argument("--num_workers", type=int, default=4, help="DataLoader workers")
     parser.add_argument("--val_split", type=float, default=0.05, help="Validation fraction")
@@ -188,7 +188,17 @@ def main():
     parser.add_argument("--aggregation", type=str, default="max", choices=["softor", "max"], help="Aggregation method for action scores")
     parser.add_argument("--target_diagonal", type=float, default=0.99, help="Initial confidence for clauses in block diagonal initialization.")
     parser.add_argument("--random_init", action="store_true", help="Initialize weights randomly instead of target_diagonal.")
+    parser.add_argument("--action_head", type=str, default="max", choices=["max", "linear"],
+                        help="How rule valuations become action scores: 'max' (logic-faithful, scores in [0,1]) "
+                             "or 'linear' (learnable UNNORMALIZED readout -> logits that can exceed 1, letting a "
+                             "firing exception out-score the unconditional up:-. fact; use with --loss ce).")
     args = parser.parse_args()
+
+    # A linear (unnormalized) head emits logits, not [0,1] scores -> it must be trained
+    # with softmax cross-entropy. Auto-switch with a warning so it's easy to test.
+    if args.action_head == "linear" and args.loss != "ce":
+        print(f"Warning: --action_head linear emits logits; forcing --loss ce (was '{args.loss}').")
+        args.loss = "ce"
     
     # -- Resolve gaze model path if not provided
     if args.gaze_model_path is None:
@@ -222,8 +232,13 @@ def main():
     # ── Device ───────────────────────────────────────────────────────────────
     PRIMITIVE_ACTION_MAP = get_primitive_action_map(args.env)
     make_deterministic(args.seed)
-    device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    if args.device != "cpu":
+    # Honor --device exactly; "auto" picks cuda when available (old default behavior).
+    if args.device == "auto":
+        device_name = "cuda" if torch.cuda.is_available() else "cpu"
+    elif args.device.startswith("cuda") and not torch.cuda.is_available():
+        print("Warning: --device cuda requested but CUDA is unavailable; using cpu.")
+        device_name = "cpu"
+    else:
         device_name = args.device
     device = torch.device(device_name)
     print(f"Using device: {device}")
@@ -233,7 +248,7 @@ def main():
 
     print(f"Initializing ImitationAgent for {args.env} with rules {args.rules}...")
     agent_gaze_threshold = args.gaze_threshold if use_gaze else None
-    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, aggregation_method=args.aggregation, target_diagonal=target_diagonal, random_init=args.random_init)
+    agent = ImitationAgent(args.env, args.rules, device, gaze_threshold=agent_gaze_threshold, unnormalized=unnormalized, visible_preds_only=visible_preds_only, alpha=alpha, aggregation_method=args.aggregation, target_diagonal=target_diagonal, random_init=args.random_init, action_head=args.action_head)
 
         # Multi-GPU: DataParallel splits the batch evenly across all visible GPUs.
     # Each GPU processes batch/N samples independently — no cross-GPU communication
@@ -465,7 +480,10 @@ def main():
         print("Valuation precomputation complete.\n")
 
     # ── Optimizer / Scheduler ────────────────────────────────────────────────
-    optimizer = torch.optim.Adam(agent.unwrapped_model.parameters(), lr=args.lr)
+    # agent.parameters() = NSFR clause weights W + (when action_head='linear') the
+    # learnable readout head. Using agent.parameters() (not unwrapped_model) ensures the
+    # head is optimized; for action_head='max' it is identical to the model's params.
+    optimizer = torch.optim.Adam(agent.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='max', factor=0.5, patience=args.lr_patience,
     )
@@ -611,8 +629,12 @@ def main():
 
                     val_correct += (action_scores.argmax(dim=1) == actions).sum().item()
                     val_samples += B
-                    log_scores = torch.log(action_scores.clamp(min=eps_nll))
-                    val_loss    += nn.NLLLoss()(log_scores, actions).item()
+                    if args.loss == 'ce':
+                        # action_scores are logits in this mode -> softmax cross-entropy.
+                        val_loss += nn.CrossEntropyLoss()(action_scores, actions).item()
+                    else:
+                        log_scores = torch.log(action_scores.clamp(min=eps_nll))
+                        val_loss    += nn.NLLLoss()(log_scores, actions).item()
                     val_n       += 1
 
             avg_val_acc = val_correct / max(val_samples, 1)

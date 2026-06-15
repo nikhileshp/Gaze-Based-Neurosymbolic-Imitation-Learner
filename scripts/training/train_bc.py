@@ -90,7 +90,9 @@ def get_args(run_in_notebook=False):
     else:
         args = parser.parse_args()
     
-    args.device = 'cuda'
+    # Honor an explicit --device if provided; else auto (cuda when available).
+    if not getattr(args, "device", None) or args.device == "auto":
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     return args
 

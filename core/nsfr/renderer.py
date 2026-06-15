@@ -8,6 +8,7 @@ import pygame
 from .agents.logic_agent import NsfrActorCritic
 from .agents.neural_agent import ActorCritic
 from .utils import load_model, yellow, print_program
+from .rule_explain import rule_attributions, order_for_display
 
 from ocatari.core import OCAtari
 from hackatari.core import HackAtari
@@ -15,6 +16,7 @@ from hackatari.core import HackAtari
 
 SCREENSHOTS_BASE_PATH = "out/screenshots/"
 PREDICATE_PROBS_COL_WIDTH = 300
+NUM_PANEL_COLUMNS = 2  # rule panel flows into a 2nd column when it overflows
 CELL_BACKGROUND_DEFAULT = np.array([40, 40, 40])
 CELL_BACKGROUND_HIGHLIGHT = np.array([40, 150, 255])
 CELL_BACKGROUND_SELECTED = np.array([80, 80, 80])
@@ -98,14 +100,26 @@ class Renderer:
         self.env_render_shape = frame.shape[:2]
         window_shape = list(self.env_render_shape)
         if self.render_predicate_probs:
-            window_shape[0] += PREDICATE_PROBS_COL_WIDTH
-        self.window = pygame.display.set_mode(window_shape, pygame.SCALED)
+            window_shape[0] += PREDICATE_PROBS_COL_WIDTH * NUM_PANEL_COLUMNS
+        # Draw onto a fixed-size logical surface, then scale it to fit the actual
+        # display in _render(). Keeps the whole window visible even when the logical
+        # size exceeds the (VNC/Xvfb) screen, instead of clipping the right/bottom.
+        self.window = pygame.Surface(window_shape)
+        try:
+            desktop_w, desktop_h = pygame.display.get_desktop_sizes()[0]
+            scale = min(desktop_w / window_shape[0], desktop_h / window_shape[1])
+        except Exception:
+            scale = 1.0
+        screen_size = (max(1, round(window_shape[0] * scale)),
+                       max(1, round(window_shape[1] * scale)))
+        self.screen = pygame.display.set_mode(screen_size)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont('Calibri', 24)
 
     def run(self):
         length = 0
         ret = 0
+        self.taken_head = None  # head name of the rule whose action was executed
 
         obs, _ = self.env.reset()
 
@@ -119,14 +133,18 @@ class Renderer:
             if self.takeover:  # human plays game manually
                 action = self._get_action()
                 self.model.act(th.unsqueeze(th.tensor(obs), 0))  # update the model's internals
+                self.taken_head = None
             else:  # AI plays the game
                 action, _ = self.model.act(th.unsqueeze(th.tensor(obs), 0))
                 action = self.predicates[action.item()]
+                self.taken_head = action
+
+            # Render the state the decision was made on (env not yet stepped), so the
+            # overlay frame and the panel's valuation (V_0 of `obs`) are the same frame.
+            self._render()
 
             if not self.paused:
                 (new_obs, _), reward, done = self.env.step(action, is_mapped=self.takeover)
-
-                self._render()
                 ret += reward
 
                 if self.takeover and float(reward) != 0:
@@ -135,7 +153,6 @@ class Renderer:
                 if self.reset:
                     done = True
                     new_obs, _ = self.env.reset()
-                    self._render()
 
                 obs = new_obs
                 length += 1
@@ -144,7 +161,7 @@ class Renderer:
                     print(f"Return: {ret} - Length {length}")
                     ret = 0
                     length = 0
-                    self.env.reset()
+                    obs, _ = self.env.reset()
 
         pygame.quit()
 
@@ -197,11 +214,17 @@ class Renderer:
                 #     self.fast_forward = False
 
     def _render(self):
-        self.window.fill((20, 20, 20))  # clear the entire window
+        self.window.fill((20, 20, 20))  # clear the logical surface
         self._render_env()
         if self.render_predicate_probs:
             self._render_predicate_probs()
 
+        # Scale the logical surface to the physical (display-fitted) window.
+        if self.window.get_size() == self.screen.get_size():
+            self.screen.blit(self.window, (0, 0))
+        else:
+            self.screen.blit(
+                pygame.transform.smoothscale(self.window, self.screen.get_size()), (0, 0))
         pygame.display.flip()
         pygame.event.pump()
         if not self.fast_forward:
@@ -214,25 +237,72 @@ class Renderer:
         self.window.blit(frame_surface, (0, 0))
 
     def _render_predicate_probs(self):
-        anchor = (self.env_render_shape[0] + 10, 25)
+        """Rule panel: every clause with its probability, and below each the body
+        atoms of its winning grounding (the ground predicates that produce that
+        probability). The executed clause is pinned to the top and highlighted.
+        Flows into a second column when it overflows the window height."""
+        attributions = rule_attributions(self.nsfr_reasoner)
+        if not attributions:
+            self._render_predicate_probs_fallback()
+            return
 
+        taken_head = getattr(self, "taken_head", None)
+        ordered = order_for_display(attributions, taken_head) if taken_head else list(attributions)
+        taken_clause_idx = (
+            ordered[0].clause_idx
+            if taken_head and ordered and ordered[0].head == taken_head
+            else None
+        )
+
+        base_x = self.env_render_shape[0] + 10
+        col_width = PREDICATE_PROBS_COL_WIDTH
+        top_y, header_h, body_h = 25, 30, 20
+        max_y = self.env_render_shape[1] - body_h
+        small_font = pygame.font.SysFont("Calibri", 16)
+
+        col, y = 0, top_y
+        for attr in ordered:
+            block_h = header_h + body_h * len(attr.body) + 6
+            if col < NUM_PANEL_COLUMNS - 1 and y + block_h > max_y:
+                col, y = col + 1, top_y
+            x = base_x + col * col_width
+
+            is_taken = attr.clause_idx == taken_clause_idx
+            p = float(np.clip(attr.prob, 0.0, 1.0))
+            if is_taken:
+                color = CELL_BACKGROUND_SELECTED
+            else:
+                color = p * CELL_BACKGROUND_HIGHLIGHT + (1 - p) * CELL_BACKGROUND_DEFAULT
+            color = np.clip(np.asarray(color), 0, 255).astype(int).tolist()
+            pygame.draw.rect(self.window, color, [x - 2, y - 2, col_width - 12, 26])
+
+            label = f"{attr.prob:.2f}  {attr.head}" + ("  [TAKEN]" if is_taken else "")
+            self.window.blit(self.font.render(label, True, "white", None), (x, y))
+            y += header_h
+
+            for atom_str, val in attr.body:
+                line = small_font.render(f"   {atom_str} = {val:.2f}", True, "white", None)
+                self.window.blit(line, (x, y))
+                y += body_h
+            y += 6
+
+    def _render_predicate_probs_fallback(self):
+        """Old per-predname panel, used only when attribution data is unavailable
+        (e.g. before the first forward pass populates the valuation)."""
+        anchor = (self.env_render_shape[0] + 10, 25)
         nsfr = self.nsfr_reasoner
-        pred_vals = {pred: nsfr.get_predicate_valuation(pred, initial_valuation=False) for pred in nsfr.prednames}
-        i_max = np.argmax(list(pred_vals.values()))
+        pred_vals = {pred: nsfr.get_predicate_valuation(pred, initial_valuation=False)
+                     for pred in nsfr.prednames}
+        if not pred_vals:
+            return
+        i_max = int(np.argmax(list(pred_vals.values())))
         for i, (pred, val) in enumerate(pred_vals.items()):
-            # Render cell background
             if i == i_max:
                 color = CELL_BACKGROUND_SELECTED
             else:
                 color = val * CELL_BACKGROUND_HIGHLIGHT + (1 - val) * CELL_BACKGROUND_DEFAULT
+            color = np.clip(np.asarray(color), 0, 255).astype(int).tolist()
             pygame.draw.rect(self.window, color, [
-                anchor[0] - 2,
-                anchor[1] - 2 + i * 35,
-                PREDICATE_PROBS_COL_WIDTH - 12,
-                28
-            ])
-
-            text = self.font.render(str(f"{100*val:.2f} - {pred}"), True, "white", None)
-            text_rect = text.get_rect()
-            text_rect.topleft = (self.env_render_shape[0] + 10, 25 + i * 35)
-            self.window.blit(text, text_rect)
+                anchor[0] - 2, anchor[1] - 2 + i * 35, PREDICATE_PROBS_COL_WIDTH - 12, 28])
+            text = self.font.render(f"{100*val:.2f} - {pred}", True, "white", None)
+            self.window.blit(text, (self.env_render_shape[0] + 10, 25 + i * 35))

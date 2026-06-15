@@ -335,6 +335,9 @@ class OCAtari(gym.Env):
 
         # Draw detected objects as bounding boxes with labels
         for game_object in self.objects:
+            # Skip empty object slots so the overlay stays uncluttered.
+            if game_object.__class__.__name__ in ("NoObject", "OrientedNoObject"):
+                continue
             x, y = game_object.xy
             w, h = game_object.wh
 
@@ -350,8 +353,12 @@ class OCAtari(gym.Env):
             # Draw bounding box
             pygame.draw.rect(
                 overlay_surface, color=game_object.rgb, rect=(x, y, w, h), width=2)
-            # Draw label with object category
-            label = game_object.category
+            # Draw label. If the logic env tagged this object with its logic-state
+            # slot (_logic_slot), prefix it so the overlay's objN matches the rule
+            # panel's atoms (which use the densely-packed logic slots, not this
+            # list's positions). Falls back to category-only when not tagged.
+            slot = getattr(game_object, "_logic_slot", None)
+            label = (f"obj{slot} " if slot is not None else "") + game_object.category
             if isinstance(game_object, ValueObject):
                 label += f" ({game_object.value})"
             draw_label(self.window, label, position=(

@@ -66,7 +66,7 @@ def build_model(args, action_dim, device):
     """Construct fresh encoder, pre_actor, actor (and optional encoder_agil) and return them."""
     encoder_out_dim = 8 * 8 * args.embedding_dim   # 4096 for defaults
 
-    encoder = Encoder(1, args.embedding_dim, args.num_hiddens,
+    encoder = Encoder(args.stack, args.embedding_dim, args.num_hiddens,
                       args.num_residual_layers, args.num_residual_hiddens).to(device)
 
     pre_actor = nn.Sequential(
@@ -86,14 +86,15 @@ def build_model(args, action_dim, device):
 
     encoder_agil = None
     if args.gaze_method == "AGIL":
-        encoder_agil = Encoder(1, args.embedding_dim, args.num_hiddens,
+        encoder_agil = Encoder(args.stack, args.embedding_dim, args.num_hiddens,
                                args.num_residual_layers, args.num_residual_hiddens).to(device)
 
     return encoder, pre_actor, actor, encoder_agil
 
 
 def evaluate_bc(encoder, pre_actor, actor, env, num_episodes, seed, device,
-                gaze_method='None', encoder_agil=None, gaze_predictor=None, id2action=None):
+                gaze_method='None', encoder_agil=None, gaze_predictor=None, id2action=None,
+                stack=1):
     """Run the policy for num_episodes, return list of total rewards."""
     dev = torch.device(device)
     encoder.to(dev).eval()
@@ -111,6 +112,14 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes, seed, device,
 
         done, total_r = False, 0.0
 
+        # Encoder frame-stack buffer (stack>1 = higher-order Markov input); padded with frame 0
+        enc_buf = deque(maxlen=stack)
+        f0_raw = env.get_rgb_frame() if hasattr(env, 'get_rgb_frame') else env.render()
+        f0 = cv2.cvtColor(f0_raw, cv2.COLOR_RGB2GRAY)
+        f0 = cv2.resize(f0, (84, 84), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+        for _ in range(stack):
+            enc_buf.append(f0)
+
         # Initialise gaze temporal buffer
         frame_buffer = None
         if gaze_predictor is not None:
@@ -125,7 +134,9 @@ def evaluate_bc(encoder, pre_actor, actor, env, num_episodes, seed, device,
             raw_frame = env.get_rgb_frame()          # (H, W, 3) RGB uint8
             gray = cv2.cvtColor(raw_frame, cv2.COLOR_RGB2GRAY)
             gray = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
-            xx = torch.tensor(gray, dtype=torch.float32, device=dev).unsqueeze(0).unsqueeze(0) / 255.0
+            enc_buf.append(gray.astype(np.float32) / 255.0)
+            xx = torch.tensor(np.stack(list(enc_buf), axis=0),
+                              dtype=torch.float32, device=dev).unsqueeze(0)  # (1, stack, 84, 84)
 
             gg = torch.zeros(1, 1, 84, 84, device=dev)
             if gaze_predictor is not None:
@@ -184,6 +195,8 @@ def get_args():
     p.add_argument("--num_residual_layers",    type=int, default=2)
     p.add_argument("--num_residual_hiddens",   type=int, default=32)
     p.add_argument("--z_dim",                  type=int, default=256)
+    p.add_argument("--stack",                  type=int, default=1,
+                   help="Stacked frames as encoder input channels (4 = higher-order Markov for OOD speed).")
     # Gaze method
     p.add_argument("--gaze_method",  type=str, default="None",
                    choices=["None", "AGIL", "Mask"])
@@ -234,8 +247,9 @@ def main():
     if args.run_dir:
         base_run_dir = args.run_dir
     else:
+        stack_tag = f"_stack{args.stack}" if args.stack > 1 else ""
         base_run_dir = (
-            f"trained_models/{args.env}/{model_name}_learning_curve"
+            f"trained_models/{args.env}/{model_name}{stack_tag}_learning_curve"
             f"_epoch_{args.epochs}_seed_{args.seed}_lr_{args.lr}"
         )
     os.makedirs(base_run_dir, exist_ok=True)
@@ -250,7 +264,7 @@ def main():
     # ── Load FULL dataset once to determine total number of samples ───────────
     print("\nLoading full dataset to determine total sample count ...")
     obs_full, actions_full, gaze_full, _, _ = load_pt_dataset(
-        args.dataset, num_episodes=None, use_gaze=use_gaze_data
+        args.dataset, num_episodes=None, use_gaze=use_gaze_data, stack=args.stack
     )
     total_samples = len(obs_full)
     action_dim = int(actions_full.max() + 1)
@@ -311,6 +325,7 @@ def main():
         criterion = nn.CrossEntropyLoss()
 
         best_val_acc = -float('inf')
+        epoch_log = []   # per-epoch metrics -> training_log.csv (loss/acc curves)
 
         # ── Training loop ─────────────────────────────────────────────────────
         for epoch in range(args.epochs):
@@ -349,7 +364,7 @@ def main():
             # Validation
             encoder.eval(); pre_actor.eval(); actor.eval()
             if encoder_agil is not None: encoder_agil.eval()
-            val_correct, val_n = 0, 0
+            val_correct, val_n, val_loss_sum = 0, 0, 0.0
             with torch.no_grad():
                 for xx_raw, aa, gg in va_dl:
                     xx = preprocess_obs(xx_raw, device)
@@ -359,16 +374,30 @@ def main():
                     if args.gaze_method == "AGIL" and encoder_agil is not None:
                         z = (z + encoder_agil(xx * gg)) / 2
                     logits = actor(pre_actor(z))
+                    val_loss_sum += criterion(logits, aa).item() * aa.size(0)
                     val_correct += (logits.argmax(1) == aa).sum().item()
                     val_n += aa.size(0)
 
             val_acc   = val_correct / val_n if val_n > 0 else 0.0
+            val_loss  = val_loss_sum / val_n if val_n > 0 else 0.0
             avg_loss  = total_loss  / total_n if total_n > 0 else 0.0
             train_acc = total_correct / total_n if total_n > 0 else 0.0
 
             scheduler.step(val_acc)
             print(f"  [{pct}%] Epoch {epoch+1}/{args.epochs} | "
-                  f"Loss {avg_loss:.4f} | TrainAcc {train_acc:.3f} | ValAcc {val_acc:.3f}")
+                  f"Loss {avg_loss:.4f} | TrainAcc {train_acc:.3f} | "
+                  f"ValLoss {val_loss:.4f} | ValAcc {val_acc:.3f}")
+
+            # Per-epoch curve (loss + acc), matches the NSFR/grail training_log format
+            epoch_log.append({
+                'percentage': pct,
+                'n_samples':  n_samples,
+                'epoch':      epoch + 1,
+                'train_loss': avg_loss,
+                'train_acc':  train_acc,
+                'val_loss':   val_loss,
+                'val_acc':    val_acc,
+            })
 
             # Save best checkpoint
             if val_acc > best_val_acc:
@@ -379,6 +408,9 @@ def main():
                 if encoder_agil is not None:
                     torch.save(encoder_agil.state_dict(), f"{run_dir}/best_encoder_agil.pth")
                 print(f"    *** New best model saved (ValAcc: {val_acc:.3f})")
+
+        # Save per-epoch training curve (train/val loss + acc) for this percentage
+        pd.DataFrame(epoch_log).to_csv(f"{run_dir}/training_log.csv", index=False)
 
         # Save final epoch checkpoint
         torch.save(encoder.state_dict(),   f"{run_dir}/final_encoder.pth")
@@ -404,7 +436,7 @@ def main():
                                 gaze_method=args.gaze_method,
                                 encoder_agil=encoder_agil,
                                 gaze_predictor=gaze_predictor,
-                                id2action=id2action)
+                                id2action=id2action, stack=args.stack)
         mean_r    = np.mean(rewards)
         std_r     = np.std(rewards)
         median_r  = float(np.median(rewards))
