@@ -1,0 +1,4 @@
+fire_aim:1:image
+right_toward:1:image
+left_toward:1:image
+noop_default:1:image

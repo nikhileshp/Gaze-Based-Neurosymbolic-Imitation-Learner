@@ -1,0 +1,10 @@
+type:2:object,type
+in_image:2:image,object
+visible_alien:1:object
+visible_satellite:1:object
+aligned_with_alien:2:object,object
+aligned_with_satellite:2:object,object
+left_of_alien:2:object,object
+right_of_alien:2:object,object
+slightly_left_of_alien:2:object,object
+slightly_right_of_alien:2:object,object

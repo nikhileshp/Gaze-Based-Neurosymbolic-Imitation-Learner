@@ -1,0 +1,9 @@
+type:2:object,type
+in_image:2:image,object
+visible_alien:1:object
+visible_bullet:1:object
+aligned_with_alien:2:object,object
+close_by_bullet:2:object,object
+bullet_left_of_player:2:object,object
+bullet_right_of_player:2:object,object
+behind_shield:2:object,object
