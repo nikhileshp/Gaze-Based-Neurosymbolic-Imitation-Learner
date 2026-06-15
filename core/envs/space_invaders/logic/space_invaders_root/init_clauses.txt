@@ -7,4 +7,4 @@ left_nudge(X0):-slightly_right_of_alien(O1,O2),visible_alien(O2).
 right_dodge(X0):-close_by_bullet(O1,O2),bullet_left_of_player(O2,O1),visible_bullet(O2).
 left_dodge(X0):-close_by_bullet(O1,O2),bullet_right_of_player(O2,O1),visible_bullet(O2).
 noop_cover(X0):-behind_shield(O1,O2).
-noop_default(X0):-in_image(X0,O1),in_image(X0,O2).
+noop_default(X0):-in_image(X0,O1).
