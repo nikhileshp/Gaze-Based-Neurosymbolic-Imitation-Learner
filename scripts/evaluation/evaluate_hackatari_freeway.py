@@ -78,10 +78,10 @@ NSFR_MODELS = [
         "model_path": os.path.join(
             _ROOT,
             "trained_models/freeway/nsfr"
-            "/new_rules_0.01_lr_nll_td_0.99"
-            "/full_ep/2026_06_10_17_48_45/epoch_1.pth"
+            "/simpler_rules_0.01_lr_nll_td_0.99"
+            "/full_ep/2026_06_12_15_48_56/epoch_1.pth"
         ),
-        "rules": "new",
+        "rules": "simpler",
         "use_gaze": False,
         "unnormalized": False,
     },
@@ -90,10 +90,10 @@ NSFR_MODELS = [
         "model_path": os.path.join(
             _ROOT,
             "trained_models/freeway/grail"
-            "/new_rules_0.01_lr_nll_unnormalized_vis_only_td_0.99"
-            "/full_ep/2026_06_11_00_03_42/epoch_1.pth"
+            "/simpler_rules_0.01_lr_nll_unnormalized_vis_only_td_0.99"
+            "/full_ep/2026_06_09_22_46_28/epoch_1.pth"
         ),
-        "rules": "new",
+        "rules": "simpler",
         "use_gaze": True,
         "unnormalized": True,
         "visible_preds_only": True,
